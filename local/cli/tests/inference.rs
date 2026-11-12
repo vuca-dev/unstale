@@ -36,6 +36,7 @@ fn infer(cache: &Path, bin: Option<&Path>, args: &[&str]) -> Run {
         .args(args)
         .env("UNSTALE_CACHE_DIR", cache)
         .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
+        .env("UNSTALE_DEV_INFER", "1")
         // The user's config: none of the machine's own, and where a test puts the user's token limit.
         .env("UNSTALE_CONFIG_DIR", cache.join("user-config"))
         .env("UNSTALE_EDGE_INFERENCE", "1")
@@ -361,6 +362,7 @@ fn with_model_steps_off_infer_makes_no_call() {
         .args(strs(&custom(&url)))
         .env("UNSTALE_CACHE_DIR", cache.path())
         .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
+        .env("UNSTALE_DEV_INFER", "1")
         .env("CANARY_KEY", CANARY)
         .env_remove("UNSTALE_EDGE_INFERENCE")
         .output()
@@ -370,6 +372,44 @@ fn with_model_steps_off_infer_makes_no_call() {
         String::from_utf8_lossy(&out.stdout).trim(),
         "deferred: model steps on this machine are turned off"
     );
+    assert_eq!(seen.lock().unwrap().len(), 0);
+}
+
+/// A named provider skips the user's recorded choice, so without the developer variable neither hidden command calls
+/// it: one line, an error exit, no request.
+#[test]
+fn without_the_developer_variable_a_named_provider_is_refused() {
+    let (url, seen) = mock(200, OPENAI_OK, Duration::ZERO);
+    let cache = tempfile::tempdir().unwrap();
+    let input = cache.path().join("in.jsonl");
+    std::fs::write(&input, "{}\n").unwrap();
+    let infer: Vec<String> = ["infer".to_string()].into_iter().chain(custom(&url)).collect();
+    let mut step: Vec<String> = ["internal", "run-step", "--step", "extract", "--in"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    step.push(input.display().to_string());
+    step.extend(custom(&url).into_iter().filter(|a| a != "Say ok."));
+    for args in [infer, step] {
+        for value in [None, Some("0")] {
+            let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
+            c.args(&args)
+                .env("UNSTALE_CACHE_DIR", cache.path())
+                .env("UNSTALE_CONFIG_DIR", cache.path().join("user-config"))
+                .env("UNSTALE_EDGE_INFERENCE", "1")
+                .env("CANARY_KEY", CANARY)
+                .env_remove("UNSTALE_DEV_INFER");
+            if let Some(v) = value {
+                c.env("UNSTALE_DEV_INFER", v);
+            }
+            let out = c.output().unwrap();
+            assert_ne!(out.status.code(), Some(0), "{args:?}");
+            assert!(out.stdout.is_empty(), "{args:?}");
+            let err = String::from_utf8_lossy(&out.stderr);
+            assert_eq!(err.trim().lines().count(), 1, "{args:?}: {err}");
+            assert!(err.contains("UNSTALE_DEV_INFER=1"), "{args:?}: {err}");
+        }
+    }
     assert_eq!(seen.lock().unwrap().len(), 0);
 }
 
@@ -515,6 +555,7 @@ fn both_spellings_of_the_switch_turn_model_steps_on() {
             .args(strs(&custom(&url)))
             .env("UNSTALE_CACHE_DIR", cache.path())
             .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
+            .env("UNSTALE_DEV_INFER", "1")
             .env("CANARY_KEY", CANARY)
             .env("UNSTALE_EDGE_INFERENCE", value)
             .output()

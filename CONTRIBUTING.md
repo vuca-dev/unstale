@@ -27,6 +27,8 @@ A catalog directory is not signature-checked, so the client reads one only after
 this machine (it records the directory in the user's config), never because a repository's `.unstale/config.json` names
 it, and caches it apart from the signed catalog (`unsigned/` in the cache). The client's tests, which write such
 configs by hand, set `UNSTALE_DEV_UNSIGNED_CATALOG=1`: a development setting, read from the process environment only.
+The hidden `unstale infer` and `unstale internal run-step --provider` call a provider the user never chose, so they
+refuse unless `UNSTALE_DEV_INFER=1` is set the same way (the client's tests and `eval/edge-port/run_cell.sh` set it).
 
 A client following a fast-track run can be previewed locally: `node gateway/scripts/preview.ts --new pkg:npm/picocolors`
 runs the gateway with a played coverage run in place of GitHub (catalog and known statuses from the live gateway) and

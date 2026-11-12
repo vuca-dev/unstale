@@ -42,10 +42,10 @@ for s in $(seq 0 $((SHARDS - 1))); do
     cd "$D/work"
     if [ "$PROVIDER" = codex ]; then
       # Codex reads its own login from the user's home; everything of unstale's stays in the temporary directories.
-      env UNSTALE_CACHE_DIR="$D/cache" UNSTALE_CONFIG_DIR="$D/config" UNSTALE_EDGE_INFERENCE=1 \
+      env UNSTALE_CACHE_DIR="$D/cache" UNSTALE_CONFIG_DIR="$D/config" UNSTALE_EDGE_INFERENCE=1 UNSTALE_DEV_INFER=1 \
         "$BIN" internal run-step --step "$STEP" --in "$CELL/in.$s.jsonl" --provider codex "$@" > "$CELL/out.$s.jsonl" 2> "$CELL/err.$s.txt"
     else
-      env -i PATH=/usr/bin:/bin HOME="$D/home" UNSTALE_CACHE_DIR="$D/cache" UNSTALE_CONFIG_DIR="$D/config" UNSTALE_EDGE_INFERENCE=1 \
+      env -i PATH=/usr/bin:/bin HOME="$D/home" UNSTALE_CACHE_DIR="$D/cache" UNSTALE_CONFIG_DIR="$D/config" UNSTALE_EDGE_INFERENCE=1 UNSTALE_DEV_INFER=1 \
         AI_GATEWAY_API_KEY="$GATEWAY_KEY" JEV_API_KEY="$JEV_KEY" \
         "$BIN" internal run-step --step "$STEP" --in "$CELL/in.$s.jsonl" --provider "$PROVIDER" "$@" > "$CELL/out.$s.jsonl" 2> "$CELL/err.$s.txt"
     fi

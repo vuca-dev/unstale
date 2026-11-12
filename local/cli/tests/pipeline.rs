@@ -98,6 +98,7 @@ fn run_step_of(
         // The user's own config: none of this machine's, and where the test sets the user's token limit.
         .env("UNSTALE_CONFIG_DIR", cache.join("user-config"))
         .env("UNSTALE_TEST_STEP_KEY", "k")
+        .env("UNSTALE_DEV_INFER", "1")
         .env_remove("UNSTALE_EDGE_INFERENCE");
     if switch {
         c.env("UNSTALE_EDGE_INFERENCE", "1");

@@ -536,10 +536,23 @@ fn events_failed_line(failed: &[(String, String)]) -> Option<String> {
     Some(format!("warning: release notes for {names} failed verification, so they are not read. The next sync retries."))
 }
 
+/// Set to `1` on a development machine to let `unstale infer` and `unstale internal run-step --provider` call a
+/// provider the user never chose (tests and eval scripts). Read from the process environment only.
+const DEV_INFER: &str = "UNSTALE_DEV_INFER";
+
+/// Hidden commands that call a named provider skip the user's recorded choice, so they run only for a developer.
+fn dev_only(command: &str) -> Result<()> {
+    if std::env::var(DEV_INFER).is_ok_and(|v| v.trim() == "1") {
+        return Ok(());
+    }
+    bail!("`unstale {command}` is for development only (set {DEV_INFER}=1); run `unstale setup` to choose a provider")
+}
+
 #[allow(clippy::too_many_arguments)]
 fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, key_env: Option<String>, schema: Option<String>,
     timeout_secs: Option<u64>, backoff_ms: Option<u64>, prompt: String) -> Result<u8> {
     use inference::{Inference, Prompt, ProviderConfig};
+    dev_only("infer")?;
     let mut cfg = match provider {
         "openai" => ProviderConfig::openai(),
         "vercel" => ProviderConfig::vercel(),
@@ -592,6 +605,7 @@ fn cmd_internal(dir: Option<&Path>, cmd: InternalCmd) -> Result<u8> {
     let root = pipeline::repo_root(&start);
     let mut main = match provider {
         Some(p) => {
+            dev_only("internal run-step --provider")?;
             let mut named = inference::Inference::new(pipeline::named_provider(&p, model, base_url, key_env).map_err(|e| anyhow!(e))?);
             (named.monthly_budget, named.budget_unseen) = setup::monthly_tokens_at(root.as_deref());
             named
