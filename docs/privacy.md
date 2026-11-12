@@ -9,16 +9,18 @@ What `unstale init` writes, what leaves your machine and what does not. To repor
 `.claude/skills` (Claude Code) and `.agents/skills` (Codex and Cursor). opencode reads both. `init` writes the skills
 whether or not each agent is installed. It also adds session-start hooks, which Git ignores in both modes:
 `.claude/settings.local.json` (Claude Code), `.codex/hooks.json` (Codex, which runs it once you trust it in `/hooks`) and
-`.opencode/plugins/unstale-session.js` (opencode). Your choice of provider goes in `.unstale/config.json`, or in
-`~/.config/unstale/config.json` with `--user`. Personal mode, the default, keeps all of it out of Git. Shared mode
+`.opencode/plugins/unstale-session.js` (opencode). Your choice of provider goes in your own config, `~/.config/unstale/config.json`. In shared mode it is also written to
+`.unstale/config.json`, as a suggestion for the team that spends nothing by itself. Personal mode, the default, keeps all of it out of Git. Shared mode
 (`unstale init --mode shared`) commits the ledger and generated review context, and adds one line to `.gitattributes`.
 `unstale uninstall` removes all of it and backs up your decisions.
 
 ## Session start
 
-The hook checks whether the catalog changed. If it did, a background sync runs, then your
-provider reads the new release notes. The hook gives up after 1.2 seconds, so it never holds up a session, and it
-prints at most one line. `"session_sync": false` in `.unstale/config.json` turns the sync off.
+The hook asks the catalog one thing: whether its list of packages changed. If it did, or your manifest or lockfile
+changed, it starts a background sync. That sync contacts what `unstale status` contacts: the catalog and the public
+registries. Then, if you chose a provider, the new release notes are sent to it and to no one else. The hook gives up
+after 1.2 seconds, so it never holds up a session, always exits 0 and prints at most one line.
+`"session_sync": false` in `.unstale/config.json` turns the sync off.
 
 ## What leaves your machine
 
@@ -32,7 +34,7 @@ histories. They measure service demand, not people or installs. The client also 
 crates.io registries for your direct packages at their installed versions, as a package manager does. It checks that
 each name is the public package, and whether its publisher deprecated (npm) or yanked (PyPI, crates.io) that version.
 For advisories, the client sends the package names and versions that its lockfiles resolve to OSV (`api.osv.dev`), as
-`npm audit` would. If you chose a model provider, it receives public release-note text and the changes read from it
+`npm audit` would. Release-note text, and the changes read from it, go to the model provider you chose and to no one else
 ([Reading new release notes](reading-release-notes.md)).
 
 ## Private packages stay private
@@ -58,8 +60,10 @@ packages already registered.
 
 ## A signed catalog
 
-Catalog indexes carry an Ed25519 signature and name the sha256 of each shard. The client
-discards anything that does not verify.
+Catalog indexes carry an Ed25519 signature and name the sha256 of each shard. The client discards anything that does
+not verify. A catalog directory on disk is the exception: it is not signature-checked, so it is read only after you
+run `unstale init --catalog <dir>` yourself on this machine. A directory that only a repository's config names is
+refused, and what a directory gives is cached apart from the signed catalog.
 
 ## Upstream text is data
 

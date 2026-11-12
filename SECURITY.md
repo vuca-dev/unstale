@@ -19,7 +19,7 @@ notes and their costs: [docs/reading-release-notes.md](docs/reading-release-note
   (Claude Code), `.codex/hooks.json` (Codex, which runs it only once you trust it in `/hooks`) and
   `.opencode/plugins/unstale-session.js` (opencode). A hook is added to your file without changing the rest of it, and
   is skipped where the file is tracked, read-only or a link. Collaborative mode also adds one line to `.gitattributes`.
-  `unstale uninstall` removes all of it and backs up your decisions outside the repository. `unstale setup --user`
+  `unstale uninstall` removes all of it and backs up your decisions outside the repository. `unstale setup`
   writes your choice of provider and token limit to `~/.config/unstale/config.json`.
 - **Session start.** The hook checks whether the catalog changed and starts a background sync if it did. It gives up
   after 1.2 seconds, always exits 0 and prints at most one line. `"session_sync": false` in `.unstale/config.json`
@@ -32,7 +32,8 @@ notes and their costs: [docs/reading-release-notes.md](docs/reading-release-note
   chosen provider alone, over https, and a redirect is never followed. They carry public release-note text and the
   changes read from it: no code and no file paths. The provider can tell which packages' notes it was sent. A
   repository's config cannot name a key variable other than its provider's own, and can lower your monthly token
-  limit but not raise it. With no provider chosen, no model is called.
+  limit but not raise it. Only your own config can start spending: a provider that a repository's config names is a
+  suggestion you are asked about once. With no provider chosen, no model is called.
 - **Network.** The client fetches catalog files, named by public package identity such as `pkg:npm/next`, and asks
   for coverage of packages the catalog does not have yet. It sends no code, paths or versions, and no telemetry. It
   also reads the public npm, PyPI and crates.io registries for the direct packages it found, at their installed
@@ -52,6 +53,8 @@ notes and their costs: [docs/reading-release-notes.md](docs/reading-release-note
   with no name verified as public, no new package is submitted for coverage, while the status of packages already
   registered is still read from the coverage service.
 - **Catalog integrity.** Catalog indexes carry an Ed25519 signature and name each shard's sha256. Anything that does
-  not verify is discarded, not used.
+  not verify is discarded, not used. A catalog directory is the exception: it is not signature-checked, and is read
+  only after the user's own `unstale init --catalog <dir>` on this machine, never because a repository's config names
+  it; what it gives is cached apart from the signed catalog.
 - **Upstream text.** Release notes, migration guides and docs are passed to your agent as quoted, untrusted data,
   never as instructions. The review skill tells the agent not to change code without your go-ahead.
