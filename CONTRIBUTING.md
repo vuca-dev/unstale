@@ -23,6 +23,11 @@ npm --prefix gateway run typecheck && npm --prefix gateway test
 bash .github/scripts/ingest-cycles.test.sh       # the ingest cycles' deploy retry, against fake commands
 ```
 
+A catalog directory is not signature-checked, so the client reads one only after `unstale init --catalog <dir>` on
+this machine (it records the directory in the user's config), never because a repository's `.unstale/config.json` names
+it, and caches it apart from the signed catalog (`unsigned/` in the cache). The client's tests, which write such
+configs by hand, set `UNSTALE_DEV_UNSIGNED_CATALOG=1`: a development setting, read from the process environment only.
+
 A client following a fast-track run can be previewed locally: `node gateway/scripts/preview.ts --new pkg:npm/picocolors`
 runs the gateway with a played coverage run in place of GitHub (catalog and known statuses from the live gateway) and
 keeps running; in a second terminal, run `unstale init --service http://127.0.0.1:8787` in a repository that depends on

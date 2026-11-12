@@ -635,7 +635,7 @@ fn sync_now(ctx: &Ctx, stop: &(dyn Fn() -> bool + Sync)) -> Result<Synced> {
         &ctx.config.catalog,
         &ctx.cache,
         &cands,
-        &st.withheld(&ctx.cache),
+        &st.withheld(&ctx.registry),
         &st.purls(),
         stop,
         |_| {},

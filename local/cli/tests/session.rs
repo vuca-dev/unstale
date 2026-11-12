@@ -183,6 +183,7 @@ impl Env {
             .env("UNSTALE_TODAY", "2026-11-10")
             .env("UNSTALE_NO_REGISTRY", "1")
             .env("UNSTALE_HTTP_TIMEOUT", "3")
+            .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             .env_remove("UNSTALE_CATALOG")
             .env_remove("UNSTALE_CATALOG_KEY")
             // Session start is behind the switch until the release: on here unless a test turns it off.

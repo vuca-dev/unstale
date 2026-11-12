@@ -35,6 +35,7 @@ fn infer(cache: &Path, bin: Option<&Path>, args: &[&str]) -> Run {
         .args(["--timeout-secs", "1", "--backoff-ms", "0"])
         .args(args)
         .env("UNSTALE_CACHE_DIR", cache)
+        .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
         // The user's config: none of the machine's own, and where a test puts the user's token limit.
         .env("UNSTALE_CONFIG_DIR", cache.join("user-config"))
         .env("UNSTALE_EDGE_INFERENCE", "1")
@@ -359,6 +360,7 @@ fn with_model_steps_off_infer_makes_no_call() {
         .arg("infer")
         .args(strs(&custom(&url)))
         .env("UNSTALE_CACHE_DIR", cache.path())
+        .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
         .env("CANARY_KEY", CANARY)
         .env_remove("UNSTALE_EDGE_INFERENCE")
         .output()
@@ -512,6 +514,7 @@ fn both_spellings_of_the_switch_turn_model_steps_on() {
             .arg("infer")
             .args(strs(&custom(&url)))
             .env("UNSTALE_CACHE_DIR", cache.path())
+            .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             .env("CANARY_KEY", CANARY)
             .env("UNSTALE_EDGE_INFERENCE", value)
             .output()

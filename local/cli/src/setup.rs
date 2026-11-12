@@ -823,6 +823,26 @@ fn write_user_key(path: &Path, key: &str, value: Option<serde_json::Value>) -> a
     )
 }
 
+/// The catalog directories this machine's user chose (`unstale init --catalog <dir>`), as canonical paths:
+/// `"catalog_directories"` in the user's config.
+pub fn approved_catalog_dirs(path: &Path) -> Vec<String> {
+    user_doc(path)
+        .get("catalog_directories")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+        .unwrap_or_default()
+}
+
+/// Adds a catalog directory to the user's approved ones, keeping anything else in their config.
+pub fn approve_catalog_dir(path: &Path, dir: &str) -> anyhow::Result<()> {
+    let mut dirs = approved_catalog_dirs(path);
+    if dirs.iter().any(|d| d == dir) {
+        return Ok(());
+    }
+    dirs.push(dir.to_string());
+    write_user_key(path, "catalog_directories", Some(serde_json::json!(dirs)))
+}
+
 /// The choice in effect: this repository's, else the user's.
 pub fn current(repo: Option<&Choice>, user_path: &Path) -> Option<(Choice, Origin)> {
     match repo {

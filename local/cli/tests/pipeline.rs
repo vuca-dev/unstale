@@ -245,6 +245,7 @@ impl Repo {
         c.args(args)
             .current_dir(self.repo.path())
             .env("UNSTALE_CACHE_DIR", self.cache.path())
+            .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             .env("UNSTALE_CONFIG_DIR", self.cache.path().join("user-config"))
             .env("UNSTALE_TODAY", "2026-11-10")
             .env("UNSTALE_NO_REGISTRY", "1")
@@ -329,8 +330,12 @@ fn repo(allow: Arc<Mutex<usize>>) -> (Repo, Arc<Mutex<usize>>, Arc<Mutex<usize>>
 
 /// The client's records for `example` on disk.
 fn local_records(r: &Repo) -> usize {
-    std::fs::read(r.cache.path().join("inference/records/example.json"))
-        .ok()
+    // The fixture catalog is a directory: what is made from it is kept in that source's own folder.
+    std::fs::read_dir(r.cache.path().join("unsigned"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .find_map(|d| std::fs::read(d.path().join("inference/records/example.json")).ok())
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
         .and_then(|v| v["records"].as_object().map(|o| o.len()))
         .unwrap_or(0)
@@ -459,6 +464,7 @@ fn session_sync_by_hand_says_what_it_read_and_resumes_after_an_interrupt() {
     c.arg("session-sync")
         .current_dir(r.repo.path())
         .env("UNSTALE_CACHE_DIR", r.cache.path())
+        .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
         .env("UNSTALE_CONFIG_DIR", r.cache.path().join("user-config"))
         .env("UNSTALE_TODAY", "2026-11-10")
         .env("UNSTALE_NO_REGISTRY", "1")
