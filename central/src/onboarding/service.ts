@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFileSync, readdirSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { HttpClient, DEFAULT_HTTP, FetchFailure } from "../collector/http.ts";
+import { HttpClient, DEFAULT_HTTP, FetchFailure, serverWait } from "../collector/http.ts";
 import { ExtractFailure } from "../collector/extract.ts";
 import { ClassifierError } from "../pipeline/classify/adapter.ts";
 import { HttpError } from "../pipeline/llm.ts";
@@ -117,7 +117,7 @@ export interface Job {
    * a new technology's (admission during the slice moves the job out of that line). Cleared when a slice settles.
    * Never public. */
   interrupted?: { ms: number; cycles: number; stage: string; refresh?: boolean; first?: boolean };
-  /** Rate-limited (HTTP 429): not started again before this time. Never public. */
+  /** Rate-limited (HTTP 429, or GitHub's rate-limit 403): not started again before this time. Never public. */
   paused_until?: string;
   /** When the technology was first seen monitored (its first coverage done). Every later slice is monitoring in the
    * usage log, also one that continues a refresh which yielded (queued) partway. Never public. */
@@ -136,8 +136,10 @@ export interface Job {
   refresh_checked?: string;
 }
 
-/** How long a monitored technology waits between refreshes. */
-export const REFRESH_MS = 6 * 3600_000;
+/** How long a monitored technology waits between refreshes: as long as the release list's freshness window (fetch.ts),
+ * so a due refresh lists upstream instead of reading the cache. A new version the registry poll sees (`pollChanges`)
+ * starts its refresh at once and lists upstream whatever the cache's age. */
+export const REFRESH_MS = 12 * 3600_000;
 
 /** Work time after which an interrupted slice is not resumed: two full cycles (20 minutes each), more than twice the
  * longest slice in run 42991003162 (a docs pass, 1,011 s). Most slices take seconds; a docs pass, minutes. */
@@ -145,18 +147,21 @@ export const SLICE_LIMIT_MS = 40 * 60_000;
 /** Cycles after which an interrupted slice is not resumed whatever its known work time: a run cancelled or crashed
  * mid-cycle records no time. */
 export const SLICE_LIMIT_CYCLES = 4;
-/** A stopped slice is retried after the refresh period, so it holds a slot for at most two cycles in eighteen. */
+/** A stopped slice is retried after 6 hours (independently of REFRESH_MS), so it holds a slot for at most two cycles in
+ * eighteen. */
 const STOPPED_RETRY_MS = 6 * 3600_000;
 /** The first pause after a rate limit, doubled for each rate limit that follows one, up to the last. */
 const RATE_PAUSE_MS = [60_000, 15 * 60_000] as const;
 /** A refusal for rate (HTTP 429) from any service a job reads: `HTTP 429` (the collector's client), `<url>: 429`
- * (the registry and GitHub readers). */
+ * (the registry and GitHub readers). GitHub's rate-limit 403 comes as a `FetchFailure` marked `rateLimited`. */
 const RATE_LIMITED = /(?:HTTP |: )429\b/;
 /** Whether a job's error is a rate limit, and the server's Retry-After when it sent one. It says nothing about the
  * package: it is the runner's own request rate. */
 export function rateLimit(error: unknown): { retryAfterMs?: number } | undefined {
-  if (error instanceof FetchFailure && error.httpStatus !== undefined)
-    return error.httpStatus === 429 ? (error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }) : undefined;
+  if (error instanceof FetchFailure && error.httpStatus !== undefined) {
+    const wait = serverWait(error.retryAfterMs);
+    return error.rateLimited ? (wait === undefined ? {} : { retryAfterMs: wait }) : undefined;
+  }
   return RATE_LIMITED.test(String(error instanceof Error ? error.message : error)) ? {} : undefined;
 }
 /** A hostname as logged: letters, digits, dots and hyphens, at most 253 characters (a DNS name's limit). */
@@ -784,7 +789,11 @@ export class CoverageService {
     const percentile = (list: number[], p: number) => list.length ? Math.round(list[Math.ceil(list.length * p) - 1]!) : null;
     return { monitored: jobs.length, release_check_unknown: jobs.length - ages.length,
       release_check_age_s: { p50: percentile(ages, 0.5), p95: percentile(ages, 0.95), max: ages.length ? Math.round(ages[ages.length - 1]!) : null },
+      // Kept as named so logs stay comparable across the interval's change: under a 12-hour interval a check between 6
+      // and 12 hours old is on time, so this counts on-time technologies too; `_over_24h` and `_over_3d` are the tail.
       release_checks_over_6h: ages.filter((s) => s > 6 * 3600).length,
+      // Past the refresh interval.
+      release_checks_over_12h: ages.filter((s) => s > 12 * 3600).length,
       release_checks_over_24h: ages.filter((s) => s > 24 * 3600).length,
       release_checks_over_3d: ages.filter((s) => s > 3 * 86_400).length,
       unimprovable: { no_repository: jobs.filter(noRepository).length, failing_before_read_estimate: jobs.filter(failing).length },
@@ -868,6 +877,8 @@ export class CoverageService {
    * Retry-After); returns when the pause ends. `error` names the status on the pause's `rate_pause` line and, unless
    * `hidden` (a job `logName` does not name: its host would say what was requested), the host. */
   private ratePause(retryAfterMs = 0, error?: unknown, hidden = false): number {
+    // Whatever a server sent: at most an hour, and a value that is no wait (negative, not finite) counts as none.
+    retryAfterMs = serverWait(retryAfterMs) ?? 0;
     const t = Date.now();
     const begins = t >= this.pausedUntil;
     if (begins) this.endPause();
@@ -1421,9 +1432,11 @@ export class CoverageService {
         this.save(job, "partial", "Checking security advisories");
         const read = new Set(job.completed ?? []);
         const unread = new Set(releases.notes.filter((n) => !read.has(`${n.tag}:${n.snapshot}:audience-v1`)).map((n) => n.version));
+        // A new version the registry poll saw asks OSV again for the technology's packages (once: a query cached since
+        // the detection is fresh); the other caches keep their windows.
         const r = await advisoryStage(tech, store, index, (st, q) =>
           advisoryClassifier().classify(st, q),
-        { unread });
+        { unread, ...(job.change_detected ? { since: job.change_detected } : {}) });
         if (r) saveStore(store);
       }
       publishTechnology(store, releases.checked, catalogDir());

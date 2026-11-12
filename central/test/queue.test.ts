@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { FetchFailure } from "../src/collector/http.ts";
-import { CoverageService, logName, sameStream, type Job } from "../src/onboarding/service.ts";
+import { CoverageService, logName, REFRESH_MS, sameStream, type Job } from "../src/onboarding/service.ts";
 import { DailyBudget, nextPeriod, periodKey, quarterKey, Voters, type Limits } from "../src/onboarding/limits.ts";
 import { deprecationOf } from "../src/onboarding/notices.ts";
 import { servedIndex } from "../src/pipeline/export.ts";
@@ -639,6 +639,49 @@ test("while a popular refresh runs, the oldest-checked due refresh (by its upstr
   expect(started).toEqual(["oldest", "popular", "older", "recent"]);
 });
 
+test("the refresh interval is 12 hours: a finished refresh is due 12 hours on, a yielded one 12 hours after its read; a detected version is due at once", async () => {
+  expect(REFRESH_MS).toBe(12 * 3600_000);
+  await mockWork({ "pkg:npm/twelve": { repo: "ex/twelve", tags: ["v1.0.0"] } });
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const job = service.submit("pkg:npm/twelve");
+  Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day,
+    completed: ["v1.0.0:sha256:" + "0".repeat(64) + ":audience-v1"] });
+  const before = Date.now();
+  await service.drain(Date.now() + 2000, 0, 1);
+  expect(job.state).toBe("monitoring");
+  expect(Date.parse(job.retry_at!) - before).toBeGreaterThanOrEqual(12 * 3600_000);
+  expect(Date.parse(job.retry_at!) - Date.now()).toBeLessThanOrEqual(12 * 3600_000);
+  // A refresh that yielded (queued) is due by its last read: not 8 hours on, 13 hours on.
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const yielded = (name: string, hours: number) =>
+    Object.assign(service.submit(`pkg:npm/${name}`), { state: "queued", admitted: "used", monitored: day, refresh_checked: ago(hours), completed: ["v1:x:audience-v1"] });
+  const recent = yielded("eight", 8), old = yielded("thirteen", 13);
+  const due = (j: Job) => (service as unknown as { refreshDue(job: Job): boolean }).refreshDue(j);
+  expect([due(recent), due(old)]).toEqual([false, true]);
+  // The next cycle's registry poll sees a new version: the technology is due now, whatever its retry time.
+  const next = new CoverageService(0, { limits: limits() }).hold();
+  const polled = next.jobs.get("pkg:npm/twelve")!;
+  expect(Date.parse(polled.retry_at!)).toBeGreaterThan(Date.now() + 11 * 3600_000);
+  expect(await next.pollChanges({ read: async (purl) => (purl === polled.purl ? "1.1.0" : "1.0.0") })).toMatchObject({ changed: 1 });
+  expect(Date.parse(polled.retry_at!)).toBeLessThanOrEqual(Date.now());
+  expect(next.queue()[0]?.purl).toBe(polled.purl);
+});
+
+test("the failure estimate and the interval's past-due count follow the 12-hour interval", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  for (const [name, hours] of [["eight", 8], ["thirteen", 13]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    // Failed since its last read, saved long after it.
+    Object.assign(job, { state: "monitoring", admitted: "used", descriptor: { repo: `ex/${name}` }, release_checked: ago(hours), refresh_checked: ago(hours),
+      retry_at: ago(0.1), failures: 1, updated: ago(0.5) });
+  }
+  expect(service.freshness(at)).toMatchObject({ unimprovable: { failing_before_read_estimate: 1 } });
+  expect((service as unknown as { dueRefreshes(at?: number): { overdue: number } }).dueRefreshes(at).overdue).toBe(1);
+});
+
 test("a due refresh under its cap is no release check: it extracts, judges advisories and charges its tokens", async () => {
   const tags = ["v1.0.2", "v1.0.1"];
   const { synth } = await mockWork({ "pkg:npm/light": { repo: "ex/light", tags, size: 10 } });
@@ -657,6 +700,29 @@ test("a due refresh under its cap is no release check: it extracts, judges advis
   expect(judgeAdvisories).toHaveBeenCalled();
   expect(job.quarter).toEqual({ key: quarterKey(), tokens: 30 });
   expect(job.state).toBe("monitoring");
+});
+
+test("a refresh for a detected version asks OSV again since the detection; an ordinary refresh does not", async () => {
+  for (const detected of [true, false]) {
+    vi.restoreAllMocks();
+    const name = detected ? "detected" : "ordinary";
+    await mockWork({ [`pkg:npm/${name}`]: { repo: `ex/${name}`, tags: ["v1.0.1"], size: 10 } });
+    const fetching = await import("../src/pipeline/fetch.ts");
+    const advisories = await import("../src/pipeline/advisories.ts");
+    vi.spyOn(fetching, "advisoryReleases").mockResolvedValue([{}] as never);
+    const stage = vi.spyOn(advisories, "advisoryStage").mockResolvedValue(undefined as never);
+    const service = new CoverageService(1, { limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+    const day = new Date(Date.now() - 86_400_000).toISOString();
+    const job = service.submit(`pkg:npm/${name}`);
+    const at = new Date(Date.now() - 60_000).toISOString();
+    Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, ...(detected ? { change_detected: at } : {}) });
+    await service.drain(Date.now() + 2000, 0, 1);
+    expect(stage).toHaveBeenCalled();
+    const opts = stage.mock.calls[0]![4]!;
+    if (detected) expect(opts).toMatchObject({ since: at });
+    else expect(opts).not.toHaveProperty("since");
+    expect(opts).not.toHaveProperty("refresh");
+  }
 });
 
 test("under a spent budget every slot may take a release check past the cap, and nothing that can call a model starts", async () => {
@@ -761,6 +827,16 @@ test("the day and three-day counts are strictly older than their bound", () => {
     Object.assign(job, { state: "monitoring", release_checked: new Date(at - s * 1000).toISOString() });
   }
   expect(service.freshness(at)).toMatchObject({ release_checks_over_24h: 4, release_checks_over_3d: 1 });
+});
+
+test("the 12-hour count is strictly older than the interval, next to the 6-hour count kept as it was", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  for (const [name, s] of [["h5", 5 * 3600], ["h7", 7 * 3600], ["h12", 12 * 3600], ["h12s", 12 * 3600 + 1], ["d2", 2 * 86_400]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", release_checked: new Date(at - s * 1000).toISOString() });
+  }
+  expect(service.freshness(at)).toMatchObject({ release_checks_over_6h: 4, release_checks_over_12h: 2, release_checks_over_24h: 1 });
 });
 
 type Internals = { running: Set<string>; dueRefreshes(at?: number): { due: number; overdue: number; oldest_overdue_age_s: number | null } };
