@@ -427,3 +427,10 @@ OpenRouter parity, repeat eval runs.
 - Codex findings: identical runs agree on 79% of labels (19 records, one package), same-or-new 100%. Dropped-tools arm failed its rule and is out (patch in scratchpad `b-runs/with-catalog.patch`). Label quality through Codex against a reference set is unmeasured.
 - Agent pick-up evaluation (24 runs, Claude Code and Codex): named, recommended or conditional 14 of 16; need-only, mentioned 0 of 8. Draft #258 carries the copy changes; held for the CEO, not before the release.
 - Open: two e2e tests fail on main with the switch forced on (diagnosis running); CEO to claim `unstale` on npm; `setup` visible in `--help` at release; #231 no-key evaluation; merge this branch and final report.
+
+## Update, 13 November 2026 (early)
+
+- Merged: #263 `7118e4d` (switch read in one place, default in `EDGE_INFERENCE_DEFAULT`; tests state the switch explicitly; suite green unset, `=1`, and with the default flipped locally), #264 `1504774` (session-start names restricted; switch accepts on/yes/off/no), #265 (coverage service's `name`, `stage`, `note` and times held to a plain form on arrival and on read; reproduced with a stand-in service printing instruction-like text unfenced).
+- Release steps on the code side: set `EDGE_INFERENCE_DEFAULT = true`; make `setup` visible in `--help`; merge draft #258. `UNSTALE_EDGE_INFERENCE=0` turns the feature off afterwards.
+- A future central table name containing a space (e.g. "React Native") would show as its id in the client; widen the client's name rule first if one is added.
+- Open: CEO review of #258; CEO to claim `unstale` on npm; label quality through Codex against a reference set; #231 no-key evaluation; ingest checks on 13 November; merge this branch and final report.
