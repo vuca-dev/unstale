@@ -1,7 +1,7 @@
 {
   "name": "@unstale/cli",
   "version": "0.2.12",
-  "description": "Finds the breaking changes, security fixes, deprecations and new APIs in your dependencies that touch your code, and hands them to Claude Code, Codex or Cursor. Local, cited, open source.",
+  "description": "Dependency upgrade impact analysis for coding agents: finds the breaking changes that affect your code, security fixes, deprecations and new APIs, and tells Claude Code, Codex, Cursor or opencode what an upgrade means for your code. Local, cited, open source.",
   "license": "AGPL-3.0-only",
   "author": "Jason Draper (https://vuca.dev)",
   "homepage": "https://unstale.sh",
@@ -24,6 +24,10 @@
     "upgrade",
     "migration",
     "breaking-changes",
+    "dependency-upgrade",
+    "upgrade-impact-analysis",
+    "dependency-updates",
+    "opencode",
     "deprecation",
     "security-advisories",
     "dependencies"
