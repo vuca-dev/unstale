@@ -442,3 +442,9 @@ OpenRouter parity, repeat eval runs.
 - Fixed in #266: a lock race that made one background sync in about 45 do nothing.
 - Verified on upgrade: session start sends technology ids only; no model call or key read before a choice; CI warning leaves exit codes at 0; switch-off `status` output byte-identical to v0.2.12.
 - Left: CEO's release (version bump and tag, day-0 notice, day-20 cutover); CEO's npm publish of `unstale` (stopped at the one-time code; package ready in the scratchpad `npm-unstale`); #231 evaluation running; ingest re-check after 15:00 UTC 13 November; merge this branch and final report.
+
+## Release 0.3.0, 12 November 2026 (22:45 UTC)
+
+- At the CEO's instruction the PM bumped the version (#267 `0eec841`) and tagged `v0.3.0`. The first release run failed: the Windows build could not link (`tcsetattr`/`tcgetattr` from the arrow-key picker, #256); nothing was published. Fixed in #268 `2569c38` (menu compiled on Unix only; Windows uses the typed prompt). With the CEO's approval the tag was moved to `2569c38`; release run 43321364369 succeeded: five builds, five native smoke runs (Windows included), npm publish of seven packages with provenance, Homebrew tap commit.
+- Lesson: pull-request CI never builds Windows; the release is the first place it is built. Follow-up: add a Windows link check to CI.
+- Left: day-0 notice and telling current users (CEO); day-20 cutover (CEO); `unstale` wrapper on npm (CEO's one-time code; republish at 0.3.0); #231 evaluation; ingest re-check after 15:00 UTC 13 November; merge this branch and final report.
