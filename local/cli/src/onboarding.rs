@@ -1186,17 +1186,25 @@ pub fn session_coverage_line(ctx: &Ctx, timeout: Duration) -> Option<String> {
     (records > 0).then(|| {
         // With the edge-inference switch on, short: what is new and the command (the rest is in the managed skill).
         if crate::util::edge_inference() {
-            return format!(
-                "unstale: {records} new upstream {} for {}. Run `unstale status --wait 0` to see them.",
-                if records == 1 { "change" } else { "changes" },
-                technology_count(techs)
-            );
+            let gaining: Vec<&str> = growing.iter().zip(&gains).filter(|(_, g)| **g > 0).map(|(j, _)| j.technology.as_str()).collect();
+            return coverage_changes_line(records, &gaining);
         }
         format!(
             "unstale: {records} new upstream records for {} since the last onboarding report. Run `unstale status --wait 0` to refresh .unstale/onboarding-report.md; review it only if the user asks.",
             technology_count(techs)
         )
     })
+}
+
+/// The switch-on session-start line for coverage that grew: `unstale: 1 new upstream change for next. Run `unstale
+/// status --wait 0` to see it.` One technology is named, as the session-sync line names it; more are counted.
+fn coverage_changes_line(records: usize, technologies: &[&str]) -> String {
+    let what = match technologies {
+        [one] => one.to_string(),
+        _ => technology_count(technologies.len()),
+    };
+    let (change, it) = if records == 1 { ("change", "it") } else { ("changes", "them") };
+    format!("unstale: {records} new upstream {change} for {what}. Run `unstale status --wait 0` to see {it}.")
 }
 
 pub(crate) const SESSION_HOOK_SETTINGS_PATH: &str = ".claude/settings.local.json";
@@ -6073,5 +6081,12 @@ mod tests {
         assert!(block.starts_with("`````text\n"));
         assert!(block.ends_with("\n`````\n"));
         assert_eq!(display_text("x\x1b[2J\ny"), "x [2J y");
+    }
+
+    #[test]
+    fn the_switch_on_coverage_line_names_one_technology_and_agrees_in_number() {
+        assert_eq!(coverage_changes_line(1, &["next"]), "unstale: 1 new upstream change for next. Run `unstale status --wait 0` to see it.");
+        assert_eq!(coverage_changes_line(6, &["next"]), "unstale: 6 new upstream changes for next. Run `unstale status --wait 0` to see them.");
+        assert_eq!(coverage_changes_line(9, &["next", "react"]), "unstale: 9 new upstream changes for 2 technologies. Run `unstale status --wait 0` to see them.");
     }
 }

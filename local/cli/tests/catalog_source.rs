@@ -220,9 +220,7 @@ impl World {
             .env("OPENAI_API_KEY", "not-a-real-key")
             .env("UNSTALE_INFERENCE_BASE_URL", format!("{}/v1", self.provider))
             .stdin(std::process::Stdio::null());
-        if switch {
-            c.env("UNSTALE_EDGE_INFERENCE", "1");
-        }
+        c.env("UNSTALE_EDGE_INFERENCE", if switch { "1" } else { "0" });
         let out = c.output().unwrap();
         (out.status.success(), format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
     }

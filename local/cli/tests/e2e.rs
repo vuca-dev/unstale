@@ -21,6 +21,8 @@ impl Env {
     fn run_with(&self, args: &[&str], vars: &[(&str, &std::ffi::OsStr)]) -> (i32, String, String) {
         let out = Command::new(env!("CARGO_BIN_EXE_unstale"))
             .args(args)
+            // The edge-inference switch off unless a test sets it, whatever the default or the developer's shell says.
+            .env("UNSTALE_EDGE_INFERENCE", "0")
             .envs(vars.iter().copied())
             .current_dir(self.repo.path())
             .env("UNSTALE_CACHE_DIR", self.cache.path())
@@ -133,6 +135,14 @@ fn init_sync_digest_review_decide_run() {
     assert!(out.contains("synced next: 6 records"), "{out}");
     assert!(out.contains("synced prisma: 2 records"), "{out}");
     assert!(out.contains("Not covered by the catalog: "), "{out}");
+    // With the switch on, a line a technology in the reader's words, and nothing about what the catalog does not cover.
+    let on = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    on.ok(&["init", "--catalog", cat.loc()]);
+    let (code, out, err) = on.run_with(&["sync"], &[("UNSTALE_EDGE_INFERENCE", "1".as_ref())]);
+    assert_eq!(code, 0, "stdout:\n{out}\nstderr:\n{err}");
+    assert!(out.contains("next: 6 upstream changes on file, "), "{out}");
+    assert!(out.contains("prisma: 2 upstream changes on file, "), "{out}");
+    assert!(!out.contains("Not covered by the catalog"), "{out}");
 
     let out = env.ok(&["digest"]);
     assert!(out.contains("bumping next 16.0.1 → 16.1.0 picks up 1 security, 1 fix (`unstale bump next`); 2 obligations in the upgrade review"), "{out}");
@@ -439,7 +449,7 @@ fn an_unwritable_opencode_directory_is_a_conflict_not_a_failure() {
     use std::os::unix::fs::PermissionsExt;
     let cat = FixtureCatalog::new(); publish(&cat);
     let config = tempfile::tempdir().unwrap();
-    for switch in ["", "1"] {
+    for switch in ["0", "1"] {
         for case in ["file", "read-only"] {
             let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
             let vars: [(&str, &std::ffi::OsStr); 2] = [("UNSTALE_EDGE_INFERENCE", switch.as_ref()), ("UNSTALE_CONFIG_DIR", config.path().as_os_str())];
@@ -718,6 +728,10 @@ fn session_start_notice_pulls_only_when_coverage_is_growing_and_hook_is_merged_a
     let line = env.ok(&["notify"]);
     assert!(line.starts_with("unstale: 6 new upstream records for 1 technology since the last onboarding report"), "{line}");
     assert_eq!(line.lines().count(), 1);
+    // With the switch on, short, naming the one technology.
+    let (code, line, err) = env.run_with(&["notify"], &[("UNSTALE_EDGE_INFERENCE", "1".as_ref())]);
+    assert_eq!(code, 0, "{err}");
+    assert_eq!(line, "unstale: 6 new upstream changes for next. Run `unstale status --wait 0` to see them.\n");
     assert_eq!(env.read(".unstale/state/coverage.json"), snapshot("queued"));
 
     env.ok(&["uninstall"]);
