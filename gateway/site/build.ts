@@ -312,7 +312,7 @@ const TERMINAL: [string, string][] = [
   ["accent", "How should unstale read new release notes?"],
   ["", ""],
   ["muted", "     Read with   Cost a year, this repo   Compared with the best option"],
-  ["body", "  1  OpenAI      ≈ $2.43                  ≈ 3% less precise labels"],
+  ["body", "  1  OpenAI      ≈ $1.98                  ≈ 3% less precise labels"],
   ["body", "  2  Not now     free                     ≈ 27% of its changes in new releases"],
   ["muted", "     Keys: OPENAI_API_KEY"],
   ["", ""],
