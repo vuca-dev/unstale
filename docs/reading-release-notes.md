@@ -25,7 +25,7 @@ November 2026, billed by the provider to your key.
 
 Jev is a labelling service, and Snap a matching service, each used beside the provider that reads the notes. With
 several OpenAI-compatible keys set, the picker offers one of them. The picker shows this repository's figure for a
-year, in dollars for a key and in plan tokens for Codex.
+year in dollars for a key, and "no extra cost" for a Codex plan.
 
 ## On a Codex plan
 
