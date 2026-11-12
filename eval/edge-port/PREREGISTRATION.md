@@ -177,3 +177,26 @@ are run again, with the same inputs, scorers, metrics and bands as above.
 - **Spend.** Estimate: at most 69 gateway calls of about 1,700 input tokens, under $0.02; Codex about 350k plan
   tokens. Cap for this step: $0.50 of API spend. Keys as before: only the two named variables, read from the key
   files central's code names, passed to the client process, never printed.
+
+## Addendum 3: labels, several records to a call on a key (written 11 November 2026, before any call for it)
+
+On a route that writes text the client now asks for the labels of up to eight records in one call, answered by record
+id (`schema/prompts/choice.json`'s `batch` form, unchanged; `Chooser::prefetch`, until now used through Codex only).
+A record a batch does not answer readably is asked alone, as before. No prompt, question or threshold changes.
+
+| Cell | What runs | Metrics and band | Reference |
+|---|---|---|---|
+| 5c | Labels on `gpt-6-luna` by choice, eight records to a call, label set 1 (233 records) | Every paired interval `score.py labels h1` reports (breaking, benefit, change type, actionable, removal and deprecation): the 95% interval of batched minus reference includes 0 | The client's own run of cell 5 (one record a call), given to the scorer through `batch_reference.py` |
+| 6c | The same, label set 2 (347 records) | Breaking recall and breaking precision, the same band | The client's own run of cell 6 |
+
+- **Batches** are the input file's records in order, eight to a call (one shard), so a batch mixes technologies only
+  where the file does.
+- **Pass rule:** every interval in both cells includes 0, and no record is left without labels once the records a
+  batch did not answer have been asked alone. Also reported, not part of the rule: the metrics against the audited
+  labels beside the reference run's, records whose labels differ from the reference run's, records that fell back to a
+  call of their own, and input and output tokens per record.
+- **Stopping rule:** one run. If it fails, one revision, four records to a call (the constant only), one run; then
+  stop, whatever the outcome. A failed result closes the change.
+- **Spend.** Estimate: 74 calls of about 2,200 input tokens (165k) and about 75k output tokens with reasoning, about
+  $0.05 at list price. Cap for this step: $0.15, the revision included. Every answer is cached per record, so a rerun
+  after an interruption pays only for what is missing.
