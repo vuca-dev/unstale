@@ -11,10 +11,11 @@ use super::*;
 /// The width a listing is laid out for when nothing says how wide the reader's terminal is.
 pub const WIDTH: usize = 100;
 
-/// The terminal's width at a terminal, [`WIDTH`] anywhere else (a pipe, an agent, CI).
+/// The terminal's width at a terminal, [`WIDTH`] anywhere else (a pipe, an agent, CI, and Windows, which has no
+/// `stty`).
 pub fn width() -> usize {
     use std::io::IsTerminal;
-    if !std::io::stdout().is_terminal() {
+    if cfg!(not(unix)) || !std::io::stdout().is_terminal() {
         return WIDTH;
     }
     std::process::Command::new("stty")
