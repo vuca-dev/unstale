@@ -154,6 +154,18 @@ impl ProviderConfig {
         )
     }
 
+    /// SubQ Snap 1.2, a decision model with Jev's request and answer (`POST /v1/systemone`); it judges same-or-new
+    /// only (`pipeline::matching::match_request_snap`).
+    pub fn subq() -> ProviderConfig {
+        Self::http(
+            Kind::Jev,
+            "subq",
+            "https://api.subq.ai",
+            "subq-snap-1.2",
+            "SUBQ_API_KEY",
+        )
+    }
+
     pub fn codex() -> ProviderConfig {
         ProviderConfig {
             kind: Kind::Codex,

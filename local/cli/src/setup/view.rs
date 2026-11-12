@@ -107,6 +107,7 @@ fn name(p: Pick, no_key: bool) -> String {
     match p {
         Pick::JevKey(r) => format!("Jev + {}", route_name(r)),
         Pick::JevCodex => "Jev + Codex plan".into(),
+        Pick::SnapKey(r) => format!("Snap + {}", route_name(r)),
         Pick::Key(r) => route_name(r).into(),
         Pick::Codex => "Codex plan".into(),
         Pick::None if no_key => "No key".into(),
@@ -127,6 +128,7 @@ fn keys(d: &Detected, p: Pick) -> String {
     match p {
         Pick::JevKey(r) => format!("{}, {}", var(Route::Jev), var(r)),
         Pick::JevCodex => var(Route::Jev),
+        Pick::SnapKey(r) => format!("{}, {}", var(Route::Subq), var(r)),
         Pick::Key(r) => var(r),
         Pick::Codex | Pick::None => String::new(),
     }
@@ -156,12 +158,15 @@ fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
         Quality::Same => "about the same".into(),
         Quality::Unmeasured => "not measured yet".into(),
         Quality::Share { pct, of, .. } => format!("≈ {pct}% of its {of}"),
+        // Scoped in the row to "labels" though only breaking-change flags are less precise (change type is level or
+        // better, benefits about level, `eval/provider-matrix/RESULTS.md`): true enough for the choice, and it fits.
+        // The details name the flags.
         Quality::MoreWrong {
-            wrong,
-            best_wrong,
-            of_short,
-            ..
-        } => format!("≈ {wrong} in 100 {of_short} wrong, not {best_wrong}"),
+            wrong, best_wrong, ..
+        } => format!(
+            "≈ {}% less precise labels",
+            wrong.saturating_sub(best_wrong)
+        ),
     };
     if q.labels_and_matching_measured {
         figure
@@ -709,11 +714,18 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
         } => {
             out.push((
                 "results",
-                format!("about as many {found} as the best option, more flagged wrongly"),
+                format!(
+                    "as many {found} found as the best option; ≈ {}% less precise",
+                    wrong.saturating_sub(best_wrong)
+                ),
             ));
             out.push((
                 "",
-                format!("≈ {wrong} in 100 {of} wrong, against {best_wrong}"),
+                format!(
+                    "≈ {}% of {of} right, against {}%",
+                    100 - wrong,
+                    100 - best_wrong
+                ),
             ));
             out.extend(detail.iter().map(|l| ("", l.to_string())));
         }

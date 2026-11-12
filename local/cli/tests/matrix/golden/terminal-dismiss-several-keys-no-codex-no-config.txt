@@ -6,7 +6,7 @@ How should unstale read new release notes?
 
      Read with                 Cost a year, this repo   Compared with the best option
   1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option
-  2  Vercel AI Gateway         ≈ $0.19                  ≈ 11 in 100 breaking flags wrong, not 8
+  2  Vercel AI Gateway         ≈ $0.19                  ≈ 3% less precise labels
   3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
   4  Not now                   free                     ≈ 27% of its changes in new releases
      Jev: a labelling service, used beside the provider that reads the notes.

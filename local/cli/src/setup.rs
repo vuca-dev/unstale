@@ -26,6 +26,8 @@ pub enum Route {
     Anthropic,
     /// Jev, the labelling API; it labels and matches records but cannot write them, so it pairs with another route.
     Jev,
+    /// SubQ Snap, a decision model; it matches records only, so it pairs with an OpenAI-compatible route.
+    Subq,
 }
 
 /// The key variables looked for, by the route they open. OpenAI-compatible routes are listed cheapest first: when
@@ -36,6 +38,7 @@ pub const KEY_VARS: &[(&str, Route)] = &[
     ("OPENROUTER_API_KEY", Route::OpenRouter),
     ("ANTHROPIC_API_KEY", Route::Anthropic),
     ("JEV_API_KEY", Route::Jev),
+    ("SUBQ_API_KEY", Route::Subq),
 ];
 
 pub fn route_of(var: &str) -> Option<Route> {
@@ -268,6 +271,8 @@ pub enum Pick {
     JevKey(Route),
     /// Jev labels and matches; Codex writes the records.
     JevCodex,
+    /// SubQ Snap matches; an OpenAI-compatible key writes and labels the records.
+    SnapKey(Route),
     /// One key does every step (an OpenAI-compatible route, or Anthropic).
     Key(Route),
     /// Codex does every step.
@@ -355,14 +360,21 @@ const LABELS_BELOW: Quality = Quality::MoreWrong {
     of: "breaking-change flags",
     of_short: "breaking flags",
     detail: &[
-        "on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)",
-        "on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)",
+        "on short release notes ≈ 62%, against 75% (42 flags)",
+        "on upgrade guides ≈ 93%, against 95% (228 flags)",
     ],
 };
 /// Matching on the same model: about 4 more duplicate records per technology-year than Jev's (4.0 to 4.5), from the
 /// re-measurement with text answers read as options; no false merge in 141 merges (`eval/edge-port/RESULTS.md`,
 /// "After the fixes (addendum 1)"). It was about 6 before text answers were read.
 const MATCHING_BELOW: u32 = 4;
+
+/// Matching on SubQ Snap 1.2 (longer rules, four candidates, its own bars): about 1 more duplicate record per
+/// technology-year than Jev's (3.1 against 2.5 duplicates per 100 records on the judge's held-out set, × 114.6
+/// records), with 0.3 false merges per 100; gpt-6-luna leaves 4.5 per 100 on the same set. $0.0059 per technology-year
+/// ($0.04 per M input, output free). Source: `eval/select/slice19/RESULTS.md`, part 2.
+const SNAP_MATCHING_BELOW: u32 = 1;
+const SNAP_MATCHING_USD: f64 = 0.0059;
 
 /// Extraction through Codex, batched by length: 60.1% pooled recall on short release notes against 75.6% for the
 /// client's direct run, which is what the best option runs (79% of it; about 90% of central's direct runs), and
@@ -400,6 +412,12 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             codex_usd: 0.015,
             // Extraction is the only step on Codex here; labels and matching are Jev's, as in the best option.
             quality: CODEX_EXTRACTION,
+            ..NO_QUOTE
+        },
+        Pick::SnapKey(r) => Quote {
+            usd: extraction_usd(r) + 0.026 + SNAP_MATCHING_USD,
+            quality: LABELS_BELOW,
+            more_duplicates: SNAP_MATCHING_BELOW,
             ..NO_QUOTE
         },
         Pick::Key(Route::Anthropic) => Quote {
@@ -442,7 +460,7 @@ fn extraction_usd(r: Route) -> f64 {
     match r {
         Route::Vercel | Route::OpenAi | Route::OpenRouter => 0.018,
         Route::Anthropic => 0.0189,
-        Route::Jev => 0.0,
+        Route::Jev | Route::Subq => 0.0,
     }
 }
 
@@ -455,6 +473,10 @@ pub fn options(d: &Detected, no_key: bool) -> Vec<Pick> {
         if codex {
             v.push(Pick::JevCodex);
         }
+    }
+    // Snap matches more duplicates than the key's own model, for less: ahead of the key alone.
+    if d.has(Route::Subq) {
+        v.extend(d.compatible().map(Pick::SnapKey));
     }
     v.extend(d.compatible().map(Pick::Key));
     if codex {
@@ -476,6 +498,7 @@ fn route_name(r: Route) -> &'static str {
         Route::OpenRouter => "OpenRouter",
         Route::Anthropic => "Anthropic",
         Route::Jev => "Jev labelling API",
+        Route::Subq => "SubQ Snap",
     }
 }
 
@@ -485,6 +508,7 @@ pub fn flag_value(d: &Detected, p: Pick) -> String {
     match p {
         Pick::JevKey(r) => format!("jev+{}", env(r)),
         Pick::JevCodex => "jev+codex".into(),
+        Pick::SnapKey(r) => format!("subq+{}", env(r)),
         Pick::Key(r) => env(r),
         Pick::Codex => "codex".into(),
         Pick::None => "none".into(),
@@ -514,11 +538,14 @@ pub struct Choice {
     /// Labels and matching on Jev, beside the provider that writes the records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub labels: Option<Labels>,
+    /// Matching only on SubQ Snap (`subq`), beside the provider that writes and labels the records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matching: Option<Labels>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Labels {
-    /// `jev`.
+    /// `jev` (for `matching`, `subq`).
     pub provider: String,
     pub key_env: String,
 }
@@ -530,6 +557,7 @@ fn provider_id(r: Route) -> &'static str {
         Route::OpenRouter => "openrouter",
         Route::Anthropic => "anthropic",
         Route::Jev => "jev",
+        Route::Subq => "subq",
     }
 }
 
@@ -540,6 +568,7 @@ fn route_by_id(id: &str) -> Option<Route> {
         Route::OpenRouter,
         Route::Anthropic,
         Route::Jev,
+        Route::Subq,
     ]
     .into_iter()
     .find(|r| provider_id(*r) == id)
@@ -560,6 +589,7 @@ impl Choice {
             provider: "none".into(),
             key_env: None,
             labels: None,
+            matching: None,
         }
     }
 
@@ -568,6 +598,7 @@ impl Choice {
             provider: provider_id(r).into(),
             key_env: Some(var.into()),
             labels: None,
+            matching: None,
         }
     }
 
@@ -576,7 +607,16 @@ impl Choice {
             provider: "codex".into(),
             key_env: None,
             labels: None,
+            matching: None,
         }
+    }
+
+    fn with_snap(mut self, var: &str) -> Choice {
+        self.matching = Some(Labels {
+            provider: "subq".into(),
+            key_env: var.into(),
+        });
+        self
     }
 
     fn with_jev(mut self, var: &str) -> Choice {
@@ -593,6 +633,7 @@ impl Choice {
         match p {
             Pick::JevKey(r) => Choice::key(r, &var(r)).with_jev(&var(Route::Jev)),
             Pick::JevCodex => Choice::codex().with_jev(&var(Route::Jev)),
+            Pick::SnapKey(r) => Choice::key(r, &var(r)).with_snap(&var(Route::Subq)),
             Pick::Key(r) => Choice::key(r, &var(r)),
             Pick::Codex => Choice::codex(),
             Pick::None => Choice::none(),
@@ -603,10 +644,17 @@ impl Choice {
         self.provider == "none"
     }
 
-    /// The provider configurations to call: the one that writes records, and Jev for labels when chosen. `None` for no
-    /// model provider, and for a choice naming a key variable that is not its route's own ([`Choice::foreign_key`]):
-    /// a repository's config must not be able to send another variable (a token, a proxy setting) anywhere.
-    pub fn providers(&self) -> Option<(ProviderConfig, Option<ProviderConfig>)> {
+    /// The provider configurations to call: the one that writes records, Jev for labels and matching when chosen, and
+    /// Snap for matching when chosen. `None` for no model provider, and for a choice naming a key variable that is not
+    /// its route's own ([`Choice::foreign_key`]): a repository's config must not be able to send another variable (a
+    /// token, a proxy setting) anywhere.
+    pub fn providers(
+        &self,
+    ) -> Option<(
+        ProviderConfig,
+        Option<ProviderConfig>,
+        Option<ProviderConfig>,
+    )> {
         if self.foreign_key().is_some() {
             return None;
         }
@@ -632,7 +680,16 @@ impl Choice {
                 j.key_env = Some(l.key_env.clone());
                 j
             });
-        Some((main, labels))
+        let matching = self
+            .matching
+            .as_ref()
+            .filter(|m| m.provider == "subq")
+            .map(|m| {
+                let mut s = ProviderConfig::subq();
+                s.key_env = Some(m.key_env.clone());
+                s
+            });
+        Some((main, labels, matching))
     }
 
     /// A key variable the choice names that is not the known key variable of its route (`KEY_VARS`), if any.
@@ -649,6 +706,12 @@ impl Choice {
             .as_ref()
             .map(|l| l.key_env.as_str())
             .filter(|k| !own("jev", k))
+            .or_else(|| {
+                self.matching
+                    .as_ref()
+                    .map(|m| m.key_env.as_str())
+                    .filter(|k| !own("subq", k))
+            })
     }
 
     /// The variables this choice reads keys from: only its routes' own key variables.
@@ -658,6 +721,7 @@ impl Choice {
         }
         self.labels
             .iter()
+            .chain(self.matching.iter())
             .map(|l| l.key_env.as_str())
             .chain(self.key_env.as_deref())
             .collect()
@@ -671,9 +735,10 @@ impl Choice {
             "none" => return "none".into(),
             p => route_by_id(p).map(route_name).unwrap_or(p).to_string(),
         };
-        let name = match &self.labels {
-            Some(_) => format!("{} + {main}", route_name(Route::Jev)),
-            None => main,
+        let name = match (&self.labels, &self.matching) {
+            (Some(_), _) => format!("{} + {main}", route_name(Route::Jev)),
+            (None, Some(_)) => format!("{} + {main}", route_name(Route::Subq)),
+            (None, None) => main,
         };
         let vars = self.key_vars();
         if vars.is_empty() {
@@ -935,10 +1000,10 @@ pub fn set_limit(ctx: &crate::Ctx, new: Option<Limit>) -> anyhow::Result<()> {
 pub fn parse_flag(s: &str) -> Result<Choice, String> {
     let bad = || {
         format!(
-            "--inference {s}: expected a provider (vercel, openai, openrouter, anthropic), env:NAME ({}), codex or none, optionally after jev+ (for example jev+env:OPENAI_API_KEY)",
+            "--inference {s}: expected a provider (vercel, openai, openrouter, anthropic), env:NAME ({}), codex or none, optionally after jev+ or subq+ (for example jev+env:OPENAI_API_KEY)",
             KEY_VARS
                 .iter()
-                .filter(|(_, r)| *r != Route::Jev)
+                .filter(|(_, r)| !matches!(r, Route::Jev | Route::Subq))
                 .map(|(n, _)| *n)
                 .collect::<Vec<_>>()
                 .join(", ")
@@ -961,6 +1026,18 @@ pub fn parse_flag(s: &str) -> Result<Choice, String> {
         }
     };
     let s = s.trim();
+    // `subq+<key>`: Snap matches beside an OpenAI-compatible key.
+    if let Some(rest) = s.strip_prefix("subq+") {
+        let main = one(rest).ok_or_else(bad)?;
+        return if matches!(
+            route_by_id(&main.provider),
+            Some(Route::Vercel | Route::OpenAi | Route::OpenRouter)
+        ) {
+            Ok(main.with_snap(default_var(Route::Subq)))
+        } else {
+            Err(bad())
+        };
+    }
     let (jev, rest) = match s.split_once('+') {
         Some((j, rest)) => (Some(j), rest),
         None => (None, s),
@@ -968,8 +1045,8 @@ pub fn parse_flag(s: &str) -> Result<Choice, String> {
     let main = one(rest).ok_or_else(bad)?;
     let main_route = route_by_id(&main.provider);
     let Some(j) = jev else {
-        // Jev labels but writes no records: it needs a partner.
-        return if main_route == Some(Route::Jev) {
+        // Jev and Snap write no records: each needs a partner.
+        return if matches!(main_route, Some(Route::Jev | Route::Subq)) {
             Err(bad())
         } else {
             Ok(main)
