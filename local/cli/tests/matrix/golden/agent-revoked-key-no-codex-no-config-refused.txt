@@ -87,7 +87,7 @@ Full costs: unstale setup --details
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference env:OPENAI_API_KEY  (no terminal)
-Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
 
 $ unstale sync  (no terminal)
 next: 2 upstream changes on file, nothing new
@@ -133,7 +133,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: the provider rejected the key, so new release notes are not read. Check the key.
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

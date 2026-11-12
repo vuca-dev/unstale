@@ -2,7 +2,7 @@
 # keys: revoked-key · Codex: no-codex · run: agent-pty-claude · repo config: --inference jev+codex · client: fresh · provider: refused
 
 $ unstale init --wait 0 --no-animation
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -61,10 +61,26 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         Jev + Codex plan (JEV_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
+
+$ unstale setup
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with   Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  2  Not now                      free                     ≈ 27% of its changes in new releases
+
+Record their answer with the matching command:
+  1  unstale setup --inference env:OPENAI_API_KEY
+  2  unstale setup --inference none
+Full costs: unstale setup --details
+This repo's config suggests Jev + Codex plan (JEV_API_KEY), which is not one of the options here.
+
+# the agent showed the options and asked; the user chose option 1
+$ unstale setup --inference env:OPENAI_API_KEY
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
 
 $ unstale sync
 next: 2 upstream changes on file, nothing new
@@ -75,7 +91,7 @@ $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 
 # Claude Code starts a session and runs its session-start hook; the background stage it starts runs to its end
 $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
-warning: Codex is not installed, so new release notes are not read. Run `unstale setup`.
+warning: the provider rejected the key, so new release notes are not read. Check the key.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -105,14 +121,13 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
-warning: Codex is not installed, so new release notes are not read. Run `unstale setup`.
-Release notes         Jev + Codex plan (JEV_API_KEY), this repo's config
+warning: the provider rejected the key, so new release notes are not read. Check the key.
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: nothing
+#   model provider: POST /v1/chat/completions (2 requests)
 #   codex: not run
 #   through the proxy: nothing

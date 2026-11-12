@@ -9,7 +9,7 @@ How should unstale read new release notes?
   2  Not now                      free                     ≈ 27% of its changes in new releases
 
 Enter for 1, a number to choose, or d for details:
-Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -76,7 +76,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

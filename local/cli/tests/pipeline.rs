@@ -241,9 +241,16 @@ struct Repo {
 
 impl Repo {
     fn run(&self, args: &[&str], switch: bool) -> String {
+        let (ok, out) = self.run_in(self.repo.path(), args, switch, &[]);
+        assert!(ok, "{args:?}: {out}");
+        out
+    }
+
+    /// Runs in `dir` with extra environment; the exit status and everything printed.
+    fn run_in(&self, dir: &std::path::Path, args: &[&str], switch: bool, env: &[(&str, &str)]) -> (bool, String) {
         let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
         c.args(args)
-            .current_dir(self.repo.path())
+            .current_dir(dir)
             .env("UNSTALE_CACHE_DIR", self.cache.path())
             .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             .env("UNSTALE_CONFIG_DIR", self.cache.path().join("user-config"))
@@ -259,14 +266,14 @@ impl Repo {
         if switch {
             c.env("UNSTALE_EDGE_INFERENCE", "1");
         }
+        for (k, v) in env {
+            c.env(k, v);
+        }
         let out = c.output().unwrap();
-        assert!(
+        (
             out.status.success(),
-            "{args:?}: {}\n{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8(out.stdout).unwrap()
+            format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)),
+        )
     }
 }
 
@@ -321,10 +328,8 @@ fn repo(allow: Arc<Mutex<usize>>) -> (Repo, Arc<Mutex<usize>>, Arc<Mutex<usize>>
         jev,
     };
     r.run(&["init", "--catalog", r._cat.loc()], false);
-    let cfg = r.repo.path().join(".unstale/config.json");
-    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
-    v["inference"] = serde_json::json!({"provider": "vercel", "key_env": "AI_GATEWAY_API_KEY", "labels": {"provider": "jev", "key_env": "JEV_API_KEY"}});
-    std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    // The user's own choice, made as a user makes it: a provider written into the repository's config grants nothing.
+    r.run(&["setup", "--inference", "jev+env:AI_GATEWAY_API_KEY"], true);
     (r, mn, jn)
 }
 
@@ -501,10 +506,7 @@ fn session_sync_by_hand_says_what_it_read_and_resumes_after_an_interrupt() {
 #[test]
 fn session_sync_with_not_now_recorded_says_so() {
     let (r, main, _) = repo(Arc::new(Mutex::new(usize::MAX)));
-    let cfg = r.repo.path().join(".unstale/config.json");
-    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
-    v["inference"] = serde_json::json!({"provider": "none"});
-    std::fs::write(&cfg, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    r.run(&["setup", "--inference", "none"], true);
     let out = r.run(&["session-sync"], true);
     assert_eq!(
         out.lines().last().unwrap_or_default(),
@@ -552,4 +554,121 @@ fn sync_names_technologies_plainly_and_setup_counts_the_packages_a_user_counts()
     assert!(!on.contains("react-0a0a0a0a"), "{on}");
     let details = r.run(&["setup", "--details"], true);
     assert!(details.contains("This repo has 4 packages unstale follows."), "{details}");
+}
+
+/// Copies a directory tree.
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for e in std::fs::read_dir(from).unwrap().flatten() {
+        let (src, dest) = (e.path(), to.join(e.file_name()));
+        if src.is_dir() {
+            copy_tree(&src, &dest);
+        } else {
+            std::fs::copy(&src, &dest).unwrap();
+        }
+    }
+}
+
+/// A provider named in the repository's own files grants nothing, in whatever shape the files arrive: the user has
+/// chosen nothing, or chose no provider, and no request is made. Each shape is a fresh copy of a repository whose
+/// `.unstale/config.json` names a provider this machine has the keys for.
+#[test]
+fn a_provider_named_under_the_repository_is_never_used_without_the_users_own_choice() {
+    let git = |dir: &std::path::Path, args: &[&str]| {
+        let ok = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.org")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.org")
+            .output()
+            .is_ok_and(|o| o.status.success());
+        assert!(ok, "git {args:?}");
+    };
+    let named = serde_json::json!({"provider": "vercel", "key_env": "AI_GATEWAY_API_KEY", "labels": {"provider": "jev", "key_env": "JEV_API_KEY"}});
+    for shape in ["untracked", "no-git", "committed", "symlinked-folder", "other-case-folder", "git-not-on-path"] {
+        for users in [None, Some(r#"{"inference": {"provider": "none"}}"#)] {
+            let (r, main, jev) = repo(Arc::new(Mutex::new(usize::MAX)));
+            // The fixture's own choice is the user's (made with `unstale setup`): start from none of theirs.
+            let user = r.cache.path().join("user-config/config.json");
+            match users {
+                Some(text) => std::fs::write(&user, text).unwrap(),
+                None => std::fs::remove_file(&user).unwrap(),
+            }
+            let work = tempfile::tempdir().unwrap();
+            let root = work.path().join("clone");
+            copy_tree(r.repo.path(), &root);
+            let _ = std::fs::remove_dir_all(root.join(".git"));
+            let cfg = root.join(".unstale/config.json");
+            let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+            v["inference"] = named.clone();
+            v["mode"] = serde_json::json!("collaborative");
+            std::fs::write(&cfg, v.to_string()).unwrap();
+            let _ = std::fs::remove_dir_all(root.join(".unstale/state"));
+            let mut env: Vec<(&str, &str)> = vec![];
+            match shape {
+                "no-git" => {}
+                "untracked" => git(&root, &["init", "-q"]),
+                "git-not-on-path" => {
+                    git(&root, &["init", "-q"]);
+                    git(&root, &["add", "-f", "."]);
+                    env.push(("PATH", ""));
+                }
+                _ => {
+                    if shape == "symlinked-folder" {
+                        std::fs::rename(root.join(".unstale"), root.join("team-config")).unwrap();
+                        std::os::unix::fs::symlink("team-config", root.join(".unstale")).unwrap();
+                    }
+                    if shape == "other-case-folder" {
+                        std::fs::rename(root.join(".unstale"), root.join(".UNSTALE")).unwrap();
+                    }
+                    git(&root, &["init", "-q"]);
+                    git(&root, &["add", "-f", "."]);
+                    git(&root, &["commit", "-q", "-m", "all of it"]);
+                }
+            }
+            let before = (*main.lock().unwrap(), *jev.lock().unwrap());
+            // By hand, and as the session-start hook's background stage runs it.
+            for stage in [&[][..], &[("UNSTALE_HOOK_STAGE", "1")]] {
+                let mut e = env.clone();
+                e.extend_from_slice(stage);
+                let (_, out) = r.run_in(&root, &["session-sync"], true, &e);
+                assert!(!out.contains("New release notes read"), "{shape} {users:?}: {out}");
+            }
+            let _ = r.run_in(&root, &["status", "--wait", "0", "--no-animation"], true, &env);
+            assert_eq!(
+                (*main.lock().unwrap(), *jev.lock().unwrap()),
+                before,
+                "{shape}, user config {users:?}: requests to the providers"
+            );
+        }
+    }
+}
+
+/// A repository whose config says "no provider" needs nobody's consent, since nothing is spent: with no choice of the
+/// user's it is as before, with no warning and no pending choice, and `session-sync` says the repository is set so.
+#[test]
+fn a_repositorys_no_provider_stands_without_a_question_or_a_warning() {
+    let (r, main, _) = repo(Arc::new(Mutex::new(usize::MAX)));
+    std::fs::remove_file(r.cache.path().join("user-config/config.json")).unwrap();
+    let cfg = r.repo.path().join(".unstale/config.json");
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+    v["inference"] = serde_json::json!({"provider": "none"});
+    std::fs::write(&cfg, v.to_string()).unwrap();
+    for agent in [&[][..], &[("CLAUDECODE", "1")]] {
+        let (ok, out) = r.run_in(r.repo.path(), &["init", "--catalog", r._cat.loc(), "--yes"], true, agent);
+        assert!(ok, "{out}");
+        assert!(
+            !out.contains("warning: you have not chosen") && !out.contains("no provider chosen") && !out.contains("Choice pending"),
+            "{out}"
+        );
+    }
+    let out = r.run(&["session-sync"], true);
+    assert_eq!(
+        out.lines().last().unwrap_or_default(),
+        "No release notes were read: this repo is set to Not now. To change it: `unstale setup`.",
+        "{out}"
+    );
+    assert_eq!(*main.lock().unwrap(), 0);
 }

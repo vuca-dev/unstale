@@ -2,7 +2,25 @@
 # keys: other-repo-key · Codex: no-codex · run: terminal · repo config: --inference jev+env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
+unstale reads new release notes with a model, on your own key or your Codex plan.
+None is set up here.
+
+  1  Set one up   shows the one line to add
+  2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases
+
+This repo's config suggests Jev + OpenAI: set JEV_API_KEY and OPENAI_API_KEY, then run `unstale setup`.
+
+Enter for 1, or 2:
+
+Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+
+  OPENAI_API_KEY=<key>      OpenAI
+  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
+  OPENROUTER_API_KEY=<key>  OpenRouter
+  ANTHROPIC_API_KEY=<key>   Anthropic
+
+Or use your Codex plan: install Codex and run `codex login`.
+
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -39,8 +57,7 @@ react: 1 upstream change on file, nothing new
 
 $ unstale session-sync
 Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
-  Reading 1 release note of react
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -70,10 +87,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: JEV_API_KEY is not set here, so new release notes are not read. Set it.
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted

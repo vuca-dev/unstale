@@ -3,6 +3,7 @@
 
 # earlier: set up by the client then installed (this build; the previous release's binary is not built here)
 $ unstale init --yes --wait 0 --no-animation  (no terminal)
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -46,6 +47,7 @@ react: 1 upstream change on file, nothing new
 # the user upgrades the client; the catalog now names this version the newest and the oldest it serves
 
 $ unstale init --wait 0 --no-animation
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -102,10 +104,28 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
+
+$ unstale setup
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with    Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
+  3  Not now                       free                     ≈ 27% of its changes in new releases
+
+Record their answer with the matching command:
+  1  unstale setup --inference env:OPENAI_API_KEY
+  2  unstale setup --inference codex
+  3  unstale setup --inference none
+Full costs: unstale setup --details
+This repo's config suggests option 1. Nothing is spent until the user chooses.
+
+# the agent showed the options and asked; the user chose option 1
+$ unstale setup --inference env:OPENAI_API_KEY
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
 
 $ unstale sync
 next: 2 upstream changes on file, nothing new
@@ -146,12 +166,12 @@ $ unstale status --wait 0 --no-animation
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: nothing
-#   codex: not run
+#   codex: --version, login status
 #   through the proxy: nothing

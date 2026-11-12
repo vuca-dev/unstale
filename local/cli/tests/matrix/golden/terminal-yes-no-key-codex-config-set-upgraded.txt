@@ -3,7 +3,7 @@
 
 # earlier: set up by the client then installed (this build; the previous release's binary is not built here)
 $ unstale init --yes --wait 0 --no-animation  (no terminal)
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
+warning: you have not chosen a provider, so new release notes are not read. Run `unstale setup`.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -81,8 +81,7 @@ react: 1 upstream change on file, nothing new
 
 $ unstale session-sync
 Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
-  Reading 1 release note of react
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
@@ -112,9 +111,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted

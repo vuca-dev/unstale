@@ -3,7 +3,7 @@
 
 # earlier: set up by the client then installed (this build; the previous release's binary is not built here)
 $ unstale init --yes --wait 0 --no-animation  (no terminal)
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
+warning: you have not chosen a provider, so new release notes are not read. Run `unstale setup`.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -87,7 +87,7 @@ sync refused: the catalog needs unstale <newer version> or newer and this is <th
 
 $ unstale session-sync  (no terminal)
 warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
-No release notes were read: 2 wait until the catalog serves this unstale.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Shared setup ready
@@ -123,9 +123,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted

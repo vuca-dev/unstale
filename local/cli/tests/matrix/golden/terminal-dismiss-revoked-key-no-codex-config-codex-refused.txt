@@ -2,6 +2,16 @@
 # keys: revoked-key · Codex: no-codex · run: terminal-dismiss · repo config: --inference codex · client: fresh · provider: refused
 
 $ unstale init --wait 0 --no-animation
+How should unstale read new release notes?
+
+     Read with   Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  2  Not now                      free                     ≈ 27% of its changes in new releases
+
+This repo's config suggests Codex plan, which is not one of the options here.
+
+Enter for 1, a number to choose, or d for details:
+Nothing chosen: new releases get advisories and deprecations only. `unstale setup` asks again.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -89,8 +99,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         Codex plan, this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted

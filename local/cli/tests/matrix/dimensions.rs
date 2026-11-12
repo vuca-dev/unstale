@@ -271,6 +271,9 @@ pub(crate) struct Scenario {
     pub(crate) registry: bool,
     /// Monthly token limits set before the session: (the user's, this repository's), as stored.
     pub(crate) limits: Option<(&'static str, &'static str)>,
+    /// The user's own choice for every repository, made before the session: no provider (`"provider": "none"` in
+    /// their config).
+    pub(crate) user_none: bool,
     /// Test-only: a deliberate violation, to show the checks catch it.
     pub(crate) fault: Option<Fault>,
 }
@@ -320,6 +323,7 @@ impl Scenario {
             critical: false,
             registry: false,
             limits: None,
+            user_none: false,
             fault: None,
         }
     }

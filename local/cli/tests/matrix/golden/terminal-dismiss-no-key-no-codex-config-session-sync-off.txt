@@ -2,7 +2,16 @@
 # keys: no-key · Codex: no-codex · run: terminal-dismiss · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
+unstale reads new release notes with a model, on your own key or your Codex plan.
+None is set up here.
+
+  1  Set one up   shows the one line to add
+  2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases
+
+This repo's config suggests OpenAI: set OPENAI_API_KEY, then run `unstale setup`.
+
+Enter for 1, or 2:
+Nothing chosen: new releases get advisories and deprecations only. `unstale setup` asks again.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -90,10 +99,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
-warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
 # contacted

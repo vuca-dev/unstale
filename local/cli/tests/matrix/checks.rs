@@ -516,6 +516,8 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             matches!(r.step, Step::Init | Step::InitYes | Step::InitFlag(_) | Step::Status | Step::SessionSync)
                 && !r.output.contains(&refusal)
                 && !r.output.contains("Session-start sync is off here")
+                // A command the person stopped with Ctrl-C at its question never got as far as its sync.
+                && !(s.invocation.answer == "\u{3}" && questions(&r.output) > 0)
         }) {
             v.push(format!(
                 "min_client: `{}` did not say the catalog no longer serves this client",
@@ -654,8 +656,10 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
     // A dismissed question records only that it was dismissed; Ctrl-C records nothing.
     let dismissed = w.repo().join(".unstale/state/setup-dismissed").exists();
     let interrupted = s.invocation.answer == "\u{3}";
+    // With a committed choice too: it is asked about, and dismissing the question leaves it unchosen.
+    let asked = se.ran.iter().any(|r| questions(&r.output) > 0);
     if (s.invocation.answer == "\u{4}" || interrupted)
-        && s.config.choice.is_none()
+        && (s.config.choice.is_none() || asked)
         && provider_id_after(w).is_some()
     {
         v.push("questions: a dismissed or interrupted question recorded a provider".into());
@@ -1320,7 +1324,8 @@ fn the_budget_defers_work_in_demand_order() {
         let mut s = Scenario::new(
             by_id(KEYS, "shell-key", |v| v.id),
             by_id(CODEX, "no-codex", |v| v.id),
-            by_id(INVOCATIONS, "ci", |v| v.id),
+            // CI with the choice given on the command line: a committed choice alone is never used.
+            by_id(INVOCATIONS, "ci-flag", |v| v.id),
             by_id(REPO_CONFIGS, "config-set", |v| v.id),
             &CLIENTS[0],
             Answer::Ok,
@@ -1352,6 +1357,94 @@ fn the_budget_defers_work_in_demand_order() {
     }
 }
 
+/// How many times `codex exec` ran in a session.
+fn codex_execs(se: &Session) -> usize {
+    support::codex_invocations(&se.world.codex_dir())
+        .iter()
+        .filter(|a| a.starts_with("exec"))
+        .count()
+}
+
+/// The user chose no provider. A repository whose committed config names a key provider, or Codex, does not change
+/// that: no request to the provider, no `codex exec`, no question, with a person at the terminal or without.
+#[test]
+fn a_committed_choice_never_overrides_the_users_own_none() {
+    for (config, invocation) in [
+        ("config-set", "terminal"),
+        ("config-set", "ci"),
+        ("config-codex", "terminal"),
+        ("config-jev-codex", "agent"),
+    ] {
+        let mut s = Scenario::new(
+            by_id(KEYS, "shell-key", |v| v.id),
+            by_id(CODEX, "codex", |v| v.id),
+            by_id(INVOCATIONS, invocation, |v| v.id),
+            by_id(REPO_CONFIGS, config, |v| v.id),
+            &CLIENTS[0],
+            Answer::Ok,
+        );
+        s.user_none = true;
+        let se = run_session(&s);
+        let (_, calls) = extraction_calls(&se);
+        assert_eq!(calls, 0, "{config} {invocation}: provider requests");
+        assert_eq!(codex_execs(&se), 0, "{config} {invocation}: codex exec");
+        assert!(se.ran.iter().all(|r| questions(&r.output) == 0), "{config} {invocation}: asked");
+        assert_eq!(provider_id_after(&se.world).as_deref(), Some("none"), "{config} {invocation}");
+    }
+}
+
+/// The user has chosen nothing, and the repository's committed config names a provider this machine can use. Nothing
+/// is spent on that alone: not in CI, not for an agent, not when the person dismisses the question. At a terminal the
+/// person is asked once, with the committed choice as the option Enter accepts; having accepted it, the release notes
+/// are read.
+#[test]
+fn a_committed_choice_spends_nothing_until_the_user_makes_it_theirs() {
+    let run = |config: &str, invocation: &str| {
+        let s = Scenario::new(
+            by_id(KEYS, "shell-key", |v| v.id),
+            by_id(CODEX, "codex", |v| v.id),
+            by_id(INVOCATIONS, invocation, |v| v.id),
+            by_id(REPO_CONFIGS, config, |v| v.id),
+            &CLIENTS[0],
+            Answer::Ok,
+        );
+        let se = run_session(&s);
+        let broken: Vec<String> = check(&s, &se)
+            .into_iter()
+            .filter(|l| known_bug(&s, l).is_none())
+            .collect();
+        assert!(broken.is_empty(), "{config} {invocation}: {broken:?}");
+        se
+    };
+    for config in ["config-set", "config-codex"] {
+        for invocation in ["ci", "terminal-dismiss"] {
+            let se = run(config, invocation);
+            let (_, calls) = extraction_calls(&se);
+            assert_eq!(calls, 0, "{config} {invocation}: provider requests");
+            assert_eq!(codex_execs(&se), 0, "{config} {invocation}: codex exec");
+            assert_eq!(provider_id_after(&se.world), None, "{config} {invocation}");
+        }
+    }
+    // Asked once; Enter accepts the committed choice (the second option here: the first is what the key offers).
+    let se = run("config-codex", "terminal");
+    let init = &se.ran[0].output;
+    assert_eq!(se.ran.iter().map(|r| questions(&r.output)).sum::<usize>(), 1, "{init}");
+    assert!(
+        init.contains("This repo's config suggests option 2. Nothing is spent until you choose.")
+            && init.contains("Enter for 2, a number to choose, or d for details:")
+            && init.contains("Saved for you: Codex plan reads release notes."),
+        "{init}"
+    );
+    assert_eq!(provider_id_after(&se.world).as_deref(), Some("codex"));
+    assert!(codex_execs(&se) > 0, "the release notes are read once the choice is the user's");
+    // The team's config is as it was committed.
+    let config = std::fs::read_to_string(se.world.repo().join(".unstale/config.json")).unwrap();
+    assert!(config.contains("\"provider\": \"codex\""), "{config}");
+    let se = run("config-set", "terminal");
+    let (asked, calls) = extraction_calls(&se);
+    assert!(calls > 0 && asked == releases_to_read(), "{asked:?}");
+}
+
 /// A second repository with the same stack, on the same machine, makes no model call: what the first paid for is in
 /// the user-level caches. Its report reads the records all the same.
 #[test]
@@ -1359,7 +1452,8 @@ fn a_second_repository_reuses_the_cached_results() {
     let s = Scenario::new(
         by_id(KEYS, "shell-key", |v| v.id),
         by_id(CODEX, "no-codex", |v| v.id),
-        by_id(INVOCATIONS, "ci", |v| v.id),
+        // CI with the choice given on the command line: a committed choice alone is never used.
+            by_id(INVOCATIONS, "ci-flag", |v| v.id),
         by_id(REPO_CONFIGS, "config-set", |v| v.id),
         &CLIENTS[0],
         Answer::Ok,

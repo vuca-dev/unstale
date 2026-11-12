@@ -668,6 +668,37 @@ fn lines(cache: &Path, (l, bad): (Option<u64>, Option<String>)) -> Vec<String> {
 /// `None` without a terminal) unless `yes`, then deletes; each line goes to `say` as it is known, so the question comes
 /// after what it is about. Model results only with `results`. The cache's lock is taken only after the answer, and
 /// only briefly: an open question never holds up a sync. Returns the exit code.
+/// `unstale cache clean` over the per-user cache and, once that is confirmed, each catalog directory's cache under
+/// `unsigned/` (`cache::cache_for`), every one a cache of its own: what the command says it removed is everything.
+pub fn clean_all(
+    cache: &Path,
+    results: bool,
+    yes: bool,
+    ask: &mut dyn FnMut() -> Option<bool>,
+    say: &mut dyn FnMut(&str),
+) -> u8 {
+    let mut confirmed = yes;
+    let mut asked = || {
+        let a = ask();
+        confirmed = a == Some(true);
+        a
+    };
+    let mut code = clean_command(cache, results, yes, &mut asked, say);
+    if !confirmed {
+        return code;
+    }
+    let dir = cache.join(crate::cache::UNSIGNED);
+    for name in names(&dir) {
+        let sub = dir.join(&name);
+        if !real_dir(&sub) {
+            continue;
+        }
+        say(&format!("A catalog directory's cache ({name}):"));
+        code = code.max(clean_command(&sub, results, true, &mut || Some(true), say));
+    }
+    code
+}
+
 pub fn clean_command(
     cache: &Path,
     results: bool,

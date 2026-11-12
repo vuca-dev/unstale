@@ -2,6 +2,16 @@
 # keys: shell-key · Codex: no-codex · run: terminal · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: a monthly token limit of 1 token
 
 $ unstale init --wait 0 --no-animation
+How should unstale read new release notes?
+
+     Read with   Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  2  Not now                      free                     ≈ 27% of its changes in new releases
+
+This repo's config suggests option 1. Nothing is spent until you choose.
+
+Enter for 1, a number to choose, or d for details:
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -70,7 +80,7 @@ $ unstale status --wait 0 --no-animation
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                12 of 1 this month (your limit, reached)
 Cache                 under 1 MB of 100 MB
 

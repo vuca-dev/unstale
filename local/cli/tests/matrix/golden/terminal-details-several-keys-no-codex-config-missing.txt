@@ -2,7 +2,53 @@
 # keys: several-keys · Codex: no-codex · run: terminal-details · repo config: --inference env:OPENROUTER_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
+How should unstale read new release notes?
+
+     Read with                 Cost a year, this repo   Compared with the best option
+  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option
+  2  Vercel AI Gateway         ≈ $0.19                  ≈ 3% less precise labels
+  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
+  4  Not now                   free                     ≈ 27% of its changes in new releases
+     Jev: a labelling service, used beside the provider that reads the notes.
+     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+
+This repo's config suggests OpenRouter (OPENROUTER_API_KEY), which is not one of the options here.
+
+Enter for 1, a number to choose, or d for details: d
+
+Costs are estimates from evaluation runs, billed by the provider to your key or plan.
+This repo has 3 packages unstale follows.
+
+1  Jev labelling API + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY)
+   per package, per year  $0.036
+   this repo, a year      ≈ $0.11
+   first sync, once       ≈ $0.11
+   results                the best option: the most complete
+
+2  Vercel AI Gateway (AI_GATEWAY_API_KEY)
+   per package, per year  $0.064
+   this repo, a year      ≈ $0.19
+   first sync, once       ≈ $0.19
+   results                as many breaking changes found as the best option; ≈ 3% less precise
+                          ≈ 89% of breaking-change flags right, against 92%
+                          on short release notes ≈ 62%, against 75% (42 flags)
+                          on upgrade guides ≈ 93%, against 95% (228 flags)
+   repeats                ≈ 4 more changes listed twice per package, per year
+
+3  Anthropic (ANTHROPIC_API_KEY)
+   per package, per year  $0.075
+   this repo, a year      ≈ $0.23
+   first sync, once       ≈ $0.23
+   results                somewhat less complete: ≈ 90% of the best option's changes
+                          fewer from upgrade guides
+   repeats                ≈ 23 more changes listed twice per package, per year
+
+4  Not now
+   cost     free: no model is called
+   results  advisories and deprecations only: ≈ 27% of the changes in new releases
+
+Your choice (Enter for 1):
+Saved for you: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -61,8 +107,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: OPENROUTER_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         OpenRouter (OPENROUTER_API_KEY), this repo's config
+Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

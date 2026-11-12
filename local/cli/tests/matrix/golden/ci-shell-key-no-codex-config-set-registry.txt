@@ -2,6 +2,7 @@
 # keys: shell-key · Codex: no-codex · run: ci · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: answers · registry lookups on
 
 $ unstale init --wait 0 --no-animation --yes  (no terminal)
+warning: you have not chosen a provider, so new release notes are not read. Run `unstale setup`.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -42,10 +43,10 @@ unstale notice, act by 30 November: Upgrade unstale; this version stops receivin
 unstale <newer version> available: npm install -g @unstale/cli@latest
 
 $ unstale session-sync  (no terminal)
-New release notes read: 2 new changes, 0 added to known ones, for 2 technologies.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: POST /v1/chat/completions (7 requests)
+#   model provider: nothing
 #   codex: not run
 #   through the proxy: CONNECT registry.npmjs.org:443

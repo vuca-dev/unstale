@@ -2,6 +2,16 @@
 # keys: anthropic-key · Codex: no-codex · run: terminal · repo config: --inference env:ANTHROPIC_API_KEY · client: fresh · provider: refused
 
 $ unstale init --wait 0 --no-animation
+How should unstale read new release notes?
+
+     Read with   Key                 Cost a year, this repo   Compared with the best option
+  1  Anthropic   ANTHROPIC_API_KEY   ≈ $0.23                  ≈ 90% of its changes
+  2  Not now                         free                     ≈ 27% of its changes in new releases
+
+This repo's config suggests option 1. Nothing is spent until you choose.
+
+Enter for 1, a number to choose, or d for details:
+Saved for you: Anthropic (ANTHROPIC_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -70,7 +80,7 @@ $ unstale status --wait 0 --no-animation
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 warning: the provider rejected the key, so new release notes are not read. Check the key.
-Release notes         Anthropic (ANTHROPIC_API_KEY), this repo's config
+Release notes         Anthropic (ANTHROPIC_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

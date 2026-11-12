@@ -28,12 +28,20 @@ pub(crate) struct Session {
 }
 
 /// What every question opens with: the picker's prompt, its one-option form, and the prompt with nothing usable.
-/// After the details (`d`) the same question stays open at [`CONTINUE`], which is not another question.
-pub(crate) const PROMPTS: [&str; 2] = ["Enter for 1,", "Enter to use it"];
-pub(crate) const CONTINUE: &str = "Your choice (Enter for 1): ";
-
+/// After the details (`d`) the same question stays open at `Your choice (Enter for <n>): `, which is not another
+/// question.
+/// A question: `Enter for <n>,` (the first option, or the one this repository's committed config suggests) or
+/// `Enter to use it`.
 pub(crate) fn questions(text: &str) -> usize {
-    PROMPTS.iter().map(|p| text.matches(p).count()).sum()
+    let numbered = text
+        .match_indices("Enter for ")
+        .filter(|(i, m)| {
+            let rest = &text[i + m.len()..];
+            let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+            digits > 0 && rest[digits..].starts_with(',')
+        })
+        .count();
+    numbered + text.matches("Enter to use it").count()
 }
 
 pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Option<Ran> {
@@ -78,7 +86,10 @@ pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Opti
         )),
         Step::AgentSetup => {
             let status = ran.iter().rev().find(|r| r.step == Step::Status)?;
-            if !status.output.contains("not read: no provider chosen") {
+            // Nothing chosen, with or without a suggestion in this repository's committed config.
+            if !status.output.contains("not read: no provider chosen")
+                && !status.output.contains("you have not chosen")
+            {
                 return None;
             }
             let listed = exec(w, s, vec!["setup".into()], s.invocation.terminal);
@@ -148,10 +159,11 @@ pub(crate) fn agent_answer(w: &World, s: &Scenario, listed: &Ran) -> Option<Ran>
 /// stays open; and at any further question, Ctrl-D, so a second question ends the run and is counted rather than
 /// waiting for an answer that never comes.
 pub(crate) fn terminal_answers(answer: &str) -> Vec<(&'static str, &str)> {
-    const PROMPT: &str = "Enter for 1,|Enter to use it";
+    // Enter accepts the first option, or the one this repository's committed config suggests.
+    const PROMPT: &str = "Enter for |Enter to use it";
     let mut a = vec![(PROMPT, answer)];
     if answer.starts_with('d') {
-        a.push((CONTINUE, "\n"));
+        a.push(("Your choice (Enter for ", "\n"));
     }
     a.push((PROMPT, "\u{4}"));
     a
@@ -202,14 +214,25 @@ pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -
     }
 }
 
-/// The provider the session ended up with: this repository's config, else the user's.
+/// The provider the session ended up with: the user's own choice, read from the user's config and nowhere else (their
+/// answer for this repository, else their choice for every repository). A provider named in the repository's config
+/// is nobody's choice; its "none" stands, since it spends nothing.
 pub(crate) fn chosen(w: &World) -> Option<serde_json::Value> {
     let read = |p: PathBuf| -> Option<serde_json::Value> {
-        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(p).ok()?).ok()?;
-        v.get("inference").cloned()
+        serde_json::from_slice(&std::fs::read(p).ok()?).ok()
     };
-    read(w.repo().join(".unstale/config.json"))
-        .or_else(|| read(w.home().join(".config/unstale/config.json")))
+    let user = read(w.home().join(".config/unstale/config.json")).unwrap_or_default();
+    let root = w.repo().canonicalize().ok()?;
+    user.get("repositories")
+        .and_then(|r| r.get(&*root.to_string_lossy()))
+        .and_then(|r| r.get("inference"))
+        .or_else(|| user.get("inference"))
+        .cloned()
+        .or_else(|| {
+            read(w.repo().join(".unstale/config.json"))
+                .and_then(|v| v.get("inference").cloned())
+                .filter(|c| c["provider"] == "none")
+        })
 }
 
 /// The agent whose session starts, by the variable it sets: its name and the hook file it installs.

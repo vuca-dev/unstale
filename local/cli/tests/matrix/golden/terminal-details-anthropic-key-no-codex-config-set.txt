@@ -2,7 +2,35 @@
 # keys: anthropic-key · Codex: no-codex · run: terminal-details · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
+How should unstale read new release notes?
+
+     Read with   Key                 Cost a year, this repo   Compared with the best option
+  1  Anthropic   ANTHROPIC_API_KEY   ≈ $0.23                  ≈ 90% of its changes
+  2  Not now                         free                     ≈ 27% of its changes in new releases
+
+This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here.
+
+Enter for 1, a number to choose, or d for details: d
+
+Costs are estimates from evaluation runs, billed by the provider to your key or plan.
+This repo has 3 packages unstale follows.
+The best option, which the others are compared with: Jev, a labelling service (JEV_API_KEY),
+beside an OpenAI-compatible key.
+
+1  Anthropic (ANTHROPIC_API_KEY)
+   per package, per year  $0.075
+   this repo, a year      ≈ $0.23
+   first sync, once       ≈ $0.23
+   results                somewhat less complete: ≈ 90% of the best option's changes
+                          fewer from upgrade guides
+   repeats                ≈ 23 more changes listed twice per package, per year
+
+2  Not now
+   cost     free: no model is called
+   results  advisories and deprecations only: ≈ 27% of the changes in new releases
+
+Your choice (Enter for 1):
+Saved for you: Anthropic (ANTHROPIC_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -61,8 +89,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         Anthropic (ANTHROPIC_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

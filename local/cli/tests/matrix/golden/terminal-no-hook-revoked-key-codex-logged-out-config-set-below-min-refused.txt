@@ -3,6 +3,7 @@
 
 # earlier: set up by the client then installed (this build; the previous release's binary is not built here)
 $ unstale init --yes --wait 0 --no-animation  (no terminal)
+warning: you have not chosen a provider, so new release notes are not read. Run `unstale setup`.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -46,6 +47,16 @@ react: 1 upstream change on file, nothing new
 # the catalog raises its oldest served version (min_client) above this client's
 
 $ unstale init --wait 0 --no-animation
+How should unstale read new release notes?
+
+     Read with   Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  2  Not now                      free                     ≈ 27% of its changes in new releases
+
+This repo's config suggests option 1. Nothing is spent until you choose.
+
+Enter for 1, a number to choose, or d for details:
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -114,7 +125,7 @@ $ unstale status --wait 0 --no-animation
 warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
 Codex session start not installed: .codex/hooks.json is tracked by Git
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
@@ -155,12 +166,12 @@ $ unstale status --wait 0 --no-animation
 warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
 Codex session start not installed: .codex/hooks.json is tracked by Git
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
 #   model provider: nothing
-#   codex: not run
+#   codex: --version, login status
 #   through the proxy: nothing
