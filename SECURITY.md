@@ -11,6 +11,9 @@ gateway in `gateway/`. Only the latest release receives fixes.
 
 ## What the client does on your machine
 
+In plainer words, with the registry edge cases: [docs/privacy.md](docs/privacy.md). The options for reading release
+notes and their costs: [docs/reading-release-notes.md](docs/reading-release-notes.md).
+
 - **Writes.** `unstale init` writes `.unstale/` (configuration, the decision ledger and reports), agent skills in
   `.claude/skills` and `.agents/skills`, and session-start hooks that Git ignores: `.claude/settings.local.json`
   (Claude Code), `.codex/hooks.json` (Codex, which runs it only once you trust it in `/hooks`) and
