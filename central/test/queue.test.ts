@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { FetchFailure } from "../src/collector/http.ts";
-import { CoverageService, logName, sameStream, type Job } from "../src/onboarding/service.ts";
+import { CoverageService, logName, REFRESH_MS, sameStream, type Job } from "../src/onboarding/service.ts";
 import { DailyBudget, nextPeriod, periodKey, quarterKey, Voters, type Limits } from "../src/onboarding/limits.ts";
 import { deprecationOf } from "../src/onboarding/notices.ts";
 import { servedIndex } from "../src/pipeline/export.ts";
@@ -637,6 +637,49 @@ test("while a popular refresh runs, the oldest-checked due refresh (by its upstr
   });
   await service.drain(Date.now() + 1000, 0, 1);
   expect(started).toEqual(["oldest", "popular", "older", "recent"]);
+});
+
+test("the refresh interval is 12 hours: a finished refresh is due 12 hours on, a yielded one 12 hours after its read; a detected version is due at once", async () => {
+  expect(REFRESH_MS).toBe(12 * 3600_000);
+  await mockWork({ "pkg:npm/twelve": { repo: "ex/twelve", tags: ["v1.0.0"] } });
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const job = service.submit("pkg:npm/twelve");
+  Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day,
+    completed: ["v1.0.0:sha256:" + "0".repeat(64) + ":audience-v1"] });
+  const before = Date.now();
+  await service.drain(Date.now() + 2000, 0, 1);
+  expect(job.state).toBe("monitoring");
+  expect(Date.parse(job.retry_at!) - before).toBeGreaterThanOrEqual(12 * 3600_000);
+  expect(Date.parse(job.retry_at!) - Date.now()).toBeLessThanOrEqual(12 * 3600_000);
+  // A refresh that yielded (queued) is due by its last read: not 8 hours on, 13 hours on.
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const yielded = (name: string, hours: number) =>
+    Object.assign(service.submit(`pkg:npm/${name}`), { state: "queued", admitted: "used", monitored: day, refresh_checked: ago(hours), completed: ["v1:x:audience-v1"] });
+  const recent = yielded("eight", 8), old = yielded("thirteen", 13);
+  const due = (j: Job) => (service as unknown as { refreshDue(job: Job): boolean }).refreshDue(j);
+  expect([due(recent), due(old)]).toEqual([false, true]);
+  // The next cycle's registry poll sees a new version: the technology is due now, whatever its retry time.
+  const next = new CoverageService(0, { limits: limits() }).hold();
+  const polled = next.jobs.get("pkg:npm/twelve")!;
+  expect(Date.parse(polled.retry_at!)).toBeGreaterThan(Date.now() + 11 * 3600_000);
+  expect(await next.pollChanges({ read: async (purl) => (purl === polled.purl ? "1.1.0" : "1.0.0") })).toMatchObject({ changed: 1 });
+  expect(Date.parse(polled.retry_at!)).toBeLessThanOrEqual(Date.now());
+  expect(next.queue()[0]?.purl).toBe(polled.purl);
+});
+
+test("the failure estimate and the interval's past-due count follow the 12-hour interval", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  for (const [name, hours] of [["eight", 8], ["thirteen", 13]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    // Failed since its last read, saved long after it.
+    Object.assign(job, { state: "monitoring", admitted: "used", descriptor: { repo: `ex/${name}` }, release_checked: ago(hours), refresh_checked: ago(hours),
+      retry_at: ago(0.1), failures: 1, updated: ago(0.5) });
+  }
+  expect(service.freshness(at)).toMatchObject({ unimprovable: { failing_before_read_estimate: 1 } });
+  expect((service as unknown as { dueRefreshes(at?: number): { overdue: number } }).dueRefreshes(at).overdue).toBe(1);
 });
 
 test("a due refresh under its cap is no release check: it extracts, judges advisories and charges its tokens", async () => {

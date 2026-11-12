@@ -34,7 +34,9 @@ export function httpFetcher(http: HttpClient, robots: RobotsCache, token = githu
       return { status: res.status, url: res.finalUrl, text: decode(res.body, res.headers.get("content-type")) };
     } catch (e) {
       if (!(e instanceof FetchFailure)) throw e;
-      return { status: e.httpStatus ?? 0, url, text: "" };
+      // A rate limit answers 429 whatever status the server used (GitHub's rate-limit 403), so every reader treats it
+      // as the transient refusal it is, never as a permission.
+      return { status: e.rateLimited ? 429 : (e.httpStatus ?? 0), url, text: "" };
     }
   };
   return {

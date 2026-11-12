@@ -790,6 +790,26 @@ test("the pause doubles as before after a logged pause when rate limits follow o
   expect(ratePauses(log).map((e) => [e.pause_ms, e.lasted_ms])).toEqual([[60_000, 60_000], [120_000, 120_000]]);
 });
 
+test("GitHub's rate-limit 403 pauses like a 429 and counts no failure; another 403 is a failure with backoff", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  for (const [error, limited] of [
+    [new FetchFailure("http_status", "GitHub ex/a page 1: 403", 403, 90_000, "api.github.com", true), true],
+    [new FetchFailure("http_status", "HTTP 403", 403, undefined, "api.github.com"), false],
+  ] as const) {
+    log.mockClear();
+    const service = new CoverageService(1, { limits: limits() }).hold();
+    const job = monitoredJob(service, limited ? "limited" : "denied");
+    vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockRejectedValueOnce(error);
+    await service.drain(Date.now() + 300, 0, 10);
+    expect(service.metrics()!.slices.refresh).toMatchObject({ rate_limited: limited ? 1 : 0, failed: limited ? 0 : 1 });
+    expect(job.failures ?? 0).toBe(limited ? 0 : 1);
+    if (limited) {
+      expect(ratePauses(log)).toEqual([{ event: "rate_pause", host: "api.github.com", status: 403, retry_after_ms: 90_000, pause_ms: 90_000, lasted_ms: expect.any(Number), ongoing: true, extended: 0 }]);
+      expect(Date.parse(job.paused_until!)).toBeGreaterThanOrEqual(Date.now() + 89_000);
+    } else expect(ratePauses(log)).toEqual([]);
+  }
+});
+
 test("pump logs a pause that has ended", () => {
   vi.useFakeTimers();
   const log = vi.spyOn(console, "error").mockImplementation(() => {});

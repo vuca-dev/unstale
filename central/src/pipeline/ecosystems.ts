@@ -23,7 +23,8 @@
 //     it such a technology gets no advisories (as before).
 // No hand-written package lists, no per-technology tables (memory rule: ecosystem vocabularies, fail open).
 import type { Technology } from "./technologies.ts";
-import { pool } from "./util.ts";
+import { registryCache } from "./registry.ts";
+import { pool, sha256 } from "./util.ts";
 import { CARGO_NAME, cargoPurl } from "../onboarding/identity.ts";
 
 export interface Ecosystem {
@@ -189,6 +190,66 @@ async function getJson(url: string): Promise<unknown> {
   }
 }
 
+// ---- npm listings shared across technologies ----
+//
+// The sibling and repository-package lookups read the same public answers for every technology of one scope or one
+// maintainer: a scope's package list, each of its packages' latest manifests (11,435 for `@types`, 2,129 for
+// `@fontsource`), a maintainer's search pages. Each is kept for a day in the registry cache (packs.ts, saved with the
+// state, so later cycles and runs reuse it), keyed by the request URL, and one request serves every lookup in flight
+// in this process. Only the fields the lookups use are kept. A 404 is the registry's answer and is kept; a failed or
+// rate-limited read throws as before and is never kept, nor is a search page past the first that came back empty (a
+// list that ended early). Past a day an entry is read again, never served.
+
+/** How long a listing is reused. */
+export const LISTING_FRESH_MS = 24 * 3600_000;
+const listingKey = (url: string) => `listings/${sha256(url).slice(0, 32)}`;
+const listingsInFlight = new Map<string, Promise<unknown>>();
+
+async function listing<T>(url: string, keep: (doc: unknown) => T, whole: (value: T) => boolean = () => true): Promise<T | undefined> {
+  const key = listingKey(url);
+  const kept = registryCache().get(key);
+  const hit = kept && (JSON.parse(kept.toString("utf8")) as { checked: string; url: string; value: T | null });
+  if (hit && hit.url === url && Date.now() - Date.parse(hit.checked) < LISTING_FRESH_MS) return hit.value ?? undefined;
+  let pending = listingsInFlight.get(url) as Promise<T | undefined> | undefined;
+  if (!pending) {
+    pending = (async () => {
+      const doc = await getJson(url);
+      const value = doc === undefined ? null : keep(doc);
+      if (value !== null && !whole(value)) return value;
+      registryCache().put(key, JSON.stringify({ checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), url, value }) + "\n");
+      return value ?? undefined;
+    })().finally(() => listingsInFlight.delete(url));
+    listingsInFlight.set(url, pending);
+  }
+  return pending;
+}
+
+/** A package's latest manifest as the lookups read it: its GitHub repository (`githubRepo`) and maintainers' names. */
+const latestManifest = (name: string) =>
+  listing(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`, (doc) => {
+    const d = doc as { repository?: unknown; maintainers?: Array<{ name?: unknown }> };
+    return { repo: githubRepo(d.repository) ?? null, maintainers: (Array.isArray(d.maintainers) ? d.maintainers : []).flatMap((m) => (typeof m?.name === "string" ? [m.name] : [])) };
+  });
+
+/** The package names of a scope's public listing (`-/org/<scope>/package`), in the scope, sorted. */
+const scopePackages = (scope: string) =>
+  listing(`https://registry.npmjs.org/-/org/${encodeURIComponent(scope)}/package`, (doc) =>
+    Object.keys((doc ?? {}) as Record<string, unknown>).filter((n) => n.startsWith(`@${scope}/`)).sort());
+
+type SearchPage = { total: number; objects: Array<{ name: string; description: string; repo: string | null }> };
+/** One page of a maintainer's packages in the registry search (`maintainer:<name>`, 250 a page). */
+const maintainerPage = (m: string, from: number) =>
+  listing(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(`maintainer:${m}`)}&size=250&from=${from}`, (doc): SearchPage => {
+    const d = doc as { total?: unknown; objects?: Array<{ package?: { name?: unknown; description?: unknown; links?: { repository?: unknown } } }> };
+    return {
+      total: typeof d.total === "number" ? d.total : 0,
+      objects: (Array.isArray(d.objects) ? d.objects : []).flatMap((o) => {
+        const p = o?.package;
+        return typeof p?.name === "string" ? [{ name: p.name, description: typeof p.description === "string" ? p.description : "", repo: githubRepo(p.links?.repository) ?? null }] : [];
+      }),
+    };
+  }, (page) => from === 0 || page.objects.length > 0);
+
 /**
  * npm siblings: packages of the components' scopes (the registry's public scope listing) whose registry `repository`
  * points at the technology's repository. An unscoped technology has none. A scope is listed only when a component in
@@ -201,19 +262,17 @@ async function getJson(url: string): Promise<unknown> {
 async function npmSiblings(t: Technology): Promise<string[]> {
   const repo = t.repo.toLowerCase();
   if (!repo) return [];
-  const latest = async (name: string) => (await getJson(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`)) as { repository?: unknown } | undefined;
   const scopes = new Set<string>();
   for (const name of new Set(t.components.map(npmName).filter((n) => n.startsWith("@"))))
-    if (githubRepo((await latest(name))?.repository) === repo) scopes.add(name.slice(1).split("/")[0]!);
+    if ((await latestManifest(name))?.repo === repo) scopes.add(name.slice(1).split("/")[0]!);
   const out: string[] = [];
   for (const scope of scopes) {
-    const listing = (await getJson(`https://registry.npmjs.org/-/org/${encodeURIComponent(scope)}/package`)) as Record<string, string> | undefined;
-    const names = Object.keys(listing ?? {}).filter((n) => n.startsWith(`@${scope}/`)).sort();
+    const names = (await scopePackages(scope)) ?? [];
     let failure: unknown;
     await pool(names, 8, async (name) => {
       if (failure) return;
       try {
-        if (githubRepo((await latest(name))?.repository) === repo) out.push(npmPurl(name));
+        if ((await latestManifest(name))?.repo === repo) out.push(npmPurl(name));
       } catch (e) {
         failure ??= e;
       }
@@ -237,21 +296,16 @@ async function npmRepositoryPackages(t: Technology): Promise<RegistryPackage[] |
   const repo = t.repo.toLowerCase();
   if (!repo) return undefined;
   const maintainers = new Set<string>();
-  for (const c of t.components) {
-    const meta = (await getJson(`https://registry.npmjs.org/${npmName(c).replace("/", "%2f")}/latest`)) as { maintainers?: Array<{ name?: unknown }> } | undefined;
-    for (const m of meta?.maintainers ?? []) if (typeof m.name === "string") maintainers.add(m.name);
-  }
-  type Page = { total?: number; objects?: Array<{ package?: { name?: unknown; description?: unknown; links?: { repository?: unknown } } }> };
-  const page = async (m: string, from: number) => (await getJson(`https://registry.npmjs.org/-/v1/search?text=${encodeURIComponent(`maintainer:${m}`)}&size=250&from=${from}`)) as Page | undefined;
-  const objects: NonNullable<Page["objects"]> = [];
+  for (const c of t.components) for (const m of (await latestManifest(npmName(c)))?.maintainers ?? []) maintainers.add(m);
+  const objects: SearchPage["objects"] = [];
   let read = 0;
   for (const m of [...maintainers].sort()) {
-    const first = await page(m, 0);
+    const first = await maintainerPage(m, 0);
     const total = first?.total ?? 0;
     if (!first || total === 0 || total > MAINTAINER_LIST_MAX) continue;
-    const mine = [...(first.objects ?? [])];
+    const mine = [...first.objects];
     for (let from = mine.length; from < total; from += 250) {
-      const more = (await page(m, from))?.objects ?? [];
+      const more = (await maintainerPage(m, from))?.objects ?? [];
       // A list that ends early is not the maintainer's whole list: unknown, not empty.
       if (!more.length) return undefined;
       mine.push(...more);
@@ -261,11 +315,7 @@ async function npmRepositoryPackages(t: Technology): Promise<RegistryPackage[] |
   }
   if (!read) return undefined;
   const out = new Map<string, RegistryPackage>();
-  for (const o of objects) {
-    const p = o.package;
-    if (typeof p?.name !== "string" || githubRepo(p.links?.repository) !== repo) continue;
-    out.set(p.name, { purl: npmPurl(p.name), name: p.name, description: typeof p.description === "string" ? p.description : "" });
-  }
+  for (const o of objects) if (o.repo === repo) out.set(o.name, { purl: npmPurl(o.name), name: o.name, description: o.description });
   return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 

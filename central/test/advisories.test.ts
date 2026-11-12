@@ -12,6 +12,7 @@ import type { Classification } from "../src/pipeline/classify/adapter.ts";
 import type { StoredRecord, TechStore } from "../src/pipeline/store.ts";
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
 import { writeAtomic } from "../src/pipeline/util.ts";
+import { registryCache } from "../src/pipeline/registry.ts";
 
 const prev = process.env.UNSTALE_CENTRAL_DIR;
 beforeAll(() => {
@@ -290,10 +291,74 @@ describe("advisories", () => {
       // A merged type stub's scope belongs to another repository: never listed.
       expect(await siblings(tech(["pkg:npm/ws", "pkg:npm/%40types/ws"], "websockets/ws"))).toEqual([]);
       expect(asked).toEqual(["@types%2fws/latest"]);
-      expect(await siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).toEqual(["pkg:npm/%40acme/cli", "pkg:npm/%40acme/core"]);
+      // The refusal is asked first: once read, the listings are kept for a day (the test below).
       refuse = "@acme%2fother/latest";
       await expect(siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).rejects.toThrow(/403/);
+      refuse = "";
+      expect(await siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).toEqual(["pkg:npm/%40acme/cli", "pkg:npm/%40acme/core"]);
     } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("npm listings: one scope's and one maintainer's listings are read once a day for every technology, kept with public fields only; a refusal is never kept", async () => {
+    const manifest = (r: string) => ({ repository: { url: `git+https://github.com/${r}.git` }, maintainers: [{ name: "keeper", email: "keeper@example.org" }], readme: "long text" });
+    const answers: Record<string, unknown> = {
+      "@shared%2fa/latest": manifest("shared/mono"),
+      "@shared%2fb/latest": manifest("shared/mono"),
+      "@shared%2fc/latest": manifest("someone/else"),
+      "-/org/shared/package": { "@shared/a": "write", "@shared/b": "write", "@shared/c": "write" },
+      [`-/v1/search?text=${encodeURIComponent("maintainer:keeper")}&size=250&from=0`]: {
+        total: 2,
+        objects: [
+          { package: { name: "@shared/a", description: "A", links: { repository: "https://github.com/shared/mono" }, publisher: { email: "keeper@example.org" } } },
+          { package: { name: "@shared/b", description: "B", links: { repository: "https://github.com/shared/mono" } } },
+        ],
+      },
+    };
+    const asked: string[] = [];
+    let status = 0;
+    vi.stubGlobal("fetch", async (url: string) => {
+      const key = url.replace("https://registry.npmjs.org/", "");
+      asked.push(key);
+      if (status) return new Response("", { status });
+      return key in answers ? Response.json(answers[key]) : new Response("", { status: 404 });
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+    try {
+      const eco = ecosystemOf("pkg:npm/%40shared/a");
+      const tech = (component: string) => ({ ...TECHNOLOGIES.next!, repo: "shared/mono", components: [component] });
+      // A rate-limited read (retried, then given up) fails the lookup and keeps nothing.
+      status = 429;
+      const limited = expect(eco.siblings!(tech("pkg:npm/%40shared/a"))).rejects.toThrow(/429/);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await limited;
+      status = 0;
+      asked.length = 0;
+      // Two technologies of the scope at once: every listing and manifest is asked once.
+      const [a, b] = await Promise.all([eco.siblings!(tech("pkg:npm/%40shared/a")), eco.siblings!(tech("pkg:npm/%40shared/b"))]);
+      expect(a).toEqual(["pkg:npm/%40shared/a", "pkg:npm/%40shared/b"]);
+      expect(b).toEqual(a);
+      expect(asked.sort()).toEqual(["-/org/shared/package", "@shared%2fa/latest", "@shared%2fb/latest", "@shared%2fc/latest"]);
+      // Later in the day (another cycle reads the same saved cache): nothing is asked, the maintainer's list once.
+      vi.setSystemTime(Date.now() + 23 * 3600_000);
+      asked.length = 0;
+      expect(await eco.siblings!(tech("pkg:npm/%40shared/b"))).toEqual(a);
+      const packages = [{ purl: "pkg:npm/%40shared/a", name: "@shared/a", description: "A" }, { purl: "pkg:npm/%40shared/b", name: "@shared/b", description: "B" }];
+      expect(await eco.repositoryPackages!(tech("pkg:npm/%40shared/a"))).toEqual(packages);
+      expect(await eco.repositoryPackages!(tech("pkg:npm/%40shared/b"))).toEqual(packages);
+      expect(asked).toEqual([`-/v1/search?text=${encodeURIComponent("maintainer:keeper")}&size=250&from=0`]);
+      // Only the fields the lookups use are kept: no address, no README.
+      const kept = [...registryCache().entries()].filter(([name]) => name.startsWith("listings/")).map(([, v]) => v.toString("utf8")).join("\n");
+      expect(kept).toContain('"maintainers":["keeper"]');
+      expect(kept).not.toMatch(/example\.org|long text|publisher/);
+      // Past a day, read again.
+      vi.setSystemTime(Date.now() + 2 * 3600_000);
+      asked.length = 0;
+      expect(await eco.siblings!(tech("pkg:npm/%40shared/b"))).toEqual(a);
+      expect(asked.sort()).toEqual(["-/org/shared/package", "@shared%2fa/latest", "@shared%2fb/latest", "@shared%2fc/latest"]);
+    } finally {
+      vi.useRealTimers();
       vi.unstubAllGlobals();
     }
   });

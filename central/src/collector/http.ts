@@ -25,13 +25,40 @@ export class FetchFailure extends Error {
   readonly retryAfterMs: number | undefined;
   /** The host that answered with `httpStatus` (a hostname only: no scheme, credentials, port or path), for logs. */
   readonly host: string | undefined;
-  constructor(kind: FailureKind, message: string, httpStatus?: number, retryAfterMs?: number, host?: string) {
+  /** A refusal for rate: every 429, and a 403 that says it is one (`githubRateLimit`). */
+  readonly rateLimited: boolean;
+  constructor(kind: FailureKind, message: string, httpStatus?: number, retryAfterMs?: number, host?: string, rateLimited = httpStatus === 429) {
     super(message);
     this.kind = kind;
     this.httpStatus = httpStatus;
     this.retryAfterMs = retryAfterMs;
     this.host = host;
+    this.rateLimited = rateLimited;
   }
+}
+
+/** GitHub's REST API host, the one whose 403 can be a rate limit (`githubRateLimit`). */
+export const GITHUB_API_HOST = "api.github.com";
+/** The documented bodies of a GitHub rate-limit refusal: the primary limit's and the secondary limit's. */
+const GITHUB_RATE_MESSAGE = /API rate limit exceeded|secondary rate limit/i;
+/** GitHub's documented minimum wait after a secondary rate limit that names no time. */
+const GITHUB_SECONDARY_WAIT_MS = 60_000;
+
+/**
+ * Whether a GitHub 403 is a rate limit, and the wait it asks for (GitHub REST docs, "Rate limits"): the primary limit
+ * sets `x-ratelimit-remaining: 0` and `x-ratelimit-reset` (epoch seconds); a secondary limit sends `retry-after`, or
+ * else only its message, after which GitHub asks for at least a minute. Undefined for any other 403 (a permission, a
+ * blocked repository): that stays a failure.
+ */
+export function githubRateLimit(status: number, headers: Headers, body = ""): { retryAfterMs?: number } | undefined {
+  if (status !== 403) return undefined;
+  const retryAfter = parseRetryAfter(headers.get("retry-after"));
+  if (retryAfter !== undefined) return { retryAfterMs: retryAfter };
+  if (headers.get("x-ratelimit-remaining")?.trim() === "0") {
+    const reset = Number(headers.get("x-ratelimit-reset"));
+    return Number.isFinite(reset) && reset > 0 ? { retryAfterMs: Math.max(0, reset * 1000 - Date.now()) } : {};
+  }
+  return GITHUB_RATE_MESSAGE.test(body) ? { retryAfterMs: GITHUB_SECONDARY_WAIT_MS } : undefined;
 }
 
 export class Semaphore {
@@ -139,6 +166,8 @@ export class HttpClient {
       if (res.status === 304 || (res.status >= 200 && res.status < 300)) {
         return { status: res.status, finalUrl: current.toString(), headers: res.headers, body: res.body };
       }
+      const github = current.hostname === GITHUB_API_HOST ? githubRateLimit(res.status, res.headers, Buffer.from(res.body).toString("utf8")) : undefined;
+      if (github) throw new FetchFailure("http_status", `HTTP ${res.status} (rate limit)`, res.status, github.retryAfterMs, current.hostname, true);
       const retryAfter = res.status === 429 || res.status === 503 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new FetchFailure("http_status", `HTTP ${res.status}`, res.status, retryAfter, current.hostname);
     }
