@@ -20,7 +20,7 @@ pool v3 and its judge. The agent-alone arm is the one run on 22 and 23 October.
 | Act-now finds (tier A) | 18 | 20 | |
 | Client tokens per repo | 409K | 661K | |
 | Client tokens per act-now find | **432K** | 628K | alone ÷ no-key 0.69, from 0.43 to 1.35 |
-| Lines listed | 82 | 117 | |
+| Risk lines listed (capability lines left out, as scored) | 82 | 117 | |
 | Top-8 precision (A+B) | 0.39 | 0.36 | |
 
 Against the two gates:
@@ -42,10 +42,13 @@ Reported, not gated:
   deprecations, unmaintained packages, lockfile advisories). The raw release notes added about a quarter of the finds
   and most of the extra tokens.
 - **Share of a full report that needs no model:** of the keyed report's 154 real finds on pool v3 (24 October, build
-  0.2.5), 42 (27%) sit in those deterministic sections: 28 publisher deprecations, 7 unmaintained packages, 7
-  lockfile advisories. Of the act-now ones, 19 of 69 (28%). This is a share of a full report's real findings for a
-  repository as installed; it was not measured on new releases only. Another 35 finds (23%) are advisory lines the
-  keyed report places with model-written data.
+  0.2.5), **39 (25%)** have a line in a section built from deterministic signals alone: 22 under publisher
+  deprecations, 9 under unmaintained packages, 8 under lockfile advisories. Of the act-now ones, 18 of 73 (25%).
+  `deterministic_share.py` computes this with the harness's own links between report lines and pool items; a find
+  counts when any line tied to it sits in one of the three sections, once, under the first of them. It is a share of
+  a full report's real findings for a repository as installed; it was not measured on new releases only. The
+  pre-registration quotes 42 (27%): that was a hand count on a looser key match, made before this script existed,
+  and the script's number replaces it.
 - **Pending:** 6 of the no-key arm's lines match no item of the frozen pool and are in no count.
 
 ## Per repo
@@ -74,6 +77,20 @@ had no release text to give (not yet refreshed, or no source text): the new arm 
 | bitwarden/clients | 16 | 1 | 2 | 1 | 1 | 202K | 652K | 1 | 8 of 100 |
 | opral/paraglide-js | 11 | 2 | 0 | 1 | 0 | 135K | 896K | 0 | 1 of 69 |
 | Automattic/mongoose | 5 | 0 | 1 | 0 | 0 | 246K | 796K | 0 | 3 of 31 |
+
+## Changes to the scoring script after the first results
+
+Two, neither of which touches a gate (finds, act-now finds and tokens come from the harness's report unchanged):
+
+- Keyed reports under 1 KB are left out of the reading-matter multiple. On three large repos the keyed report was the
+  stub a run writes at its time limit, which would have inflated the multiple.
+- A block on every model call inside scoring was narrowed to the judge only. The harness asks a small model, once per
+  repo, whether two items its rules cannot settle are the same change, and caches the answer; scoring could not
+  finish without it. This is the harness's standard matching step, the same for both arms.
+
+The agent alone's 82 lines here are risk lines; the 94 in the pre-registration and in `eval/beat-naive/RESULTS.md`
+count its capability lines too (12 of them), which the risk scoring leaves out for every arm (5 of the no-key arm's
+122).
 
 ## Revision
 
