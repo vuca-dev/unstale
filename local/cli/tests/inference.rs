@@ -546,9 +546,9 @@ fn chrono_month() -> String {
 }
 
 #[test]
-fn both_spellings_of_the_switch_turn_model_steps_on_and_off() {
-    // Other values are the default, as unset is (`util::edge_inference_from`'s test).
-    for (value, calls) in [("1", 1), ("true", 1), ("0", 0), ("false", 0)] {
+fn the_spellings_of_the_switch_turn_model_steps_on_and_off() {
+    // Any case; other values are the default, as unset is (`util::edge_inference_from`'s test).
+    for (value, calls) in [("1", 1), ("true", 1), ("on", 1), ("Yes", 1), ("0", 0), ("false", 0), ("OFF", 0), ("no", 0)] {
         let (url, seen) = mock(200, OPENAI_OK, Duration::ZERO);
         let cache = tempfile::tempdir().unwrap();
         let out = Command::new(env!("CARGO_BIN_EXE_unstale"))
