@@ -722,8 +722,7 @@ fn each_agents_session_start_syncs_on_a_fresh_install() {
     assert_eq!((out.status.code(), out.stderr.len()), (Some(0), 0));
     wait_for(&env, synced);
 
-    // opencode loads the plugin and sends it `session.created`; its `$` is Bun's shell, played here by a stand-in
-    // that runs the command it is given the way Bun's does (each interpolated value one argument, arrays spread).
+    // opencode loads the plugin and sends it a session's start, as 2.x and as 1.x do, played here by a stand-in.
     fresh("opencode");
     let plugin =
         std::fs::read_to_string(repo.join(".opencode/plugins/unstale-session.js")).unwrap();
@@ -763,34 +762,55 @@ fn each_agents_session_start_syncs_on_a_fresh_install() {
     );
 }
 
-/// A stand-in for opencode: loads the plugin with a `$` like Bun's and sends events.
+/// A stand-in for opencode: loads the plugin as opencode 2.x does (its default export's `setup`, given the location
+/// and the server's event stream) and as opencode 1.x does (its `server` hooks), and sends events. Every process the
+/// plugin starts is recorded, and still runs.
 const OPENCODE_SESSION: &str = r#"
-import { spawn } from "node:child_process";
-const repo = process.argv[2];
+import { createRequire, syncBuiltinESMExports } from "node:module";
+const cp = createRequire(import.meta.url)("node:child_process");
+const real = cp.spawn;
 const calls = [];
-const $ = (strings, ...values) => {
-  const argv = [];
-  strings.forEach((s, i) => {
-    argv.push(...s.split(/\s+/).filter(Boolean));
-    if (i < values.length) argv.push(...[values[i]].flat().map(String));
-  });
-  calls.push(argv);
-  const run = new Promise((resolve) => {
-    const p = spawn(argv[0], argv.slice(1), { stdio: "ignore" });
-    p.on("exit", resolve);
-    p.on("error", resolve);
-  });
-  const shell = { quiet: () => shell, nothrow: () => shell, catch: (f) => run.catch(f), then: (a, b) => run.then(a, b) };
-  return shell;
+const patch = (f) => { cp.spawn = f; syncBuiltinESMExports(); };
+patch((cmd, args, opts) => { calls.push([cmd, ...args]); return real(cmd, args, opts); });
+const repo = process.argv[2];
+const settle = () => new Promise((r) => setTimeout(r, 200));
+const stream = (events) => ({ subscribe: async function* () { for (const e of events) yield e; } });
+const { default: plugin } = await import(new URL("./plugin.mjs", import.meta.url));
+if (!plugin?.id || typeof plugin.setup !== "function" || typeof plugin.server !== "function") throw new Error("not a 2.x and 1.x plugin");
+const expect = (n, what) => {
+  if (calls.length !== n) throw new Error(`${what}: ${JSON.stringify(calls)}`);
+  const last = calls[n - 1];
+  if (n && last.slice(-3).join(" ") !== `-C ${repo} notify`) throw new Error(`${what}: ${JSON.stringify(last)}`);
 };
-const { UnstaleSessionSync } = await import(new URL("./plugin.mjs", import.meta.url));
-const hooks = await UnstaleSessionSync({ $, directory: repo });
+// opencode 2.x, a session started in the interface: created, then its executions; one sync.
+await plugin.setup({ location: { directory: repo }, event: stream([
+  { type: "message.updated", data: {} },
+  { type: "session.created", data: { sessionID: "ses_1" } },
+  { type: "session.execution.started", data: { sessionID: "ses_1" } },
+  { type: "session.execution.started", data: { sessionID: "ses_1" } },
+]) });
+await settle();
+const ignored = calls.length === 1;
+expect(1, "2.x session.created");
+// opencode 2.x, `opencode run`: the session is not announced as created; its first execution counts, once.
+await plugin.setup({ location: { directory: repo }, event: stream([
+  { type: "session.execution.started", data: { sessionID: "ses_2" } },
+  { type: "session.execution.started", data: { sessionID: "ses_2" } },
+]) });
+await settle();
+expect(2, "2.x opencode run");
+// opencode 1.x: the `server` hooks get `session.created`.
+const hooks = await plugin.server({ directory: repo });
 await hooks.event({ event: { type: "message.updated" } });
-const ignored = calls.length === 0;
 await hooks.event({ event: { type: "session.created" } });
-if (calls.length !== 1) throw new Error("not started: " + JSON.stringify(calls));
-const broken = await UnstaleSessionSync({ $: () => { throw new Error("no shell"); }, directory: repo });
-await broken.event({ event: { type: "session.created" } });
+expect(3, "1.x session.created");
+// Nothing reaches opencode: no event stream, a stream that fails, a process that cannot start.
+await plugin.setup({ location: { directory: repo } });
+await plugin.setup({ location: { directory: repo }, event: { subscribe: () => { throw new Error("no stream"); } } });
+patch(() => { throw new Error("no spawn"); });
+await plugin.setup({ location: { directory: repo }, event: stream([{ type: "session.created", data: { sessionID: "ses_3" } }]) });
+await (await plugin.server({ directory: repo })).event({ event: { type: "session.created" } });
+await settle();
 console.log(`other events: ${ignored ? "ignored" : "ran"}; failure: contained`);
 await new Promise((r) => setTimeout(r, 1500));
 "#;

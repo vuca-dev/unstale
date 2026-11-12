@@ -426,6 +426,35 @@ fn uninstall_backs_up_decisions_and_keeps_unmanaged_agent_files() {
     assert!(env.repo.path().join(".unstale/config.json").exists());
 }
 
+/// Where opencode's command cannot be written (`.opencode` a file, or a directory that cannot be written), `init`
+/// and `review` carry on: the skills are installed and the command is named as a conflict.
+#[cfg(unix)]
+#[test]
+fn an_unwritable_opencode_directory_is_a_conflict_not_a_failure() {
+    use std::os::unix::fs::PermissionsExt;
+    let cat = FixtureCatalog::new(); publish(&cat);
+    for case in ["file", "read-only"] {
+        let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+        let dir = env.repo.path().join(".opencode");
+        if case == "file" {
+            write(env.repo.path(), ".opencode", "not a directory");
+        } else {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        }
+        env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
+        env.ok(&["review"]);
+        assert!(env.repo.path().join(".agents/skills/unstale-review/SKILL.md").is_file(), "{case}");
+        assert!(env.read(".unstale/state/integration-conflicts.json").contains(".opencode/commands/unstale-review.md"), "{case}");
+        env.ok(&["uninstall"]);
+        if case == "read-only" {
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        } else {
+            assert_eq!(env.read(".opencode"), "not a directory");
+        }
+    }
+}
+
 /// opencode 2.x offers command files, not skills, as slash commands: `/unstale-review` is a command file that points
 /// at the review skill, kept out of Git in personal mode like the skills, committed in shared mode, gone on uninstall.
 #[test]

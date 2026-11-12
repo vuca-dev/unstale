@@ -1112,35 +1112,39 @@ fn no_client_connection_ignores_the_proxy_variables() {
 
 // ------------------------------------------------------------------------------------------- not runnable yet
 
-/// A stand-in for opencode: loads the installed plugin with a `$` like Bun's shell (each interpolated value one
-/// argument), sends it `session.created` and waits for the handler, as opencode does. Prints nothing itself.
+/// A stand-in for opencode 2.x: loads the installed plugin's default export, runs its `setup` with the location and
+/// an event stream that sends `session.created`, and waits for the command the plugin starts (its output shown, as
+/// the measure is the command's). Prints nothing itself.
 const OPENCODE_SESSION: &str = r#"
-import { spawn } from "node:child_process";
+import { createRequire, syncBuiltinESMExports } from "node:module";
+const cp = createRequire(import.meta.url)("node:child_process");
+const real = cp.spawn;
 const repo = process.argv[2];
 let exited = null;
 let run = null;
-const $ = (strings, ...values) => {
-  const argv = [];
-  strings.forEach((s, i) => {
-    argv.push(...s.split(/\s+/).filter(Boolean));
-    if (i < values.length) argv.push(...[values[i]].flat().map(String));
-  });
+cp.spawn = (cmd, args) => {
+  const p = real(cmd, args, { stdio: ["ignore", "inherit", "inherit"] });
   run = new Promise((resolve) => {
-    const p = spawn(argv[0], argv.slice(1), { stdio: ["ignore", "inherit", "inherit"] });
     p.on("exit", (c) => { exited = performance.now(); resolve(c); });
     p.on("error", resolve);
   });
-  const shell = { quiet: () => shell, nothrow: () => shell, catch: (f) => run.catch(f), then: (a, b) => run.then(a, b) };
-  return shell;
+  // Held until it exits, to time it: opencode's server outlives it either way.
+  p.unref = () => p;
+  return p;
 };
-const { UnstaleSessionSync } = await import(new URL("./plugin.mjs", import.meta.url));
-const hooks = await UnstaleSessionSync({ $, directory: repo });
-const started = performance.now();
-await hooks.event({ event: { type: "session.created" } });
+syncBuiltinESMExports();
+const { default: plugin } = await import(new URL("./plugin.mjs", import.meta.url));
+let started = null;
+const event = { subscribe: async function* () {
+  started = performance.now();
+  yield { type: "session.created", data: { sessionID: "ses_1" } };
+} };
+await plugin.setup({ location: { directory: repo }, event });
 // From the event to the end of the command the plugin ran: opencode is running already, so node's own start is not
 // counted.
+for (let i = 0; i < 100 && !run; i++) await new Promise((r) => setTimeout(r, 10));
 if (run) await run;
-(await import("node:fs")).writeFileSync(process.argv[3], String(Math.round((exited ?? performance.now()) - started)));
+(await import("node:fs")).writeFileSync(process.argv[3], String(Math.round((exited ?? performance.now()) - (started ?? performance.now()))));
 "#;
 
 /// Each agent's installed session-start hook, run as that agent runs it: (agent, exit code, stdout, stderr, time).

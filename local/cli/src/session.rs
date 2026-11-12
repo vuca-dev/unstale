@@ -928,24 +928,58 @@ pub fn install_codex_hook(ctx: &Ctx) -> Result<()> {
     Ok(())
 }
 
-/// The opencode plugin's source: on `session.created` it starts `unstale notify` and does not wait for it; nothing it
+/// The opencode plugin's source: at a session's start it starts `unstale notify` and does not wait for it; nothing it
 /// does can throw into opencode. opencode adds no hook output to the agent's context, so the line is not shown there;
 /// the sync still runs. The executable is passed as separate arguments, never through a shell.
+///
+/// One default export serves both plugin APIs, the shape opencode's V1 migration guide gives: opencode 2.x requires a
+/// default export with an `id` and `setup` (it refuses the 1.x named-export function: "Plugin must export a default
+/// definition"), and opencode 1.x from 1.18.29 runs its `server`. 2.x does not send `session.created` to a plugin
+/// when `opencode run` creates the session in the request that starts the server, so a session's first
+/// `session.execution.started` counts as its start too, once per session.
 pub fn opencode_plugin(argv: &[String]) -> String {
     let argv = serde_json::to_string(argv).unwrap_or_else(|_| "[]".into());
-    format!(
-        "// {MARKER}\n\
-// At session start, runs the catalog sync in the background (`unstale notify`); never awaited, never throws.\n\
-const UNSTALE = {argv};\n\
-export const UnstaleSessionSync = async ({{ $, directory }}) => ({{\n\
-  event: async ({{ event }}) => {{\n\
-    if (event?.type !== \"session.created\") return;\n\
-    try {{\n\
-      $`${{UNSTALE}} -C ${{directory ?? \".\"}} notify`.quiet().nothrow().catch(() => {{}});\n\
-    }} catch {{}}\n\
-  }},\n\
-}});\n"
-    )
+    const SOURCE: &str = r#"// MARKER
+// At session start, runs the catalog sync in the background (`unstale notify`); never awaited, never throws.
+// opencode 2.x runs `setup`; opencode 1.x (1.18.29 and later) runs `server`.
+import { spawn } from "node:child_process";
+const UNSTALE = ARGV;
+const sync = (directory) => {
+  try {
+    const child = spawn(UNSTALE[0], [...UNSTALE.slice(1), "-C", directory ?? ".", "notify"], { detached: true, stdio: "ignore" });
+    child.on("error", () => {});
+    child.unref();
+  } catch {}
+};
+export default {
+  id: "unstale-session",
+  async setup(ctx) {
+    const directory = ctx?.location?.directory;
+    const started = new Set();
+    const controller = new AbortController();
+    (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          if (event?.type !== "session.created" && event?.type !== "session.execution.started") continue;
+          const id = event.data?.sessionID ?? event.data?.info?.id ?? event.data?.id;
+          if (started.has(id)) continue;
+          started.add(id);
+          sync(directory);
+        }
+      } catch {}
+    })();
+    return () => controller.abort();
+  },
+  async server(input) {
+    return {
+      event: async ({ event }) => {
+        if (event?.type === "session.created") sync(input?.directory);
+      },
+    };
+  },
+};
+"#;
+    SOURCE.replacen("MARKER", MARKER, 1).replacen("ARGV", &argv, 1)
 }
 
 /// opencode: the plugin, written only where no file of the user's stands (nor a tracked, read-only or linked one),
@@ -998,8 +1032,10 @@ pub fn install_opencode_command(ctx: &Ctx) -> Result<bool> {
         return Ok(false);
     }
     let text = opencode_command();
-    if old.as_deref() != Some(text.as_str()) {
-        util::write_atomic(&path, text.as_bytes())?;
+    // Where it cannot be written (`.opencode` a file, a directory that cannot be written): a conflict, as for a file
+    // of the user's, and the rest of the integration goes on.
+    if old.as_deref() != Some(text.as_str()) && util::write_atomic(&path, text.as_bytes()).is_err() {
+        return Ok(false);
     }
     if ctx.config.mode == crate::Mode::Local {
         exclude(&ctx.root, OPENCODE_COMMAND_EXCLUDE_LINE)?;

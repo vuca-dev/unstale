@@ -47,7 +47,10 @@ WS2 (timestamps) and WS3 (background work under the budget). Hook installation c
 - **Per agent:** Claude Code `.claude/settings.local.json` (as before); Codex `.codex/hooks.json` (`SessionStart`,
   timeout 5 s; Codex runs a project hook once the user trusts it in `/hooks`, which it points to at startup; a hooks
   file Git tracks is left alone); opencode `.opencode/plugins/unstale-session.js` on `session.created` (opencode adds
-  no hook output to the agent's context, so only the sync runs there). Each names this machine's executable and is
+  no hook output to the agent's context, so only the sync runs there). One default export serves both plugin APIs:
+  2.x requires `id` and `setup` and refuses 1.x's named-export function, and 1.x from 1.18.29 runs its `server`.
+  Under `opencode run`, 2.x sends no `session.created`, so a session's first `session.execution.started` counts.
+  Checked on 2.2.7. 1.x was not run here; releases before 1.18.29 do not read a default export (per that guide). Each names this machine's executable and is
   excluded from Git.
 - **Behind the one switch until the release** (owner decision, 10 November). With it off the client behaves as before
   session-start sync: the Claude Code hook does what `notify` did (its one fix: at most one line, exit 0, within the
