@@ -360,8 +360,8 @@ const LABELS_BELOW: Quality = Quality::MoreWrong {
     of: "breaking-change flags",
     of_short: "breaking flags",
     detail: &[
-        "on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)",
-        "on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)",
+        "on short release notes ≈ 38% false alarms, against 25% (42 flags)",
+        "on upgrade guides ≈ 7% false alarms, against 5% (228 flags)",
     ],
 };
 /// Matching on the same model: about 4 more duplicate records per technology-year than Jev's (4.0 to 4.5), from the

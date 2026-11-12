@@ -18,10 +18,10 @@ This repo has 38 packages unstale follows.
    per package, per year  $0.064
    this repo, a year      ≈ $2.43
    first sync, once       ≈ $2.43
-   results                about as many breaking changes as the best option, more flagged wrongly
-                          ≈ 11 in 100 breaking-change flags wrong, against 8
-                          on short release notes ≈ 38 in 100 wrong, against 25 (42 flags)
-                          on upgrade guides ≈ 7 in 100 wrong, against 5 (228 flags)
+   results                the same breaking changes as the best option, more false alarms
+                          ≈ 11% of breaking-change flags false alarms, against 8%
+                          on short release notes ≈ 38% false alarms, against 25% (42 flags)
+                          on upgrade guides ≈ 7% false alarms, against 5% (228 flags)
    repeats                ≈ 4 more changes listed twice per package, per year
 
 4  Codex plan

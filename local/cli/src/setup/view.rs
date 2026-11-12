@@ -161,9 +161,9 @@ fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
         Quality::MoreWrong {
             wrong,
             best_wrong,
-            of_short,
+            found,
             ..
-        } => format!("≈ {wrong} in 100 {of_short} wrong, not {best_wrong}"),
+        } => format!("same finds, ≈ {}% more false alarms", wrong.saturating_sub(best_wrong)),
     };
     if q.labels_and_matching_measured {
         figure
@@ -711,11 +711,11 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
         } => {
             out.push((
                 "results",
-                format!("about as many {found} as the best option, more flagged wrongly"),
+                format!("the same {found} as the best option, more false alarms"),
             ));
             out.push((
                 "",
-                format!("≈ {wrong} in 100 {of} wrong, against {best_wrong}"),
+                format!("≈ {wrong}% of {of} false alarms, against {best_wrong}%"),
             ));
             out.extend(detail.iter().map(|l| ("", l.to_string())));
         }

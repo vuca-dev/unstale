@@ -73,7 +73,7 @@ Part 1 is against Jev. Part 2 is Snap as the fallback, against gpt-6-luna (the u
     alone, and its flag is `--inference subq+env:OPENAI_API_KEY`.
   - The key writes and labels the records, and Snap judges same-or-new in the form it passed:
     `match_request_snap` (longer rules, first 4 candidates, no question floor) at `snap_bars` (0.61 / 0.93 / 0.95).
-- **Picker row:** "Snap + OpenAI ≈ $1.90 … ≈ 11 in 100 breaking flags wrong, not 8", against $2.43 for OpenAI
+- **Picker row:** "Snap + OpenAI ≈ $1.90 … same finds, ≈ 3% more false alarms", against $2.43 for OpenAI
   alone on 38 technologies. Labels are the key's, so the quality figure is the same; the details add about 1 more
   duplicate per tech-year, against 4.
 - **Not measured, so kept as central's:**
