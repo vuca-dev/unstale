@@ -758,14 +758,8 @@ fn with_an_anthropic_key_only_matching_is_off_and_every_record_is_new() {
         !sent.iter().any(|p| p.contains("same_c1")),
         "no same-or-new question is asked"
     );
-    // The pass asks for the four records' labels in one call first (this mock answers it as it answers one record's,
-    // so each record is then asked alone: nothing is lost).
-    assert_eq!(
-        sent.iter()
-            .filter(|p| p.contains("Questions (the same for every record):"))
-            .count(),
-        1
-    );
+    // An Anthropic key takes one record a call: batching was measured on an OpenAI-compatible key only.
+    assert!(!sent.iter().any(|p| p.contains("Questions (the same for every record):")));
     let store = LocalStore::load(f.cache.path(), "example");
     let r = store.records.values().next().unwrap();
     assert_eq!(
@@ -1366,7 +1360,7 @@ fn spent(inf: &crate::inference::Inference) -> u64 {
         .unwrap()
 }
 
-/// On a key, label requests go eight records to a call, answered by record id; a record with no companion is asked
+/// On a key, label requests go several records to a call, answered by record id; a record with no companion is asked
 /// alone; a second pass, or another repository, finds every answer cached. The labelling service takes one record a
 /// request and is never batched.
 #[test]
@@ -1378,37 +1372,40 @@ fn on_a_key_labels_go_eight_records_to_a_call_and_are_cached_by_record() {
     let inf = inference(ProviderConfig::openai(), &url, dir.path());
     let results = super::results::Results::at(dir.path());
     let ch = super::labels::Chooser::new(&inf, &results);
-    // 8 + 3, then one record on its own.
-    let states = label_states(11);
+    // Two full calls and a part one; later, one record on its own.
+    let b = super::labels::LABEL_BATCH;
+    let states = label_states(2 * b + 3);
     ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
-    assert_eq!(seen.lock().unwrap().batches, [8, 3]);
+    assert_eq!(seen.lock().unwrap().batches, [b, b, 3]);
     for s in &states {
         let a = ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().unwrap();
         assert!(!a.calibrated && super::labels::interpret(p, &a).is_some());
     }
-    assert_eq!((seen.lock().unwrap().alone, ch.calls.get()), (0, 2));
-    // Two calls, each counted once.
-    assert_eq!(spent(&inf), 2 * 110);
+    assert_eq!((seen.lock().unwrap().alone, ch.calls.get()), (0, 3));
+    // Three calls, each counted once.
+    assert_eq!(spent(&inf), 3 * 110);
     // Nothing is asked twice: neither by a batch nor alone.
     let again = super::labels::Chooser::new(&inf, &results);
     again.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
     for s in &states {
         again.ask(super::labels::STEP_LABELS, s, &qs).unwrap().unwrap();
     }
-    assert_eq!((again.calls.get(), spent(&inf)), (0, 2 * 110));
+    assert_eq!((again.calls.get(), spent(&inf)), (0, 3 * 110));
     // One new record: no batch of one; it is asked alone, in the form measured for one record.
-    let one = label_states(12).pop().unwrap();
+    let one = label_states(2 * b + 4).pop().unwrap();
     again
         .prefetch(super::labels::STEP_LABELS, std::slice::from_ref(&one), &qs)
         .unwrap();
-    assert_eq!(seen.lock().unwrap().batches.len(), 2);
+    assert_eq!(seen.lock().unwrap().batches.len(), 3);
     again.ask(super::labels::STEP_LABELS, &one, &qs).unwrap().unwrap();
     assert_eq!(seen.lock().unwrap().alone, 1);
-    // The labelling service: prefetch does nothing.
-    let jev = inference(ProviderConfig::jev(), "http://127.0.0.1:9", dir.path());
-    let jch = super::labels::Chooser::new(&jev, &results);
-    jch.prefetch(super::labels::STEP_LABELS, &label_states(4), &qs).unwrap();
-    assert_eq!(jch.calls.get(), 0);
+    // The labelling service and an Anthropic key: one record a request, so prefetch does nothing.
+    for route in [ProviderConfig::jev(), ProviderConfig::anthropic()] {
+        let other = inference(route, "http://127.0.0.1:9", dir.path());
+        let och = super::labels::Chooser::new(&other, &results);
+        och.prefetch(super::labels::STEP_LABELS, &label_states(4), &qs).unwrap();
+        assert_eq!(och.calls.get(), 0);
+    }
 }
 
 /// A batch that comes back unreadable, cut off or refused loses no record: each is asked alone. The ledger counts
@@ -1427,9 +1424,9 @@ fn a_batch_that_fails_falls_back_to_asking_alone_and_no_call_is_counted_twice() 
         let inf = inference(ProviderConfig::openai(), &url, dir.path());
         let results = super::results::Results::at(dir.path());
         let ch = super::labels::Chooser::new(&inf, &results);
-        let states = label_states(5);
+        let states = label_states(4);
         ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
-        assert_eq!(seen.lock().unwrap().batches, [5]);
+        assert_eq!(seen.lock().unwrap().batches, [4]);
         assert_eq!(spent(&inf), batch_counted * 110);
         let labelled = states
             .iter()
@@ -1439,8 +1436,8 @@ fn a_batch_that_fails_falls_back_to_asking_alone_and_no_call_is_counted_twice() 
                     .is_some_and(|a| super::labels::interpret(p, &a).is_some())
             })
             .count();
-        assert_eq!((labelled, seen.lock().unwrap().alone), (5, 5));
-        assert_eq!(spent(&inf), (batch_counted + 5) * 110);
+        assert_eq!((labelled, seen.lock().unwrap().alone), (4, 4));
+        assert_eq!(spent(&inf), (batch_counted + 4) * 110);
         // The batch is not tried again for records now answered alone.
         ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
         assert_eq!(seen.lock().unwrap().batches.len(), 1);
@@ -1457,13 +1454,13 @@ fn records_a_batch_leaves_out_or_answers_unreadably_are_asked_alone() {
     let inf = inference(ProviderConfig::openai(), &url, dir.path());
     let results = super::results::Results::at(dir.path());
     let ch = super::labels::Chooser::new(&inf, &results);
-    let states = label_states(6);
+    let states = label_states(4);
     ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
     for s in &states {
         assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
     }
     let seen = seen.lock().unwrap();
-    assert_eq!((seen.batches.as_slice(), seen.alone), ([6].as_slice(), 2));
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([4].as_slice(), 2));
     assert_eq!(spent(&inf), 3 * 110);
 }
 
@@ -1478,19 +1475,20 @@ fn the_monthly_limit_stops_batches_and_the_next_pass_pays_only_for_the_rest() {
     // Room for one call.
     inf.monthly_budget = 100;
     let results = super::results::Results::at(dir.path());
-    let states = label_states(16);
+    let b = super::labels::LABEL_BATCH;
+    let states = label_states(2 * b);
     let ch = super::labels::Chooser::new(&inf, &results);
     assert_eq!(
         ch.prefetch(super::labels::STEP_LABELS, &states, &qs),
         Err(crate::inference::Deferred::Budget)
     );
     assert_eq!((seen.lock().unwrap().batches.len(), spent(&inf)), (1, 110));
-    // The first eight are answered from the cache even with the limit reached; the ninth defers.
-    for s in &states[..8] {
+    // The first call's records are answered from the cache even with the limit reached; the next record defers.
+    for s in &states[..b] {
         assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
     }
     assert_eq!(
-        ch.ask(super::labels::STEP_LABELS, &states[8], &qs),
+        ch.ask(super::labels::STEP_LABELS, &states[b], &qs),
         Err(crate::inference::Deferred::Budget)
     );
     inf.monthly_budget = 1_000_000;
@@ -1500,6 +1498,6 @@ fn the_monthly_limit_stops_batches_and_the_next_pass_pays_only_for_the_rest() {
         assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
     }
     let seen = seen.lock().unwrap();
-    assert_eq!((seen.batches.as_slice(), seen.alone), ([8, 8].as_slice(), 0));
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([b, b].as_slice(), 0));
     assert_eq!(spent(&inf), 2 * 110);
 }

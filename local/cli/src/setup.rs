@@ -376,6 +376,13 @@ const MATCHING_BELOW: u32 = 4;
 const SNAP_MATCHING_BELOW: u32 = 1;
 const SNAP_MATCHING_USD: f64 = 0.0059;
 
+/// Labels on an OpenAI-compatible key, four records to a call (`pipeline::labels::LABEL_BATCH`): 478 to 484 input and
+/// 128 to 130 output tokens per record on the two label sets, so 55k input and 15k output per technology-year when
+/// every call is full, $0.013 at list price; $0.014 when a year's records arrive as about two calls per release note
+/// (64k input). Source: `eval/edge-port/RESULTS.md`, "Labels, several records to a call". What the labels find is
+/// [`LABELS_BELOW`], unchanged: every paired interval against one record a call includes 0.
+const KEY_LABELS_USD: f64 = 0.014;
+
 /// Extraction through Codex, batched by length: 60.1% pooled recall on short release notes against 75.6% for the
 /// client's direct run, which is what the best option runs (79% of it; about 90% of central's direct runs), and
 /// precision level with it (77.3 against 78.8, the interval includes 0). Source: `eval/edge-port/RESULTS.md`, "After
@@ -390,8 +397,8 @@ const CODEX_EXTRACTION: Quality = Quality::Share {
 /// gateway's flex tier was requested on every call and billed list price):
 /// - extraction: gpt-6-luna `low` $0.014 to $0.018 on every OpenAI-compatible route (`eval/edge-port/RESULTS.md`);
 ///   Haiku 5.5 $0.0189;
-/// - labels: Jev $0.0101; gpt-6-luna read on its choices $0.025 to $0.026 (`eval/edge-port/RESULTS.md`); Haiku
-///   $0.0564;
+/// - labels: Jev $0.0101; gpt-6-luna read on its choices, four records to a call, $0.013 to $0.014 ([`KEY_LABELS_USD`];
+///   it was $0.025 to $0.026 at one record a call); Haiku $0.0564;
 /// - matching: Jev $0.0077; gpt-6-luna read on its choices $0.020 (`eval/edge-port/RESULTS.md`); Anthropic does not
 ///   match (never merge, $0);
 /// - Codex: extraction 167k plan tokens (≈ $0.015 at API prices), measured with batching by length
@@ -415,7 +422,7 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             ..NO_QUOTE
         },
         Pick::SnapKey(r) => Quote {
-            usd: extraction_usd(r) + 0.026 + SNAP_MATCHING_USD,
+            usd: extraction_usd(r) + KEY_LABELS_USD + SNAP_MATCHING_USD,
             quality: LABELS_BELOW,
             more_duplicates: SNAP_MATCHING_BELOW,
             ..NO_QUOTE
@@ -431,7 +438,7 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             ..NO_QUOTE
         },
         Pick::Key(r) => Quote {
-            usd: extraction_usd(r) + 0.026 + 0.020,
+            usd: extraction_usd(r) + KEY_LABELS_USD + 0.020,
             quality: LABELS_BELOW,
             more_duplicates: MATCHING_BELOW,
             ..NO_QUOTE

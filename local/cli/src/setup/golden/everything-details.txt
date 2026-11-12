@@ -15,9 +15,9 @@ This repo has 38 packages unstale follows.
                           its changes are right as often as the best option's
 
 3  Vercel AI Gateway (AI_GATEWAY_API_KEY)
-   per package, per year  $0.064
-   this repo, a year      ≈ $2.43
-   first sync, once       ≈ $2.43
+   per package, per year  $0.052
+   this repo, a year      ≈ $1.98
+   first sync, once       ≈ $1.98
    results                as many breaking changes found as the best option; ≈ 3% less precise
                           ≈ 89% of breaking-change flags right, against 92%
                           on short release notes ≈ 62%, against 75% (42 flags)

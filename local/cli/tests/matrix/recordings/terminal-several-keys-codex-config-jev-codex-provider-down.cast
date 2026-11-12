@@ -42,7 +42,7 @@
 [1.48,"o","     Read with                Cost a year, this repo        Compared with the best option\r\n"]
 [1.54,"o","  1  Jev + Vercel AI Gateway  ≈ $0.11                       the best option\r\n"]
 [1.6,"o","  2  Jev + Codex plan         ≈ $0.053 + 500k Codex tokens  ≈ 80% of its changes\r\n"]
-[1.66,"o","  3  Vercel AI Gateway        ≈ $0.19                       ≈ 3% less precise labels\r\n"]
+[1.66,"o","  3  Vercel AI Gateway        ≈ $0.16                       ≈ 3% less precise labels\r\n"]
 [1.72,"o","  4  Codex plan               ≈ 1.9M Codex tokens           ≈ 80% of its changes; rest not measured\r\n"]
 [1.78,"o","  5  Anthropic                ≈ $0.23                       ≈ 90% of its changes\r\n"]
 [1.84,"o","  6  Not now                  free                          ≈ 27% of its changes in new releases\r\n"]

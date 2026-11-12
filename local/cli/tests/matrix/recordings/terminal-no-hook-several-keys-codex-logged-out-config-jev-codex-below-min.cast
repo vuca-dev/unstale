@@ -139,7 +139,7 @@
 [9.39,"o","\r\n"]
 [9.45,"o","     Read with                 Cost a year, this repo   Compared with the best option\r\n"]
 [9.51,"o","  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option\r\n"]
-[9.57,"o","  2  Vercel AI Gateway         ≈ $0.19                  ≈ 3% less precise labels\r\n"]
+[9.57,"o","  2  Vercel AI Gateway         ≈ $0.16                  ≈ 3% less precise labels\r\n"]
 [9.63,"o","  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes\r\n"]
 [9.69,"o","  4  Not now                   free                     ≈ 27% of its changes in new releases\r\n"]
 [9.75,"o","     Jev: a labelling service, used beside the provider that reads the notes.\r\n"]

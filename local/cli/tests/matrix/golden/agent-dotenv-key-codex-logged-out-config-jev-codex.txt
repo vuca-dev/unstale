@@ -78,7 +78,7 @@ The user chooses how unstale reads new release notes. Show them these options as
 Never choose for them.
 
      Read with  Key                    Cost a year, this repo  Compared with the best option
-  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.19                 ≈ 3% less precise labels
+  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.16                 ≈ 3% less precise labels
   2  Not now                           free                    ≈ 27% of its changes in new releases
 
 Record their answer with the matching command:

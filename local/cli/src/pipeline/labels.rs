@@ -23,6 +23,23 @@ pub const STEP_LABELS: &str = "labels";
 pub const STEP_JUDGE: &str = "judge";
 const ATTEMPTS: usize = 3;
 
+/// Records to one label call on an OpenAI-compatible key. Eight to a call did not pass (`gpt-6-luna` named benefits
+/// less exactly than when asked one record at a time, on short release notes); four did, the one revision
+/// (`eval/edge-port/RESULTS.md`, "Labels, several records to a call").
+pub const LABEL_BATCH: usize = 4;
+
+/// How many records one label call carries on a route, and the cache form of an answer given in such a call (an
+/// answer from a call of another size is not reused); `None` where records are asked one at a time. Only what was
+/// measured is batched: an OpenAI-compatible key at [`LABEL_BATCH`]. Codex keeps the eight it had before that
+/// measurement, which was never run on a labelled set; an Anthropic key and the labelling service take one record.
+fn label_batch(kind: Kind) -> Option<(usize, &'static str)> {
+    match kind {
+        Kind::OpenAiCompatible => Some((LABEL_BATCH, "batch4")),
+        Kind::Codex => Some((crate::inference::BATCH, "batch8")),
+        Kind::Anthropic | Kind::Jev => None,
+    }
+}
+
 /// One answer: the option chosen, its confidence and every option's probability.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Choice {
@@ -267,7 +284,7 @@ impl<'a> Chooser<'a> {
 
     fn batch_key(&self, step: &str, state: &RawValue, qs: &[(String, ChoiceQuestion)]) -> String {
         Results::key_in(
-            "batch8",
+            label_batch(self.inf.provider.kind).map_or("batch8", |b| b.1),
             step,
             &model_key(&self.inf.provider),
             self.version(step),
@@ -276,8 +293,8 @@ impl<'a> Chooser<'a> {
         )
     }
 
-    /// A standing entry for this request (asked alone, or in a batch on a route that writes text); a failure stands
-    /// until its retry date.
+    /// A standing entry for this request (asked alone, or in a batch where the route batches); a failure stands until
+    /// its retry date.
     fn cached(
         &self,
         step: &str,
@@ -290,7 +307,8 @@ impl<'a> Chooser<'a> {
             .get(&self.key(step, state, qs))
             .filter(|e| e.stands(today));
         alone.or_else(|| {
-            (self.inf.provider.kind != Kind::Jev)
+            label_batch(self.inf.provider.kind)
+                .is_some()
                 .then(|| {
                     self.results
                         .get(&self.batch_key(step, state, qs))
@@ -415,31 +433,32 @@ impl<'a> Chooser<'a> {
         Ok(got)
     }
 
-    /// On a route that writes text (a key or Codex; never the labelling service, which takes one record a request):
-    /// these records' label requests not yet answered, up to eight to a call, answered by record id and cached apart
-    /// from requests asked alone. Nearly all of a label request is the questions' text (about 1,550 of 1,630 input
-    /// tokens), so eight records share it (`eval/edge-port/RESULTS.md`, "Labels, several records to a call").
+    /// On an OpenAI-compatible key, and through Codex: these records' label requests not yet answered, several to a
+    /// call ([`label_batch`]), answered by record id and cached apart from requests asked alone. Nearly all of a label
+    /// request is the questions' text (about 1,550 of 1,630 input tokens), so the records of a call share it.
     ///
     /// Whatever a batch does not answer is asked alone by [`Chooser::ask`]: a record it left out or answered
-    /// unreadably, every record of a batch that came back unreadable, cut off or refused, and a record with no
-    /// companion (a batch of one would save nothing). Each call is counted once in the token ledger, by the provider
-    /// layer; a deferral of the route (the monthly limit, a key problem) stops here with the answers so far cached.
+    /// unreadably, every record of a batch that came back unreadable, cut off or refused, and on a key a record with
+    /// no companion. Each call is counted once in the token ledger, by the provider layer; a deferral of the route
+    /// (the monthly limit, a key problem) stops here with the answers so far cached.
     pub fn prefetch(
         &self,
         step: &str,
         states: &[Box<RawValue>],
         qs: &[(String, ChoiceQuestion)],
     ) -> Result<(), Deferred> {
-        if self.inf.provider.kind == Kind::Jev {
+        let Some((size, _)) = label_batch(self.inf.provider.kind) else {
             return Ok(());
-        }
+        };
+        // On a key a record with no companion is asked alone, in the form measured for one record.
+        let alone = self.inf.provider.kind != Kind::Codex;
         let today = crate::util::today();
         let todo: Vec<&Box<RawValue>> = states
             .iter()
             .filter(|s| self.cached(step, s, qs, &today).is_none())
             .collect();
-        for group in todo.chunks(crate::inference::BATCH) {
-            if group.len() < 2 {
+        for group in todo.chunks(size) {
+            if alone && group.len() < 2 {
                 continue;
             }
             let ids: Vec<(String, &RawValue)> = group

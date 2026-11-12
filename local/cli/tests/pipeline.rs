@@ -241,10 +241,10 @@ fn label_mock() -> (String, Arc<Mutex<Vec<usize>>>) {
     (url, seen)
 }
 
-/// `run-step --step labels` on a key batches as a pass does (eight records to a call, a lone record alone), prints one
+/// `run-step --step labels` on a key batches as a pass does (four records to a call, a lone record alone), prints one
 /// line per record in input order, asks nothing a second time, and makes no call with the switch off.
 #[test]
-fn run_step_labels_go_eight_records_to_a_call_on_a_key() {
+fn run_step_labels_go_several_records_to_a_call_on_a_key() {
     let (url, seen) = label_mock();
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("records.jsonl");
@@ -271,9 +271,9 @@ fn run_step_labels_go_eight_records_to_a_call_on_a_key() {
         assert_eq!(v["key"], format!("example@2.1.0#0.{i}"));
         assert_eq!(v["labels"]["breaking"], false, "{v}");
     }
-    assert_eq!(*seen.lock().unwrap(), [8, 1]);
+    assert_eq!(*seen.lock().unwrap(), [4, 4, 1]);
     assert_eq!(run_step_of("labels", &cache, &input, &url, true), out);
-    assert_eq!(seen.lock().unwrap().len(), 2, "every answer came from the cache");
+    assert_eq!(seen.lock().unwrap().len(), 3, "every answer came from the cache");
 }
 
 #[path = "../src/testcat.rs"]

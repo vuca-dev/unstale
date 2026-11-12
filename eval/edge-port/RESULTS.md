@@ -67,6 +67,61 @@ Spend for the addendum: $0.0044 on the gateway (cap $0.50), 400k Codex plan toke
 from the one variable `AI_GATEWAY_API_KEY` in the gateway key file that `central/src/pipeline/llm.ts` names; the
 labelling-service key was not needed. Nothing was printed.
 
+## Labels, several records to a call (addendum 3, 11 November 2026)
+
+Pre-registered in `PREREGISTRATION.md`, "Addendum 3" (pushed before any call for it). On an OpenAI-compatible key the
+client asks for the labels of several records in one call, answered by record id (`choice.json`'s `batch` form,
+unchanged). Reference: the client's own runs of cells 5 and 6, one record a call. Pass rule: every paired interval the
+scorer reports includes 0, and no record is left without labels. One run, one revision at four records to a call.
+
+**Verdict: eight to a call fails; four to a call passes (the one revision). The client ships four.**
+
+| Set | Metric | One record a call | Eight to a call (batched minus one record) | Four to a call |
+|---|---|---|---|---|
+| Label set 1 (233 records) | Breaking recall | 89.7 | 89.7; 0.0 [−17.2, +17.2] | 86.2; −3.4 [−20.7, +13.8] |
+| | Breaking accuracy | | +2.6 [−0.4, +5.6] | +3.0 [−0.4, +6.4] |
+| | Breaking precision (not paired) | 61.9 | 72.2 | 75.8 |
+| | Benefit recall | 98.3 | 96.7; −1.7 [−5.0, +1.7] | 99.2; +0.8 [0.0, +2.5] |
+| | Benefit accuracy; identical benefit set | | **−5.6 [−9.9, −1.3]**, both | −0.4 [−4.3, +3.4], both |
+| | Change-type accuracy | 83.3 | 80.7; −2.6 [−7.7, +2.6] | 84.5; +1.3 [−3.4, +6.0] |
+| | Actionable recall | 87.7 | 86.3; −1.4 [−6.8, +4.1] | 86.3; −1.4 [−6.8, +4.1] |
+| | Removal and deprecation recall | | 0.0 [0.0, 0.0] | 0.0 [0.0, 0.0] |
+| Label set 2 (347 records) | Breaking recall | 92.6 | 96.5; **+3.9 [+1.0, +8.6]** | 95.7; +3.0 [−0.4, +7.3] |
+| | Breaking precision | 93.4 | 92.5; −0.9 [−3.3, +1.7] | 92.8; −0.6 [−2.8, +2.0] |
+| Both | Records labelled; calls; records that fell back to a call of their own | 580; 580 | 580; 74; 0 | 580; 146; 0 |
+
+- **Eight to a call:** two intervals exclude 0. On short release notes the model names benefits less exactly (benefit
+  precision 78.5 against 85.0); on upgrade guides it finds more breaking changes. The first is a loss, so the cell
+  fails; by the rule as written the second also counts.
+- **Four to a call:** all ten intervals include 0. 75 of 233 and 51 of 347 records get a label that differs from the
+  one-record run's, in both directions.
+- **What is batched in the client:** an OpenAI-compatible key, four records to a call; a record with no companion is
+  asked alone. Codex keeps the eight records to a call it had (never run on a labelled set); an Anthropic key and the
+  labelling service take one record a request, as before.
+
+| | Calls | Input / output (reasoning) tokens | Per record, input / output | $ at list |
+|---|---|---|---|---|
+| One record a call (cells 5 and 6) | 580 | 945,834 / 68,866 (36,573) | 1,625 to 1,635 / 103 to 129 | 0.129 |
+| Eight to a call | 74 | 166,460 / 63,290 (31,754) | 283 to 290 / 106 to 111 | 0.048 |
+| Four to a call | 146 | 279,086 / 74,857 (42,877) | 478 to 484 / 128 to 130 | 0.065 |
+
+**Labels on a key, per package per year (114.6 records):** input **55k** when every call is full, about **64k** when
+a year's records arrive as two calls per release note (35 calls), against 187k at one record a call; output about 15k
+against 12k to 15k. A release note with one record is asked as before (1,630 input tokens).
+
+| Route, input tokens per package per year | Before | With four records to a call |
+|---|---|---|
+| Key alone: extraction 53k, labels, same-or-new 105k | 345k | **213k to 222k** |
+| Labelling service + key | 429k | unchanged (the service takes one record a request) |
+
+- The "before" column is not the 425k and 478k of the tables below. Those count same-or-new on a key with the retries
+  PR #237 removed (185k; 143k at 1.0 calls per request), and one same-or-new request per record. Replaying 1,866 stored
+  records of four technologies in ingest order, 73.5% of records have a candidate at the question floor, which gives
+  105k on a key and 135k on the labelling service.
+- Spend: $0.114 at list price for the four cells ($0.048 the first run, $0.065 the revision) of a $0.15 cap.
+- Not measured: batched labels on Haiku or through Codex; calls of two or three records (ordinary syncs will send
+  them; the run used full calls of four).
+
 Everything below is the first run, on `8835d5c`, as recorded before the fixes.
 
 ## Conclusions (first run)
