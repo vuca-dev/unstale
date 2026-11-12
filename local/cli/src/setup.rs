@@ -377,10 +377,11 @@ const SNAP_MATCHING_BELOW: u32 = 1;
 const SNAP_MATCHING_USD: f64 = 0.0059;
 
 /// Labels on an OpenAI-compatible key, four records to a call (`pipeline::labels::LABEL_BATCH`): 478 to 484 input and
-/// 128 to 130 output tokens per record on the two label sets, so 55k input and 15k output per technology-year when
-/// every call is full, $0.013 at list price; $0.014 when a year's records arrive as about two calls per release note
-/// (64k input). Source: `eval/edge-port/RESULTS.md`, "Labels, several records to a call". What the labels find is
-/// [`LABELS_BELOW`], unchanged: every paired interval against one record a call includes 0.
+/// 128 to 130 output tokens per record on the two label sets when every call is full. As records arrive in use, 57k
+/// input tokens per technology-year (a whole year in one pass) to 72k (one release note a pass) and 15k output: $0.013
+/// to $0.015 at list price; the quote is the middle. Source: `eval/edge-port/RESULTS.md`, "Labels, several records to
+/// a call". What the labels find is [`LABELS_BELOW`], unchanged: every paired interval against one record a call
+/// includes 0.
 const KEY_LABELS_USD: f64 = 0.014;
 
 /// Extraction through Codex, batched by length: 60.1% pooled recall on short release notes against 75.6% for the

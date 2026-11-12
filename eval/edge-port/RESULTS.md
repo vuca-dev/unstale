@@ -105,13 +105,22 @@ scorer reports includes 0, and no record is left without labels. One run, one re
 | Eight to a call | 74 | 166,460 / 63,290 (31,754) | 283 to 290 / 106 to 111 | 0.048 |
 | Four to a call | 146 | 279,086 / 74,857 (42,877) | 478 to 484 / 128 to 130 | 0.065 |
 
-**Labels on a key, per package per year (114.6 records):** input **55k** when every call is full, about **64k** when
-a year's records arrive as two calls per release note (35 calls), against 187k at one record a call; output about 15k
-against 12k to 15k. A release note with one record is asked as before (1,630 input tokens).
+**Labels on a key, per package per year (114.6 records): 57k to 72k input tokens**, against 187k at one record a
+call; output about 15k against 12k to 15k. The run above used full calls of four (478 to 484 input tokens per record,
+55k a year); how full calls are in use depends on how records arrive, because a pass groups one technology's new
+records. Replayed in review over the local catalog cache (114,009 records in 20,276 release notes of the last year;
+the median note has 2 records and 41% have exactly one):
+
+| How records arrive | Full calls | Input per record | Per package per year | Records asked alone |
+|---|---|---|---|---|
+| A whole year in one pass (a first sync) | 94% | 494 | 57k | |
+| One release note a pass | 55% | 625 | 72k | 9% |
+
+At list price that is $0.013 to $0.015 for labels; the setup screen quotes $0.014.
 
 | Route, input tokens per package per year | Before | With four records to a call |
 |---|---|---|
-| Key alone: extraction 53k, labels, same-or-new 105k | 345k | **213k to 222k** |
+| Key alone: extraction 53k, labels, same-or-new 105k | 345k | **about 215k to 230k** |
 | Labelling service + key | 429k | unchanged (the service takes one record a request) |
 
 - The "before" column is not the 425k and 478k of the tables below. Those count same-or-new on a key with the retries
@@ -119,8 +128,8 @@ against 12k to 15k. A release note with one record is asked as before (1,630 inp
   records of four technologies in ingest order, 73.5% of records have a candidate at the question floor, which gives
   105k on a key and 135k on the labelling service.
 - Spend: $0.114 at list price for the four cells ($0.048 the first run, $0.065 the revision) of a $0.15 cap.
-- Not measured: batched labels on Haiku or through Codex; calls of two or three records (ordinary syncs will send
-  them; the run used full calls of four).
+- Not measured: batched labels on Haiku or through Codex; label quality in calls of two or three records (ordinary
+  syncs send them; the run used full calls of four).
 
 Everything below is the first run, on `8835d5c`, as recorded before the fixes.
 

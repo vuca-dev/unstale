@@ -435,6 +435,11 @@ struct Fixture {
 /// A synced cache for `example`: a catalog record at 2.0.0 (`example:server.port`), and change events for 2.0.0 (the
 /// catalog covers it) and 2.1.0 (it does not); extraction answers for 2.1.0 replayed from central's fixture.
 fn fixture() -> Fixture {
+    fixture_with(json!({}), vec![])
+}
+
+/// [`fixture`], with these fields over the catalog record's and these change events after 2.1.0's.
+fn fixture_with(old_over: Value, more_events: Vec<Value>) -> Fixture {
     use crate::testcat::{FixtureCatalog, rec, with};
     let fx: Value = serde_json::from_str(
         &std::fs::read_to_string(
@@ -459,12 +464,15 @@ fn fixture() -> Fixture {
         rec("example:server.port", "pkg:npm/example", "2.0.0"),
         json!({"subject": "server.port", "summary": "The default port is now 4000.", "change_type": "default_change", "breaking": false, "evidence": [{"kind": "release_notes", "url": "https://example.org/2.0.0", "quote": "server.port default is now 4000", "snapshot": "sha256:old"}]}),
     );
+    let old = with(old, old_over);
+    let mut events = vec![covered, ev];
+    events.extend(more_events);
     let cat = FixtureCatalog::new();
     cat.tech_events(
         "example",
         0,
         &[("2", vec![old])],
-        &[("2", vec![covered, ev])],
+        &[("2", events)],
     );
     let cache = tempfile::tempdir().unwrap();
     for f in super::tests::walk(cat.dir.path()) {
@@ -1364,7 +1372,7 @@ fn spent(inf: &crate::inference::Inference) -> u64 {
 /// alone; a second pass, or another repository, finds every answer cached. The labelling service takes one record a
 /// request and is never batched.
 #[test]
-fn on_a_key_labels_go_eight_records_to_a_call_and_are_cached_by_record() {
+fn on_a_key_labels_go_several_records_to_a_call_and_are_cached_by_record() {
     let dir = tempfile::tempdir().unwrap();
     let p = crate::prompts::prompts();
     let qs = p.labels.questions();
@@ -1500,4 +1508,133 @@ fn the_monthly_limit_stops_batches_and_the_next_pass_pays_only_for_the_rest() {
     let seen = seen.lock().unwrap();
     assert_eq!((seen.batches.as_slice(), seen.alone), ([b, b].as_slice(), 0));
     assert_eq!(spent(&inf), 2 * 110);
+}
+
+/// A pass on a key whose monthly limit is reached between two label calls writes the records the first call paid
+/// for: two release notes, eight new records, room for the first call of four. The second note's records wait; a pass
+/// under the same limit asks nothing and writes nothing; with room again only the second call is paid for.
+#[test]
+fn a_pass_stopped_by_the_limit_between_label_calls_writes_the_records_already_paid_for() {
+    let notes = "- Adds `alphaMode`\n- Adds `betaMode`\n- Adds `gammaMode`\n- Adds `deltaMode`";
+    let sha = format!("sha256:{}", sha256_hex(notes.as_bytes()));
+    let later = json!({
+        "id": "example@2.2.0", "technology": "example", "name": "Example.js", "kind": "release_notes",
+        "version": "2.2.0", "line": "2", "date": "2026-10-20",
+        "url": "https://github.com/example/example/releases/tag/v2.2.0", "snapshot": sha,
+        "chunks": [{"id": "example@2.2.0#0", "sha256": sha.trim_start_matches("sha256:"), "text": notes}],
+        "freshness": {"first_seen": "2026-10-20T00:00:00.000Z", "first_published": "2026-10-20T00:00:00.000Z"}
+    });
+    // A catalog record no new change resembles, so no same-or-new question is asked and every call is a label call.
+    let f = fixture_with(
+        json!({"subject": "telemetry", "summary": "Usage reporting can be switched off.",
+               "evidence": [{"kind": "release_notes", "url": "https://example.org/2.0.0", "quote": "usage reporting can be switched off", "snapshot": "sha256:old"}]}),
+        vec![later],
+    );
+    // The mock: the fixture's extraction answers for 2.1.0, four records for 2.2.0, and labels as `chat_label_mock`.
+    let (labels_url, seen) = chat_label_mock(Batched::Answers);
+    let answers = f.answers.clone();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let prompt = v["messages"][0]["content"].as_str().unwrap_or("");
+            let content = if let Some((c, _)) = answers.get(&sha256_hex(prompt.as_bytes())) {
+                Some(c.clone())
+            } else if prompt.starts_with("You extract change records") {
+                let recs: Vec<Value> = ["alphaMode", "betaMode", "gammaMode", "deltaMode"]
+                    .iter()
+                    .map(|n| json!({"subject": n, "subject_kind": "literal", "facet": null, "change_type": "new_option",
+                                    "surface": "configuration", "summary": format!("Adds {n}."), "audience": "application",
+                                    "introduces": [], "evidence": format!("Adds `{n}`")}))
+                    .collect();
+                Some(Value::Array(recs).to_string())
+            } else if prompt.starts_with("You write search terms") {
+                Some("{}".to_string())
+            } else if prompt.contains("\"same_c1\"") {
+                // Same-or-new, once the second note's records have the first's as candidates: none is the same.
+                let no: serde_json::Map<String, Value> = (1..=8)
+                    .filter(|i| prompt.contains(&format!("\"same_c{i}\"")))
+                    .map(|i| (format!("same_c{i}"), json!("no")))
+                    .collect();
+                Some(Value::Object(no).to_string())
+            } else {
+                None
+            };
+            let reply = match content {
+                Some(c) => json!({"model": "gpt-6-luna-test", "choices": [{"finish_reason": "stop", "message": {"content": c}}],
+                                  "usage": {"prompt_tokens": 100, "completion_tokens": 10}})
+                .to_string(),
+                // A label request: passed on to the label mock, which counts it.
+                None => {
+                    let mut r = ureq::post(&format!("{labels_url}/chat/completions"))
+                        .header("Content-Type", "application/json")
+                        .send(body.as_bytes())
+                        .unwrap();
+                    r.body_mut().read_to_string().unwrap()
+                }
+            };
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+        }
+    });
+    let pass = |limit: u64| {
+        let mut r = routes(&f, &url, None);
+        r.main.monthly_budget = limit;
+        run(
+            f.cache.path(),
+            &r,
+            &set(&["example"]),
+            &set(&["pkg:npm/example"]),
+            "2026-11-10",
+        )
+    };
+    // Four extraction calls (two a note) and the first label call fit; the second label call does not.
+    let limit = 5 * 110;
+    let s = pass(limit);
+    assert_eq!(
+        (s.created, s.deferred.clone()),
+        (4, Some(crate::inference::Deferred::Budget)),
+        "{s:?}"
+    );
+    assert_eq!(seen.lock().unwrap().batches, [4]);
+    let store = LocalStore::load(f.cache.path(), "example");
+    assert!(store.records.values().all(|l| l.version == "2.1.0"));
+    // Under the same limit: no request reaches the provider, nothing new, the same warning.
+    let s = pass(limit);
+    assert_eq!((s.created, s.deferred.clone()), (0, Some(crate::inference::Deferred::Budget)));
+    {
+        let seen = seen.lock().unwrap();
+        assert_eq!((seen.batches.len(), seen.alone), (1, 0));
+    }
+    // With room again, only the second note's labels are paid for.
+    let s = pass(1_000_000);
+    assert_eq!((s.created, s.deferred.clone()), (4, None), "{s:?}");
+    let seen = seen.lock().unwrap();
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([4, 4].as_slice(), 0));
 }
