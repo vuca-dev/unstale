@@ -62,6 +62,19 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   expect(home).toContain("↑↓ to move · Enter to choose · d for details");
   expect(home).toContain("Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.");
   expect(home).not.toContain("Enter for 1");
+  // Found for the need, safe to try, and proof in order: merges by other projects before our own comparison.
+  const llms = readFileSync(join(site, "llms.txt"), "utf8");
+  expect(home).toContain("<title>unstale: what a dependency upgrade means for your code, for coding agents</title>");
+  for (const page of [home, readFileSync(join(site, "index.md"), "utf8"), llms]) {
+    expect(page).toContain("unstale (@unstale/cli, unstale.sh)");
+    expect(page).toContain("the breaking changes that affect your code");
+    expect(page).toContain("npm view @unstale/cli dist.attestations");
+    expect(page).toContain("Two projects merged fixes for what unstale found at their installed versions:");
+    expect(page).toContain("crates.io");
+  }
+  expect(home.indexOf("Two projects merged fixes")).toBeLessThan(home.indexOf("finds 4x"));
+  expect(home).toContain("Finds changes that apply at your installed version, no version bump needed");
+  expect(home).toContain("The yearly figure is this one repository's, for 38 packages.");
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8"), readFileSync(join(site, "llms.txt"), "utf8")]) {
     expect(page).toContain("about $0.05 a year per package (measured November 2026)");
     expect(page).toContain("On your Codex plan there is nothing extra to pay");

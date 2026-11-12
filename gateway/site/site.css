@@ -170,3 +170,8 @@ ul.changes .meta { font-size: 0.78rem; margin-top: 2px; color: var(--muted); dis
 .term-speed { display: flex; align-items: center; gap: 2px; margin-left: 4px; padding-left: 8px; border-left: 1px solid #304044; }
 .term-speed select { min-height: 36px; padding: 0 2px; border: 0; background: #0a0f11; color: #e0e8e8; font: inherit; cursor: pointer; }
 .term-speed select:focus-visible { outline: 2px solid #67dc91; outline-offset: 3px; }
+
+.compare { width: 100%; border-collapse: collapse; margin: 16px 0 0; font-size: 0.92rem; }
+.compare th, .compare td { text-align: left; vertical-align: top; padding: 8px 12px 8px 0; border-top: 1px solid var(--line); }
+.compare th { white-space: nowrap; color: var(--muted); font-weight: 600; }
+.compare tr:last-child th { color: var(--fg); }
