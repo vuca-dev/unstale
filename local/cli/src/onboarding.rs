@@ -1290,6 +1290,9 @@ pub(crate) const SESSION_HOOK_ARGS: &str = "-C \"$CLAUDE_PROJECT_DIR\" notify";
 /// because it names this machine's executable). The user's settings keep their bytes; ours is replaced, not repeated
 /// (`hooks`). A file Git tracks, a link, a read-only or unreadable file is left alone.
 fn install_session_hook(ctx: &Ctx) -> Result<()> {
+    if !adding() && !crate::hooks::present(&ctx.root, SESSION_HOOK_SETTINGS_PATH, SESSION_HOOK_ARGS) {
+        return Ok(());
+    }
     let command = format!("{} {SESSION_HOOK_ARGS}", crate::hooks::invocation_word());
     if crate::hooks::install(&ctx.root, SESSION_HOOK_SETTINGS_PATH, &command, SESSION_HOOK_ARGS, 10)?.is_err() {
         return Ok(());
@@ -1335,6 +1338,72 @@ fn retire_legacy_skills(ctx: &Ctx, dir: &str) -> Result<()> {
     Ok(())
 }
 
+/// Whether this command may add agent integration files, or our entries in the user's own files, that the repository
+/// does not have yet: only `unstale init` may ([`allow_adding`]). Every command refreshes what unstale already wrote.
+static ADDING: AtomicBool = AtomicBool::new(false);
+
+/// Lets this process add new agent integrations: `unstale init` calls it.
+pub fn allow_adding() {
+    ADDING.store(true, Ordering::Relaxed);
+}
+
+pub(crate) fn adding() -> bool {
+    ADDING.load(Ordering::Relaxed)
+}
+
+fn managed_skill(ctx: &Ctx, dir: &str) -> bool {
+    std::fs::read_to_string(ctx.root.join(dir).join("unstale-review/SKILL.md")).is_ok_and(|t| t.contains(SKILL_MARKER))
+}
+
+/// The agents for which `unstale init` would add a session-start integration this installation does not have yet,
+/// in the order the line names them. Only for an installation whose review skill unstale already wrote.
+pub fn missing_integrations(ctx: &Ctx) -> Vec<&'static str> {
+    let mut out = vec![];
+    let claude = managed_skill(ctx, ".claude/skills");
+    let agents = managed_skill(ctx, ".agents/skills");
+    if claude
+        && !crate::hooks::present(&ctx.root, SESSION_HOOK_SETTINGS_PATH, SESSION_HOOK_ARGS)
+        && crate::hooks::unwritable(&ctx.root, SESSION_HOOK_SETTINGS_PATH).is_none()
+    {
+        out.push("Claude Code");
+    }
+    if !util::edge_inference() {
+        return out;
+    }
+    if agents && crate::session::codex_hook_missing(&ctx.root) {
+        out.push("Codex");
+    }
+    let absent = |rel: &str| !ctx.root.join(rel).exists() && crate::hooks::unwritable(&ctx.root, rel).is_none();
+    if (claude || agents) && (absent(crate::session::OPENCODE_PLUGIN_PATH) || absent(crate::session::OPENCODE_COMMAND_PATH)) {
+        out.push("opencode");
+    }
+    out
+}
+
+/// Said once per repository, by a command other than `init`, when this version has session-start integrations the
+/// installation does not have: `init` adds them. A person and an agent see it; CI does not.
+pub fn new_integrations_line(ctx: &Ctx) -> Option<String> {
+    use crate::setup::{Chooser, at_terminal, chooser, process_env};
+    if adding() || chooser(&process_env, at_terminal()) == Chooser::Ci {
+        return None;
+    }
+    let said = ctx.tool.join("state/new-integrations-said");
+    if said.exists() {
+        return None;
+    }
+    let names = missing_integrations(ctx);
+    if names.is_empty() {
+        return None;
+    }
+    util::write_atomic(&said, b"said\n").ok()?;
+    let list = match names.as_slice() {
+        [one] => one.to_string(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [] => unreachable!(),
+    };
+    Some(format!("New in this version: session-start updates for {list}. Run `unstale init` to add them."))
+}
+
 pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
     review::write_entrypoint(&ctx.tool)?;
     let mut installed = vec![];
@@ -1376,6 +1445,10 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
                 );
                 continue;
             }
+            // A command other than `init` refreshes the skill unstale wrote and adds none.
+            if !dest.exists() && !adding() {
+                continue;
+            }
             // Skill frontmatter must come first. A trailing marker identifies our own files.
             let source_text = std::fs::read_to_string(&source)?;
             let source_text = source_text.replacen(
@@ -1388,7 +1461,7 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
             let text = format!("{}\n{}", source_text, marker);
             util::write_atomic(&dest, text.as_bytes())?;
             // Preserve any user-added policy metadata on a managed skill.
-            if !policy.exists() {
+            if !policy.exists() && adding() {
                 util::write_atomic(&policy, SKILL_POLICY.as_bytes())?;
             }
             let written = std::fs::read_to_string(&dest)?;
@@ -1445,6 +1518,17 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
     // opencode reads the skills from either directory; its session start runs through a plugin.
     if !installed.is_empty() && util::edge_inference() && let Some(entry) = crate::session::install_opencode_plugin(ctx)? {
         conflicts.push(entry);
+    }
+    // A command that adds nothing does not try what `init` could not write: what it found stays said.
+    if !adding() {
+        let path = ctx.tool.join("state/integration-conflicts.json");
+        let old: Vec<String> = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        for c in old {
+            let rel = c.split(crate::session::NOT_WRITTEN).next().unwrap_or_default();
+            if c.contains(crate::session::NOT_WRITTEN) && !conflicts.contains(&c) && !ctx.root.join(rel).exists() {
+                conflicts.push(c);
+            }
+        }
     }
     util::write_atomic(
         &ctx.tool.join("state/integration-conflicts.json"),

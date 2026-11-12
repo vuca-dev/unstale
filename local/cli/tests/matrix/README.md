@@ -38,7 +38,9 @@ configuration in HOME and above the repository (`MAY_OPEN` and `REGISTRY_CONFIG`
   first, then move the catalog: the previous release's binary is not built here, so the earlier setup is this build's,
   and the `min_client` bump is the catalog naming a version above this one. Below it, the client must say so (`init`,
   `status` and `session-sync` each time, as they keep going on the cache), keep its cached catalog, and read nothing:
-  no provider request, no `codex exec`, and no "every release note here is read".
+  no provider request, no `codex exec`, and no "every release note here is read". In `upgraded` the earlier setup has no Codex or
+  opencode session start, as the previous release wrote neither: only `init` may add them, and another command says
+  so once, never to CI.
 - **The choice is the user's own:** consent to spend is read from the user's config only (their answer for this
   repository, else their choice for every repository). A provider a repository's config names (`REPO_CONFIGS`) is a
   suggestion, whoever wrote the file and whether or not it is committed. With no choice of the user's, nothing is sent

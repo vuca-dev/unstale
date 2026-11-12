@@ -681,6 +681,19 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
         v.extend(wording(&r.shown, r.terminal, &r.output));
     }
 
+    // Upgrades: only `init` adds this version's session-start integrations. Another command says so instead, once
+    // per repository, and not to CI.
+    for a in &se.added {
+        v.push(format!("upgrade: {a}; only `init` adds a new integration"));
+    }
+    let said: usize = se.ran.iter().map(|r| r.output.matches("New in this version: ").count()).sum();
+    if said > 1 {
+        v.push(format!("upgrade: the new-integrations line shown {said} times"));
+    }
+    if said > 0 && s.invocation.ci {
+        v.push("upgrade: the new-integrations line shown to CI".into());
+    }
+
     // The catalog's notice and update lines: once a day.
     let n: usize = se
         .ran

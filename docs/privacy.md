@@ -10,18 +10,22 @@ What `unstale init` writes, what leaves your machine and what does not. To repor
 `.opencode/commands/unstale-review.md`, kept with the skills. `init` writes the skills
 whether or not each agent is installed. It also adds session-start hooks, which Git ignores in both modes:
 `.claude/settings.local.json` (Claude Code), `.codex/hooks.json` (Codex, which runs it once you trust it in `/hooks`) and
-`.opencode/plugins/unstale-session.js` (opencode). Your choice of provider goes in your own config, `~/.config/unstale/config.json`. In shared mode it is also written to
+`.opencode/plugins/unstale-session.js` (opencode). Only `init` adds these skills, hooks and command files; other
+commands refresh the ones unstale already wrote and add none. When an upgrade brings a new one, the next `status`,
+`sync` or `run` says so once and names `init`. Your choice of provider goes in your own config, `~/.config/unstale/config.json`. In shared mode it is also written to
 `.unstale/config.json`, as a suggestion for the team that spends nothing by itself. Personal mode, the default, keeps all of it out of Git. Shared mode
 (`unstale init --mode shared`) commits the ledger and generated review context, and adds one line to `.gitattributes`.
 `unstale uninstall` removes all of it and backs up your decisions.
 
 ## Session start
 
-The hook asks the catalog one thing: whether its list of packages changed. If it did, or your manifest or lockfile
+Each session start makes one conditional request: the catalog's list of packages, sent back only if it changed. If the list changed, or your manifest or lockfile
 changed, it starts a background sync. That sync contacts what `unstale status` contacts: the catalog and the public
 registries. Then, if you chose a provider, the new release notes are sent to it and to no one else. The hook gives up
 after 1.2 seconds, so it never holds up a session, always exits 0 and prints at most one line.
-`"session_sync": false` in `.unstale/config.json` turns the sync off.
+`"session_sync": false` in `.unstale/config.json` turns the sync off. It keeps its state in
+`.unstale/state/session-sync.json` (what the last sync saw and when, and why it stopped, if it did) beside two lock
+files, `session-sync.lock` and `session-sync.state.lock`.
 
 ## What leaves your machine
 

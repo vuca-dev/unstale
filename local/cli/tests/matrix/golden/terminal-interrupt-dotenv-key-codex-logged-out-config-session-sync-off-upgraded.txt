@@ -56,6 +56,7 @@ How should unstale read new release notes?
 [interrupted]
 
 $ unstale status --wait 0 --no-animation
+New in this version: session-start updates for Codex and opencode. Run `unstale init` to add them.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.

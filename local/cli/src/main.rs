@@ -351,7 +351,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     }
     if let Cmd::Cache { cmd: CacheCmd::Clean { results, yes } } = cli.cmd {
         if !inference::enabled() {
-            bail!("`unstale cache clean` is not available yet");
+            bail!("`unstale cache clean` is turned off by UNSTALE_EDGE_INFERENCE=0; unset it to turn it on.");
         }
         let mut ask = || {
             use std::io::IsTerminal;
@@ -372,6 +372,8 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         return cmd_internal(cli.dir.as_deref(), cmd);
     }
     if let Cmd::Init { catalog, mode, yes, service, wait, no_animation, inference } = cli.cmd {
+        // Only `init` adds agent integrations a repository does not have yet.
+        onboarding::allow_adding();
         // Read before anything is written, so a mistyped choice changes nothing. With the switch off it is ignored.
         let choice = match inference.filter(|_| inference::enabled()) {
             Some(s) => Some(setup::parse_flag(&s).map_err(|e| anyhow!(e))?),
@@ -393,7 +395,12 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         if inference::enabled() {
             setup::run(&mut ctx, choice, false, false, yes)?;
         }
-        return if ctx.config.service.is_some() { onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false) } else { Ok(code) }
+        return if ctx.config.service.is_some() {
+            onboarding::run(&ctx, wait.unwrap_or(0), !no_animation, false)
+        } else {
+            // Without the service there is no report, so the integrations are added here, as only `init` adds them.
+            review::write_entrypoint(&ctx.tool).and_then(|_| onboarding::integrate(&ctx)).map(|_| code)
+        }
             .inspect(|_| {
                 if let Some(line) = refused_line() { println!("{line}"); }
                 notice::print(&ctx.cache, &ctx.tool);
@@ -404,6 +411,12 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
     let mut ctx = context(&start)?;
     // A choice an agent or a script made, said once to the first person who runs unstale at a terminal.
     setup::say_unseen(&ctx);
+    // What this version adds that only `init` installs, said once per repository.
+    if matches!(cli.cmd, Cmd::Status { .. } | Cmd::Sync | Cmd::Run { .. })
+        && let Some(line) = onboarding::new_integrations_line(&ctx)
+    {
+        println!("{line}");
+    }
     match cli.cmd {
         Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } | Cmd::Cache { .. } => unreachable!(),
         Cmd::Setup { inference, user, details, limit } => {

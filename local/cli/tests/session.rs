@@ -186,7 +186,7 @@ impl Env {
             .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             .env_remove("UNSTALE_CATALOG")
             .env_remove("UNSTALE_CATALOG_KEY")
-            // Session start is behind the switch until the release: on here unless a test turns it off.
+            // Session start is behind the switch: on here unless a test turns it off.
             .env("UNSTALE_EDGE_INFERENCE", "1")
             .stdin(Stdio::null());
         for (k, v) in &self.extra {
