@@ -1343,4 +1343,12 @@ fn a_menu_too_big_for_the_terminal_is_asked_by_typing_instead() {
     let n = m.lines(0).len() + 1;
     assert!(fits(&m, n + 1, 100));
     assert!(!fits(&m, n, 100));
+    // Typed instead, the options are numbered as the prompt asks, with no mark the keys could move.
+    let typed = m.typed_lines();
+    assert!(typed.iter().all(|l| !l.contains('●') && !l.contains('○')), "{typed:#?}");
+    assert_eq!(typed.len(), m.lines(m.default).len());
+    for (i, r) in m.rows.iter().enumerate() {
+        assert!(typed.contains(&r[0].replacen('○', &(i + 1).to_string(), 1)), "{typed:#?}");
+    }
+    assert!(m.typed_prompt().contains("a number to choose"));
 }

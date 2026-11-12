@@ -288,7 +288,7 @@ pub fn ask(menu: &Menu, details: &[String]) -> Answered {
         return a;
     }
     let mut out = std::io::stdout();
-    for l in menu.lines(menu.default) {
+    for l in menu.typed_lines() {
         let _ = writeln!(out, "{l}");
     }
     view::ask_default(

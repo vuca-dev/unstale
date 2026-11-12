@@ -440,6 +440,20 @@ impl Menu {
         }
     }
 
+    /// [`Menu::lines`] for a typed answer: each option numbered where the mark would go, as the prompt under it asks
+    /// for a number (a `●` there would read as a mark the keys could move).
+    pub fn typed_lines(&self) -> Vec<String> {
+        let mut out = self.head.clone();
+        for (i, r) in self.rows.iter().enumerate() {
+            for (j, l) in r.iter().enumerate() {
+                out.push(if j == 0 { l.replacen('○', &(i + 1).to_string(), 1) } else { l.clone() });
+            }
+        }
+        out.extend(self.notes.iter().cloned());
+        out.push(String::new());
+        out
+    }
+
     /// The typed answer's prompt, where keys cannot be read one at a time (as before the menu).
     pub fn typed_prompt(&self) -> String {
         if self.details {

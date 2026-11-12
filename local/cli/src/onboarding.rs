@@ -1300,10 +1300,10 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
     // Every supported agent's skill directory, whether or not its command is on PATH: desktop apps and editor
     // extensions (Cursor, Claude Code in an IDE) install none, and the README's slash commands must exist either
     // way. Codex and Cursor both read `.agents/skills`; in local mode the files are excluded from Git.
-    // opencode needs no directory or command files of its own (checked against opencode 1.2.0, 1.15.0 and 1.19.4): it
-    // reads both `.claude/skills` and `.agents/skills`, keeps one skill per name (which copy varies between runs; it
-    // logs "duplicate skill name", and ours are identical), and offers every skill as `/<name>` unless a command file
-    // of that name exists. It ignores `disable-model-invocation`, so each description must say explicit-request only.
+    // opencode reads both `.claude/skills` and `.agents/skills` and keeps one skill per name (ours are identical). From
+    // 2.x it offers no skill as `/<name>` and hides one marked `disable-model-invocation` from its agent (checked
+    // against 2.2.7), so `/unstale-review` is a command file of its own (session.rs). opencode 1.x ignored the flag,
+    // so each description still says explicit-request only.
     let runtimes: [(&[&str], &str); 2] = [(&["Codex", "Cursor"], ".agents/skills"), (&["Claude Code"], ".claude/skills")];
     for (names, dir) in runtimes {
         let mut review_installed = false;
@@ -1397,6 +1397,9 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
         }
     }
     if !installed.is_empty() { retire_legacy_skills(ctx, ".cursor/skills")?; }
+    if !installed.is_empty() && !crate::session::install_opencode_command(ctx)? {
+        conflicts.push(crate::session::OPENCODE_COMMAND_PATH.to_string());
+    }
     // opencode reads the skills from either directory; its session start runs through a plugin.
     if !installed.is_empty() && util::edge_inference() { crate::session::install_opencode_plugin(ctx)?; }
     util::write_atomic(

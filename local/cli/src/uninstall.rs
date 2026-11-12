@@ -134,6 +134,7 @@ pub fn run(start: &Path) -> Result<u8> {
             line == onboarding::SESSION_HOOK_EXCLUDE_LINE
                 || line == session::CODEX_HOOKS_EXCLUDE_LINE
                 || line == session::OPENCODE_PLUGIN_EXCLUDE_LINE
+                || line == session::OPENCODE_COMMAND_EXCLUDE_LINE
                 || dirs.iter().any(|dir| {
                 ["review", "upgrade-review", "improvements-pass", "onboarding"]
                     .iter()

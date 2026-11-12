@@ -1075,6 +1075,8 @@ fn with_the_switch_off_setup_and_session_start_are_as_before() {
         "repo/.claude/settings.local.json",
         "repo/.claude/skills/unstale-review/SKILL.md",
         "repo/.claude/skills/unstale-review/agents/openai.yaml",
+        // opencode's `/unstale-review`, the review's own command: not session start, so with the switch off too.
+        "repo/.opencode/commands/unstale-review.md",
         "repo/.unstale/.gitignore",
         "repo/.unstale/config.json",
         "repo/.unstale/coverage.md",

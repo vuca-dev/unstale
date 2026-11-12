@@ -6,7 +6,8 @@ What `unstale init` writes, what leaves your machine and what does not. To repor
 ## What `init` writes
 
 `.unstale/` holds configuration, the decision ledger and reports. Agent skills go in
-`.claude/skills` (Claude Code) and `.agents/skills` (Codex and Cursor). opencode reads both. `init` writes the skills
+`.claude/skills` (Claude Code) and `.agents/skills` (Codex and Cursor). opencode reads both, and its `/unstale-review` is the command file
+`.opencode/commands/unstale-review.md`, kept with the skills. `init` writes the skills
 whether or not each agent is installed. It also adds session-start hooks, which Git ignores in both modes:
 `.claude/settings.local.json` (Claude Code), `.codex/hooks.json` (Codex, which runs it once you trust it in `/hooks`) and
 `.opencode/plugins/unstale-session.js` (opencode). Your choice of provider goes in your own config, `~/.config/unstale/config.json`. In shared mode it is also written to

@@ -966,6 +966,55 @@ pub fn install_opencode_plugin(ctx: &Ctx) -> Result<()> {
     exclude(&ctx.root, OPENCODE_PLUGIN_EXCLUDE_LINE)
 }
 
+/// opencode's `/unstale-review`. opencode 2.x offers only command files as slash commands, not skills, and hides a
+/// skill marked `disable-model-invocation` from its agent, so without this file `/unstale-review` reaches the agent as
+/// plain text (checked against opencode 2.2.7). Like the skills it is committed in shared mode and excluded from Git
+/// in personal mode.
+pub const OPENCODE_COMMAND_PATH: &str = ".opencode/commands/unstale-review.md";
+pub const OPENCODE_COMMAND_EXCLUDE_LINE: &str = "/.opencode/commands/unstale-review.md";
+
+/// The command points at the review skill rather than copying it: opencode expands `$`, `!` and `@` in a command's
+/// body, and the skill's text is not written for that.
+pub fn opencode_command() -> String {
+    format!(
+        "---\ndescription: Review upstream dependency changes against this repository and recommend what to act on\n---\n\n\
+Read `.unstale/skills/review/SKILL.md` and follow it. $ARGUMENTS\n\n<!-- {MARKER} -->\n"
+    )
+}
+
+/// Writes the command unless a file of the user's stands there, or the path runs through a link: `false` then.
+pub fn install_opencode_command(ctx: &Ctx) -> Result<bool> {
+    let path = ctx.root.join(OPENCODE_COMMAND_PATH);
+    let linked = path
+        .ancestors()
+        .take_while(|p| *p != ctx.root)
+        .any(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()));
+    let old = std::fs::read_to_string(&path).ok();
+    if linked || (path.exists() && !old.as_deref().is_some_and(|t| t.contains(MARKER))) {
+        return Ok(false);
+    }
+    let text = opencode_command();
+    if old.as_deref() != Some(text.as_str()) {
+        util::write_atomic(&path, text.as_bytes())?;
+    }
+    if ctx.config.mode == crate::Mode::Local {
+        exclude(&ctx.root, OPENCODE_COMMAND_EXCLUDE_LINE)?;
+    } else if let Some(p) = crate::git(&ctx.root, &["rev-parse", "--git-path", "info/exclude"]) {
+        let p = PathBuf::from(p.trim());
+        let p = if p.is_absolute() { p } else { ctx.root.join(p) };
+        let old = std::fs::read_to_string(&p).unwrap_or_default();
+        if old.lines().any(|l| l == OPENCODE_COMMAND_EXCLUDE_LINE) {
+            let text: String = old
+                .lines()
+                .filter(|l| *l != OPENCODE_COMMAND_EXCLUDE_LINE)
+                .map(|l| format!("{l}\n"))
+                .collect();
+            util::write_atomic(&p, text.as_bytes())?;
+        }
+    }
+    Ok(true)
+}
+
 /// Codex runs a project hook only once the user trusts it, which only they can do: the one line that names the step,
 /// said once per repository, after the hook is installed. `None` when there is no hook of ours, it was said, or Codex
 /// is not on this machine.
@@ -983,20 +1032,23 @@ pub fn codex_trust_line(ctx: &Ctx) -> Option<String> {
     )
 }
 
-/// Uninstall: our Codex hook entry (the user's bytes kept) and opencode plugin, each backed up first.
+/// Uninstall: our Codex hook entry (the user's bytes kept), opencode plugin and opencode command, each backed up
+/// first.
 pub fn uninstall_hooks(root: &Path, backup: &Path) -> Result<()> {
     crate::hooks::uninstall(root, CODEX_HOOKS_PATH, CODEX_HOOK_ARGS, backup)?;
-    let plugin = root.join(OPENCODE_PLUGIN_PATH);
-    if !std::fs::symlink_metadata(&plugin).is_ok_and(|m| m.file_type().is_symlink())
-        && let Ok(text) = std::fs::read_to_string(&plugin)
-        && text.contains(MARKER)
-    {
-        let dest = backup.join(OPENCODE_PLUGIN_PATH);
-        std::fs::create_dir_all(dest.parent().unwrap())?;
-        std::fs::write(&dest, &text)?;
-        std::fs::remove_file(&plugin)?;
-        let _ = std::fs::remove_dir(plugin.parent().unwrap());
-        let _ = std::fs::remove_dir(plugin.parent().unwrap().parent().unwrap());
+    for rel in [OPENCODE_PLUGIN_PATH, OPENCODE_COMMAND_PATH] {
+        let file = root.join(rel);
+        if !std::fs::symlink_metadata(&file).is_ok_and(|m| m.file_type().is_symlink())
+            && let Ok(text) = std::fs::read_to_string(&file)
+            && text.contains(MARKER)
+        {
+            let dest = backup.join(rel);
+            std::fs::create_dir_all(dest.parent().unwrap())?;
+            std::fs::write(&dest, &text)?;
+            std::fs::remove_file(&file)?;
+            let _ = std::fs::remove_dir(file.parent().unwrap());
+            let _ = std::fs::remove_dir(file.parent().unwrap().parent().unwrap());
+        }
     }
     Ok(())
 }
