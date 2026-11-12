@@ -378,3 +378,9 @@ OpenRouter parity, repeat eval runs.
 - Runs to verify, in order: 43127192061 (first with #244 logging), 43130458934 (first with the token), then the first on `5b7c36b` (throughput).
 - Docs draft #240 at `53fee97`: README trimmed 202 → 143 lines, figures audited, new `docs/reading-release-notes.md` and `docs/privacy.md`; awaiting the CEO's re-review. No measured "naive costs N times more" ratio exists for reading release notes; the arm that would measure it has never run.
 - Left for the CEO: about 1 GB of synthetic benchmark data in the session scratch folder `ingest-throughput/bench/` (an agent's delete was blocked; PM did not delete it for the agent).
+
+### Pre-release improvement lanes (12 November)
+
+- CEO: copy moves from dollars to tokens per technology with a comparison that shows how little it is (docs agent on draft #240). Then five distinct Fable lanes on the pattern of `.github/agents/*.md`, without the single-task limit or the log, up to 5 highest-return items each, PRs mergeable by the PM after fresh review: (1) performance and efficiency, (2) throughput, (3) cost at the edge, (4) developer experience against the vault's design principles, (5) security, privacy and prompt poisoning.
+- Method: phase 1, each lane investigates and returns up to five ranked candidates with evidence; the PM removes overlaps and approves; phase 2, one PR per item in worktrees `/Users/jason/unstale-lane-<lane>-<n>`, fresh reviewer per lane, PM merges. Paid spend caps: cost lane $2.50, performance and throughput $1.50 each, others none.
+- Ingest: queued run 43130458934 was cancelled as a duplicate; run 43144432657 (02:53 UTC, `5b7c36b`) is the first with the CEO's GitHub token and #246 (watch `baxwt0yfz`). Run 43127192061 (logging only): checks over 24 h 1,002 → 890, over 3 d 770 → 643, checkable max 11.2 → 9.6 days; 11 npm 429 pauses totalling about 81 minutes; 46 of 49 yields were model-free checks.
