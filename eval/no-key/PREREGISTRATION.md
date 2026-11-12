@@ -53,6 +53,15 @@ by an ingest on the change-events code (index `checked` after 2026-11-11T00:48Z)
 for 315 of 846, so no run was started. At 10:24Z, after four runs, it held for 783 of 846; the other 63 were last
 checked between 18 October and 10 November and none moved in those runs, so still no run was started.
 
+**Gate as run (12 November, written before the full run).** The ingest backlog has cleared. Of the 846, 15 are still
+on an older check; they are small packages the catalog cannot refresh further, and none of the large ones remains.
+The run goes ahead with them missing rather than waiting on what will not change: a technology without events gives
+the new arm no release text, so the gap can only cost it finds. Each repo's count of such technologies, measured on
+what the client actually syncs for it, is in the results table. The pass rule and the stopping rule are unchanged.
+
+**Smoke (12 November).** Two repos, graphql-ws and mikro-orm: 276K and 687K client tokens, both under the 800K stop
+line, judge 115K and 157K Codex tokens. Their results stand as the first two repos of the full run.
+
 ## Scoring
 
 Unchanged from the October run: the same judge, the same tier rule (A act now, B plan, C nit), the frozen pool v3 and

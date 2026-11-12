@@ -12,7 +12,7 @@ edge-inference switch on, (2) freeze_catalog.py cuts that cache to the day the a
 run: the plain ask plus one line naming unstale's files (prompt.md), through the harness's own agent runner with the
 agent-alone arm's settings, then the harness's judge on the new items. A finished attempt is skipped.
 """
-import argparse, json, os, re, shutil, sqlite3, subprocess, sys
+import argparse, json, os, re, shutil, sqlite3, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ARM = 'naive-plain+nokey@3x'
@@ -47,24 +47,25 @@ def main():
             run(ab, c, root, at, r, clone, base, a.no_judge)
 
 
-def unstale(build, d, cache, config, extra):
+def unstale(build, d, cache, config, extra, state=None):
+    """One `unstale init` in `d`. Returns the report and the coverage state it left. `state` seeds that state first, so
+    a second run on the same repository does not ask the public registry about every package again."""
     env = {**os.environ, 'UNSTALE_EDGE_INFERENCE': '1', 'UNSTALE_CACHE_DIR': cache, 'UNSTALE_CONFIG_DIR': config, 'UNSTALE_INTERNAL_TRAFFIC': '1'}
     env.pop('UNSTALE_CATALOG', None)
-    # Registry answers (which packages are public) are shared between runs: a fresh cache per repo asks the public
-    # registry about every package again, and the registry limits that.
-    shared = os.path.join(os.path.dirname(os.path.dirname(config)), 'registry')
-    if os.path.isdir(shared) and not os.path.exists(os.path.join(cache, 'registry')):
-        shutil.copytree(shared, os.path.join(cache, 'registry'))
-    subprocess.run([build, '-C', d, 'init', '--yes', '--mode', 'local', '--no-animation', '--wait', '60', '--service', 'https://api.unstale.sh', *extra],
-                   env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1800)
-    if os.path.isdir(os.path.join(cache, 'registry')):
-        shutil.copytree(os.path.join(cache, 'registry'), shared, dirs_exist_ok=True)
+    spath = os.path.join(d, '.unstale', 'state', 'coverage.json')
     path = os.path.join(d, '.unstale', 'onboarding-report.md')
-    text = open(path).read() if os.path.exists(path) else None
-    # A run the registry limited has no basis for a report: stop rather than score it.
-    if text and 'Registry unavailable' in text:
-        sys.exit('the public registry limited this run; wait and run prepare again')
-    return text
+    # The public registry limits bursts of package checks: a limited run is no basis for a report, so wait and retry.
+    for wait in (0, 300, 600, 900):
+        time.sleep(wait)
+        shutil.rmtree(os.path.join(d, '.unstale'), ignore_errors=True)
+        if state is not None:
+            os.makedirs(os.path.dirname(spath)); open(spath, 'wb').write(state)
+        subprocess.run([build, '-C', d, 'init', '--yes', '--mode', 'local', '--no-animation', '--wait', '60', '--service', 'https://api.unstale.sh', *extra],
+                       env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1800)
+        text = open(path).read() if os.path.exists(path) else None
+        if text and 'Registry unavailable' not in text and 'registry identities went unanswered' not in text:
+            return text, open(spath, 'rb').read() if os.path.exists(spath) else None
+    sys.exit('the public registry kept limiting this run; run prepare again later')
 
 
 def prepare(ab, build, at, r, clone, base):
@@ -79,7 +80,7 @@ def prepare(ab, build, at, r, clone, base):
     day = r['created_at'][:10]
     d = ab.blind_copy(clone, f'prep-{at}-live', commit=r['commit_sha'])
     try:
-        live = unstale(build, d, cache1, config, [])
+        live, state = unstale(build, d, cache1, config, [])
     finally:
         shutil.rmtree(d, ignore_errors=True)
     if live is None:
@@ -101,7 +102,7 @@ def prepare(ab, build, at, r, clone, base):
                                        capture_output=True, text=True, check=True).stdout)
     d = ab.blind_copy(clone, f'prep-{at}-frozen', commit=r['commit_sha'])
     try:
-        report = unstale(build, d, cache2, config, ['--catalog', cat])
+        report, _ = unstale(build, d, cache2, config, ['--catalog', cat], state)
         if report is None:
             sys.exit(f'attempt {at}: no report on the frozen catalog')
         out = os.path.join(base, 'out')
