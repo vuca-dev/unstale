@@ -101,6 +101,7 @@ $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 warning: the provider rejected the key, so new release notes are not read. Check the key.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
+unstale reads release notes on your OpenAI key (≈ $0.16 a year), chosen through your agent on 10 November. Undo: `unstale setup --inference none`
 warning: the provider rejected the key, so new release notes are not read. Check the key.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
@@ -134,7 +135,7 @@ warning: the provider rejected the key, so new release notes are not read. Check
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Release notes         OpenAI (OPENAI_API_KEY), your user config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Tokens                0 of 4.8M this month (a tenth of the limit until you run unstale at a terminal)
 Cache                 under 1 MB of 100 MB
 
 # contacted

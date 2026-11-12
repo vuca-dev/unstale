@@ -166,7 +166,7 @@ pub fn routes_with(
             env.clone(),
         ));
         // The user's own monthly token limit (`unstale setup --limit`), the default when they set none.
-        inf.monthly_budget = crate::setup::monthly_tokens_at(root);
+        (inf.monthly_budget, inf.budget_unseen) = crate::setup::monthly_tokens_at(root);
         inf
     };
     Some(Routes {

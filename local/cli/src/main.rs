@@ -379,11 +379,14 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             Some(s) => Some(setup::parse_flag(&s).map_err(|e| anyhow!(e))?),
             None => None,
         };
+        // An install script or a Git hook never chooses to spend on the user's key or plan.
+        setup::refuse_from_hooks(choice.as_ref(), &setup::process_env)?;
         let service = service.or_else(|| std::env::var("UNSTALE_SERVICE").ok())
             .or_else(|| DEFAULT_SERVICE.filter(|s| !s.is_empty()).map(String::from));
         let catalog = catalog.or_else(|| std::env::var("UNSTALE_CATALOG").ok()).or_else(|| service.clone());
         let code = init(&start, catalog, mode, yes, service.is_some())?;
         let mut ctx = context(&start)?;
+        setup::say_unseen(&ctx);
         if let Some(service) = service {
             sync::resolve_source(&service)?;
             ctx.config.service = Some(service);
@@ -401,6 +404,8 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             });
     }
     let mut ctx = context(&start)?;
+    // A choice an agent or a script made, said once to the first person who runs unstale at a terminal.
+    setup::say_unseen(&ctx);
     match cli.cmd {
         Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } | Cmd::Cache { .. } => unreachable!(),
         Cmd::Setup { inference, user, details, limit } => {
@@ -410,6 +415,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             }
             // Read before anything is written, so a mistyped value changes nothing.
             let choice = inference.map(|s| setup::parse_flag(&s).map_err(|e| anyhow!(e))).transpose()?;
+            setup::refuse_from_hooks(choice.as_ref(), &setup::process_env)?;
             let limit = limit.map(|s| setup::parse_limit(&s).map_err(|e| anyhow!(e))).transpose()?;
             if details {
                 setup::details(&ctx);
@@ -562,7 +568,7 @@ fn cmd_infer(provider: &str, model: Option<String>, base_url: Option<String>, ke
     };
     let mut inf = Inference::new(cfg);
     // The limit in effect where this runs: the user's own, or a lower one the repository here sets.
-    inf.monthly_budget = setup::monthly_tokens_at(std::env::current_dir().ok().and_then(|d| pipeline::repo_root(&d)).as_deref());
+    (inf.monthly_budget, inf.budget_unseen) = setup::monthly_tokens_at(std::env::current_dir().ok().and_then(|d| pipeline::repo_root(&d)).as_deref());
     if let Some(t) = timeout_secs { inf.limits.timeout = std::time::Duration::from_secs(t); }
     if let Some(b) = backoff_ms { inf.limits.backoff = std::time::Duration::from_millis(b); }
     match inf.complete(&p) {
@@ -587,7 +593,7 @@ fn cmd_internal(dir: Option<&Path>, cmd: InternalCmd) -> Result<u8> {
     let mut main = match provider {
         Some(p) => {
             let mut named = inference::Inference::new(pipeline::named_provider(&p, model, base_url, key_env).map_err(|e| anyhow!(e))?);
-            named.monthly_budget = setup::monthly_tokens_at(root.as_deref());
+            (named.monthly_budget, named.budget_unseen) = setup::monthly_tokens_at(root.as_deref());
             named
         }
         None => match pipeline::stored_choice(root.as_deref()).and_then(|c| pipeline::routes(&c, root.as_deref())) {

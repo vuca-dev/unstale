@@ -1129,6 +1129,95 @@ fn suggestion(team: &Choice) -> String {
     }
 }
 
+/// `12 November`, and the year when it is not this one: `12 November 2025`. The date as stored when it cannot be read.
+fn day(date: &str, today: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
+        "November", "December",
+    ];
+    let parts: Vec<&str> = date.get(..10).unwrap_or("").split('-').collect();
+    let [y, m, d] = parts.as_slice() else {
+        return date.to_string();
+    };
+    let (Some(m), Ok(d)) = (
+        m.parse::<usize>().ok().and_then(|m| MONTHS.get(m.wrapping_sub(1))),
+        d.parse::<u32>(),
+    ) else {
+        return date.to_string();
+    };
+    if today.get(..4) == Some(*y) {
+        format!("{d} {m}")
+    } else {
+        format!("{d} {m} {y}")
+    }
+}
+
+/// The option a stored choice stands for, for its cost.
+fn pick_of(c: &Choice) -> Option<Pick> {
+    let jev = c.labels.as_ref().is_some_and(|l| l.provider == "jev");
+    let snap = c.matching.as_ref().is_some_and(|m| m.provider == "subq");
+    if c.provider == "codex" {
+        return Some(if jev { Pick::JevCodex } else { Pick::Codex });
+    }
+    let r = route_by_id(&c.provider)?;
+    Some(match (jev, snap) {
+        (true, _) => Pick::JevKey(r),
+        (false, true) => Pick::SnapKey(r),
+        (false, false) => Pick::Key(r),
+    })
+}
+
+/// A choice made by an agent or a script that no person has seen, said once at a terminal and in `unstale status`:
+/// what spends, this repository's cost a year, who chose it and when, and the command that undoes it.
+pub fn unseen_line(u: &Unseen, techs: usize, today: &str) -> String {
+    let c = &u.choice;
+    let routes = |extra: &str| {
+        let main = route_by_id(&c.provider).map(route_name).unwrap_or(&c.provider);
+        format!("{extra} and {main} keys")
+    };
+    let on = match (c.provider.as_str(), &c.labels, &c.matching) {
+        ("codex", Some(_), _) => "Jev key and Codex plan".to_string(),
+        ("codex", None, _) => "Codex plan".to_string(),
+        (_, Some(_), _) => routes("Jev"),
+        (_, None, Some(_)) => routes("SubQ Snap"),
+        (p, None, None) => format!("{} key", route_by_id(p).map(route_name).unwrap_or(p)),
+    };
+    let usd_a_year = pick_of(c).map(|p| quote(p, false).usd * techs.max(1) as f64).unwrap_or(0.0);
+    let cost = if usd_a_year > 0.0 {
+        format!("≈ {} a year", usd(usd_a_year))
+    } else {
+        "no extra cost".to_string()
+    };
+    let by = if u.mark.agent() {
+        "through your agent"
+    } else {
+        "through a script"
+    };
+    // Undo names what restores both: no provider, and the limit before an agent or a script changed it.
+    let mut undo = match (u.chosen, u.every_repo) {
+        (false, _) => "unstale setup".to_string(),
+        (true, true) => "unstale setup --user --inference none".to_string(),
+        (true, false) => "unstale setup --inference none".to_string(),
+    };
+    if let Some((_, previous)) = &u.limit {
+        undo.push_str(&format!(" --limit {previous}"));
+    }
+    // A limit raised or removed with it, named with what it was set to.
+    let limit = match &u.limit {
+        Some((Limit::Tokens(n), _)) => format!(
+            " with a token limit of {}",
+            crate::inference::ledger::short_tokens(*n)
+        ),
+        Some((Limit::None, _)) => " with no token limit".to_string(),
+        None => String::new(),
+    };
+    let verb = if u.chosen { "chosen" } else { "set" };
+    format!(
+        "unstale reads release notes on your {on} ({cost}){limit}, {verb} {by} on {}. Undo: `{undo}`",
+        day(&u.mark.on, today)
+    )
+}
+
 // ---------------------------------------------------------------------------------------------------------- status
 
 /// A line of `unstale status`'s short block: a label, then what it is, aligned with the others.
@@ -1199,6 +1288,11 @@ pub fn tokens_line(used: std::io::Result<u64>, limit: Limit, origin: LimitOrigin
                 LimitOrigin::Repo => {
                     format!("this repo's limit{reached}, set in .unstale/config.json")
                 }
+                // The line above the block says whose choice it is and how to lift it.
+                LimitOrigin::Unseen { .. } if n >= max => "a tenth of the limit, reached".to_string(),
+                LimitOrigin::Unseen { .. } => {
+                    "a tenth of the limit until you run unstale at a terminal".to_string()
+                }
             };
             format!(
                 "{} of {} this month ({whose})",
@@ -1214,6 +1308,7 @@ pub fn tokens_line(used: std::io::Result<u64>, limit: Limit, origin: LimitOrigin
 pub fn limit_reached_line(origin: LimitOrigin) -> String {
     match origin {
         LimitOrigin::Repo => "warning: this repo's token limit is reached, so new release notes wait. See .unstale/config.json.".into(),
+        LimitOrigin::Unseen { agent } => crate::inference::Deferred::BudgetUnseen { agent }.line(),
         _ => crate::inference::Deferred::Budget.line(),
     }
 }

@@ -811,6 +811,14 @@ pub fn write_user(path: &Path, c: &Choice) -> anyhow::Result<()> {
 
 /// Sets (or with `None` removes) one key of the user's config, keeping anything else there.
 fn write_user_key(path: &Path, key: &str, value: Option<serde_json::Value>) -> anyhow::Result<()> {
+    write_user_keys(path, vec![(key, value)])
+}
+
+/// Sets (or with `None` removes) keys of the user's config in one write, keeping anything else there.
+fn write_user_keys(
+    path: &Path,
+    keys: Vec<(&str, Option<serde_json::Value>)>,
+) -> anyhow::Result<()> {
     if path.as_os_str().is_empty() {
         anyhow::bail!(
             "there is nowhere to save this for you: HOME is not set. Set HOME or UNSTALE_CONFIG_DIR, then run it again"
@@ -830,10 +838,12 @@ fn write_user_key(path: &Path, key: &str, value: Option<serde_json::Value>) -> a
         }
     }
     let mut doc = user_doc(path);
-    match value {
-        Some(v) => doc.insert(key.into(), v),
-        None => doc.remove(key),
-    };
+    for (key, value) in keys {
+        match value {
+            Some(v) => doc.insert(key.into(), v),
+            None => doc.remove(key),
+        };
+    }
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -886,6 +896,16 @@ fn read_user_repo(path: &Path, root: &Path) -> Option<Choice> {
 
 /// Records (or with `None` forgets) the user's answer for one repository, keeping anything else in their config.
 pub fn write_user_repo(path: &Path, root: &Path, c: Option<&Choice>) -> anyhow::Result<()> {
+    write_user_repo_marked(path, root, c, None)
+}
+
+/// [`write_user_repo`], with how the answer was made when no person saw the question ([`Mark`]).
+fn write_user_repo_marked(
+    path: &Path,
+    root: &Path,
+    c: Option<&Choice>,
+    mark: Option<&Mark>,
+) -> anyhow::Result<()> {
     let mut repos = user_doc(path)
         .get("repositories")
         .and_then(|v| v.as_object().cloned())
@@ -893,7 +913,11 @@ pub fn write_user_repo(path: &Path, root: &Path, c: Option<&Choice>) -> anyhow::
     let key = root.to_string_lossy().to_string();
     match c {
         Some(c) => {
-            repos.insert(key, serde_json::json!({"inference": c}));
+            let mut entry = serde_json::json!({"inference": c});
+            if let (Some(m), Some(o)) = (mark, entry.as_object_mut()) {
+                m.put(o);
+            }
+            repos.insert(key, entry);
         }
         None if repos.remove(&key).is_none() => return Ok(()),
         None => {}
@@ -922,6 +946,250 @@ pub fn stored(repo: Option<&Choice>, root: &Path, user_path: &Path) -> Stored {
             choice: None,
             suggested: repo.cloned(),
         },
+    }
+}
+
+// ------------------------------------------------------------------------------------------------- who chose it
+
+/// Who recorded a choice with `--inference`, from the environment. A person at a terminal is asked by the picker and
+/// can type the flag; an agent or a script records an answer no person may have seen; CI runs a flag the pipeline's
+/// author wrote into its file, which is that author's choice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Chooser {
+    Person,
+    /// One of [`AGENT_VARS`] is set, at a terminal or not.
+    Agent,
+    /// No agent variable, and `CI` is set (to anything but `false` or `0`), as GitHub Actions, GitLab, CircleCI,
+    /// Buildkite, Travis, Azure Pipelines (through `TF_BUILD`, which it sets instead) and most others set it.
+    Ci,
+    /// No agent variable, no `CI`, and stdin or stdout is not a terminal: a script, a pipe, a scheduler.
+    Script,
+}
+
+/// The process's environment as [`chooser`] and [`hook_context`] read it: a variable's value, `None` when unset.
+pub fn process_env(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
+/// Who is recording a choice. An agent variable is read first, so an agent run inside CI is still an agent (its
+/// choice is not the pipeline author's); then `CI`, before the terminal, since some CI services (Buildkite) run
+/// commands in a pseudo-terminal.
+pub fn chooser(env: &dyn Fn(&str) -> Option<String>, terminal: bool) -> Chooser {
+    let set = |k: &str| env(k).is_some_and(|v| !v.trim().is_empty());
+    if AGENT_VARS.iter().any(|v| set(v)) {
+        return Chooser::Agent;
+    }
+    let ci = env("CI").is_some_and(|v| {
+        let v = v.trim().to_ascii_lowercase();
+        !v.is_empty() && v != "false" && v != "0"
+    }) || set("TF_BUILD");
+    match (ci, terminal) {
+        (true, _) => Chooser::Ci,
+        (false, true) => Chooser::Person,
+        (false, false) => Chooser::Script,
+    }
+}
+
+/// Whether stdin and stdout are both a terminal.
+pub fn at_terminal() -> bool {
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+}
+
+/// The package lifecycle events that run while packages are installed (npm, pnpm, Yarn and Bun all set
+/// `npm_lifecycle_event` to the script's name). `npm run <name>` sets it too, to that name, so only these count.
+const INSTALL_EVENTS: &[&str] = &[
+    "preinstall",
+    "install",
+    "postinstall",
+    "preprepare",
+    "prepare",
+    "postprepare",
+    "prepublish",
+];
+
+/// What is running this command, when it is something that must not record a choice that spends: a package install
+/// script (`npm_lifecycle_event` is one of [`INSTALL_EVENTS`]), or a Git hook (`GIT_EXEC_PATH`, which Git sets in
+/// every process it starts, with one of `GIT_INDEX_FILE`, `GIT_DIR` or `GIT_PREFIX`, one of which Git 2.51 sets for
+/// every hook: the commit hooks the index file, a bare repository's hooks the directory, the rest the prefix). A
+/// Git alias (`!cmd`) looks the same and is refused too. Nothing an agent or CI sets on its own matches.
+pub fn hook_context(env: &dyn Fn(&str) -> Option<String>) -> Option<&'static str> {
+    if env("npm_lifecycle_event").is_some_and(|e| INSTALL_EVENTS.contains(&e.trim())) {
+        return Some("a package install script");
+    }
+    let git = env("GIT_EXEC_PATH").is_some()
+        && ["GIT_INDEX_FILE", "GIT_DIR", "GIT_PREFIX"]
+            .iter()
+            .any(|v| env(v).is_some());
+    git.then_some("a Git hook")
+}
+
+/// Refuses a choice that spends when an install script or a Git hook runs the command: someone else's code would be
+/// choosing to spend on the user's key or plan. "none" spends nothing and is always taken.
+pub fn refuse_from_hooks(c: Option<&Choice>, env: &dyn Fn(&str) -> Option<String>) -> anyhow::Result<()> {
+    match (c, hook_context(env)) {
+        (Some(c), Some(what)) if !c.is_none() => anyhow::bail!(
+            "not saved: a choice that spends is not taken from {what}. Run `unstale setup` yourself."
+        ),
+        _ => Ok(()),
+    }
+}
+
+/// How a choice that spends was made when no person saw the question: `"chosen_by": "agent"` (or `"script"`) and
+/// `"chosen_on": "2026-11-12"`, beside the `"inference"` they describe in the user's config (in this repository's
+/// entry, or at the top for a choice for every repository). Until a person runs any unstale command at a terminal, the
+/// choice is said at the top of that command and in `unstale status`, and the monthly token limit is a tenth. That run
+/// removes both keys; a config without them (every one written before this) counts as seen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mark {
+    /// `agent` or `script`.
+    pub by: String,
+    /// `YYYY-MM-DD`.
+    pub on: String,
+}
+
+impl Mark {
+    /// The mark for a choice recorded by `who`; `None` for a person, CI, or a choice that spends nothing.
+    pub fn of(who: Chooser, c: &Choice) -> Option<Mark> {
+        let by = match who {
+            Chooser::Agent => "agent",
+            Chooser::Script => "script",
+            Chooser::Person | Chooser::Ci => return None,
+        };
+        (!c.is_none()).then(|| Mark {
+            by: by.into(),
+            on: crate::util::today(),
+        })
+    }
+
+    pub fn agent(&self) -> bool {
+        self.by == "agent"
+    }
+
+    fn put(&self, o: &mut serde_json::Map<String, serde_json::Value>) {
+        o.insert("chosen_by".into(), self.by.clone().into());
+        o.insert("chosen_on".into(), self.on.clone().into());
+    }
+
+    fn read(o: &serde_json::Map<String, serde_json::Value>) -> Option<Mark> {
+        Mark::read_as(o, "chosen_by", "chosen_on")
+    }
+
+    fn read_as(o: &serde_json::Map<String, serde_json::Value>, by: &str, on: &str) -> Option<Mark> {
+        let s = |k: &str| o.get(k).and_then(|v| v.as_str()).map(String::from);
+        Some(Mark {
+            by: s(by)?,
+            on: s(on).unwrap_or_default(),
+        })
+    }
+}
+
+/// A limit an agent or a script raised or removed: `"monthly_token_limit_set": {"by": "agent", "on": "2026-11-12",
+/// "previous": "10M"}` at the top of the user's config, beside the `"monthly_token_limit"` it describes (the limit is
+/// the user's, for every repository). `previous` is the `--limit` value that restores what the user last saw
+/// (`default` when they had set none). While it is there, every repository with a choice that spends is unseen.
+const LIMIT_MARK: &str = "monthly_token_limit_set";
+
+/// The limit mark ([`LIMIT_MARK`]): who, when, and the `--limit` value that restores the limit before it.
+fn read_limit_mark(doc: &serde_json::Map<String, serde_json::Value>) -> Option<(Mark, String)> {
+    let o = doc.get(LIMIT_MARK)?.as_object()?;
+    let m = Mark::read_as(o, "by", "on")?;
+    let previous = o.get("previous").and_then(|v| v.as_str()).unwrap_or("default");
+    Some((m, previous.to_string()))
+}
+
+/// The `--limit` value that sets `l` again (`None`: the default), as short as reads back exactly.
+fn limit_arg(l: Option<Limit>) -> String {
+    match l {
+        None => "default".into(),
+        Some(Limit::None) => "none".into(),
+        Some(Limit::Tokens(n)) => {
+            let short = crate::inference::ledger::short_tokens(n);
+            if parse_limit(&short) == Ok(Some(Limit::Tokens(n))) {
+                short
+            } else {
+                n.to_string()
+            }
+        }
+    }
+}
+
+/// A choice in effect that no person has seen yet: the choice, its mark, and whether it is the one for every
+/// repository (else this repository's).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unseen {
+    pub choice: Choice,
+    /// Who made what no person has seen, and when: the choice's own mark, else the limit's.
+    pub mark: Mark,
+    /// Whether the choice itself is unseen (else only a limit raised or removed beside it).
+    pub chosen: bool,
+    /// When an agent or a script raised or removed the user's limit: the limit now, and the `--limit` value that
+    /// restores the one before.
+    pub limit: Option<(Limit, String)>,
+    pub every_repo: bool,
+}
+
+/// The unseen choice in effect for the repository at `root` (with no repository, the one for every repository), read
+/// from the user's config as [`stored`] reads the choice itself.
+pub fn unseen(user_path: &Path, root: Option<&Path>) -> Option<Unseen> {
+    let doc = user_doc(user_path);
+    let entry = root.and_then(|r| {
+        doc.get("repositories")?
+            .get(&*r.to_string_lossy())?
+            .as_object()
+            .filter(|o| o.contains_key("inference"))
+    });
+    let (o, every_repo) = match entry {
+        Some(o) => (o, false),
+        None if doc.contains_key("inference") => (&doc, true),
+        None => return None,
+    };
+    let choice: Choice = serde_json::from_value(o.get("inference")?.clone()).ok()?;
+    let chosen = Mark::read(o);
+    let limit_mark = read_limit_mark(&doc);
+    let limit = limit_mark.as_ref().map(|(_, previous)| {
+        let now = read_user_limit(user_path)
+            .unwrap_or(Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS));
+        (now, previous.clone())
+    });
+    let mark = chosen.clone().or(limit_mark.map(|(m, _)| m))?;
+    (!choice.is_none()).then_some(Unseen {
+        choice,
+        mark,
+        chosen: chosen.is_some(),
+        limit,
+        every_repo,
+    })
+}
+
+/// Removes the mark of the choice in effect at `root`: a person has now seen it.
+pub fn mark_seen(user_path: &Path, root: Option<&Path>) -> anyhow::Result<()> {
+    let Some(u) = unseen(user_path, root) else {
+        return Ok(());
+    };
+    if u.limit.is_some() {
+        write_user_key(user_path, LIMIT_MARK, None)?;
+    }
+    if !u.chosen {
+        return Ok(());
+    }
+    if u.every_repo {
+        return write_user_keys(user_path, vec![("chosen_by", None), ("chosen_on", None)]);
+    }
+    let root = root.unwrap_or(Path::new(""));
+    write_user_repo_marked(user_path, root, Some(&u.choice), None)
+}
+
+/// At the top of any command a person runs at a terminal (switch on): an unseen choice in effect here is said once,
+/// and from then on counts as seen. Nothing for an agent, CI or a script.
+pub fn say_unseen(ctx: &crate::Ctx) {
+    if !crate::inference::enabled() || chooser(&process_env, at_terminal()) != Chooser::Person {
+        return;
+    }
+    let path = user_config_path();
+    if let Some(u) = unseen(&path, Some(&ctx.root)) {
+        println!("{}", view::unseen_line(&u, technologies(ctx), &crate::util::today()));
+        let _ = mark_seen(&path, Some(&ctx.root));
     }
 }
 
@@ -983,6 +1251,9 @@ pub enum LimitOrigin {
     User,
     /// This repository's config sets a lower one than the user's (or the default).
     Repo,
+    /// A tenth of the one that would apply, while the choice in effect was made by an agent (`agent`) or a script
+    /// and no person has seen it ([`Mark`]).
+    Unseen { agent: bool },
 }
 
 /// More than this is not a limit anyone means (a million million tokens); `none` says no limit.
@@ -1048,6 +1319,30 @@ pub fn limit(repo: Option<Limit>, user_path: &Path) -> (Limit, LimitOrigin) {
     }
 }
 
+/// What applies while the choice in effect is unseen: a tenth of the limit, or of the default when that is lower (so
+/// raising or removing the limit does not lift it).
+pub fn tenth(l: Limit) -> u64 {
+    match l.tokens().min(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS) {
+        0 => 0,
+        n => (n / 10).max(1),
+    }
+}
+
+/// The limit in effect for the repository at `root` ([`limit`]), a tenth of it while the choice in effect there is
+/// unseen ([`unseen`]).
+pub fn limit_here(repo: Option<Limit>, user_path: &Path, root: Option<&Path>) -> (Limit, LimitOrigin) {
+    let (l, origin) = limit(repo, user_path);
+    match unseen(user_path, root) {
+        Some(u) => (
+            Limit::Tokens(tenth(l)),
+            LimitOrigin::Unseen {
+                agent: u.mark.agent(),
+            },
+        ),
+        None => (l, origin),
+    }
+}
+
 /// A stored limit that cannot be read (`"lots"`, a negative number) counts as not set, so the default applies: a
 /// mistyped limit never makes a command fail, and never reads as no limit.
 pub fn lenient_limit<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Limit>, D::Error> {
@@ -1055,36 +1350,79 @@ pub fn lenient_limit<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Li
     Ok(serde_json::from_value(serde_json::Value::deserialize(d)?).ok())
 }
 
-/// The limit in effect for the repository at `root` ([`limit`]), as a count: for a caller that has only the
-/// directory, or none (then the user's own).
-pub fn monthly_tokens_at(root: Option<&Path>) -> u64 {
+/// The limit in effect for the repository at `root` ([`limit_here`]), as a count and whether it is the tenth for an
+/// unseen choice (`Some(agent)`): for a caller that has only the directory, or none (then the user's own).
+pub fn monthly_tokens_at(root: Option<&Path>) -> (u64, Option<bool>) {
     let repo = root.and_then(|r| {
         let b = std::fs::read(r.join(".unstale/config.json")).ok()?;
         let v: serde_json::Value = serde_json::from_slice(&b).ok()?;
         serde_json::from_value::<Limit>(v.get("monthly_token_limit")?.clone()).ok()
     });
-    limit(repo, &user_config_path()).0.tokens()
+    count(limit_here(repo, &user_config_path(), root))
 }
 
-/// The monthly token limit in effect for this repository, as a count: what a model stage checks its spend against.
-pub fn monthly_tokens(ctx: &crate::Ctx) -> u64 {
-    limit(ctx.config.monthly_token_limit, &user_config_path())
-        .0
-        .tokens()
+/// The monthly token limit in effect for this repository, as [`monthly_tokens_at`]: what a model stage checks its
+/// spend against.
+pub fn monthly_tokens(ctx: &crate::Ctx) -> (u64, Option<bool>) {
+    count(limit_here(
+        ctx.config.monthly_token_limit,
+        &user_config_path(),
+        Some(&ctx.root),
+    ))
+}
+
+fn count((l, origin): (Limit, LimitOrigin)) -> (u64, Option<bool>) {
+    let unseen = match origin {
+        LimitOrigin::Unseen { agent } => Some(agent),
+        _ => None,
+    };
+    (l.tokens(), unseen)
 }
 
 /// `unstale setup --limit`: records the user's own limit, always in their config (a repository's config can only
 /// lower it, by hand), and says what applies here now.
 pub fn set_limit(ctx: &crate::Ctx, new: Option<Limit>) -> anyhow::Result<()> {
     let path = user_config_path();
-    write_user_key(
+    let raised = raises(&path, new);
+    // An install script or a Git hook never raises what may be spent; lowering is always taken.
+    if raised && let Some(what) = hook_context(&process_env) {
+        anyhow::bail!(
+            "not saved: a higher token limit is not taken from {what}. Run `unstale setup --limit` yourself."
+        );
+    }
+    // Raised or removed by an agent or a script: marked for every repository until a person sees it. A mark already
+    // there keeps the limit before it, the one the person last saw.
+    let by = match chooser(&process_env, at_terminal()) {
+        Chooser::Agent => Some("agent"),
+        Chooser::Script => Some("script"),
+        Chooser::Person | Chooser::Ci => None,
+    };
+    let doc = user_doc(&path);
+    let mark = match (raised, by) {
+        (true, Some(by)) => {
+            let previous = read_limit_mark(&doc)
+                .map(|(_, p)| p)
+                .unwrap_or_else(|| limit_arg(read_user_limit(&path)));
+            Some(serde_json::json!({"by": by, "on": crate::util::today(), "previous": previous}))
+        }
+        _ => doc.get(LIMIT_MARK).cloned(),
+    };
+    write_user_keys(
         &path,
-        "monthly_token_limit",
-        new.map(serde_json::to_value).transpose()?,
+        vec![
+            ("monthly_token_limit", new.map(serde_json::to_value).transpose()?),
+            (LIMIT_MARK, mark),
+        ],
     )?;
     let (applies, origin) = limit(ctx.config.monthly_token_limit, &path);
     println!("{}", view::limit_saved_line(new, applies, origin));
     Ok(())
+}
+
+/// Whether `new` (`None`: back to the default) raises or removes the user's own limit.
+pub fn raises(user_path: &Path, new: Option<Limit>) -> bool {
+    let default = Limit::Tokens(crate::inference::ledger::DEFAULT_MONTHLY_TOKENS);
+    new.unwrap_or(default).tokens() > read_user_limit(user_path).unwrap_or(default).tokens()
 }
 
 // ---------------------------------------------------------------------------------------------------------- flow
@@ -1213,16 +1551,24 @@ fn save(
     c: &Choice,
     user: bool,
     own_only: bool,
+    mark: Option<&Mark>,
 ) -> anyhow::Result<Vec<String>> {
     if user {
-        write_user(&user_config_path(), c)?;
+        let mut keys = vec![("inference", Some(serde_json::to_value(c)?))];
+        let mut o = serde_json::Map::new();
+        if let Some(m) = mark {
+            m.put(&mut o);
+        }
+        keys.push(("chosen_by", o.remove("chosen_by")));
+        keys.push(("chosen_on", o.remove("chosen_on")));
+        write_user_keys(&user_config_path(), keys)?;
         // A choice the user made for this repository still applies here.
         let here = stored(ctx.config.inference.as_ref(), &ctx.root, &user_config_path());
         let kept = here.choice.filter(|(k, _)| k != c).map(|(k, _)| k);
         return Ok(view::saved_lines(c, Origin::User, kept.as_ref()));
     }
     // The user's own answer for this repository, kept where no repository can write: it alone lets anything be spent.
-    write_user_repo(&user_config_path(), &ctx.root, Some(c))?;
+    write_user_repo_marked(&user_config_path(), &ctx.root, Some(c), mark)?;
     // In shared mode the repository's config also carries it, as the team's suggestion to whoever clones it; not
     // when this answers such a suggestion (the committed file stays as it was).
     if !own_only && ctx.config.mode == crate::Mode::Collaborative {
@@ -1251,7 +1597,15 @@ pub fn status_lines(ctx: &crate::Ctx) -> (Vec<String>, Vec<String>) {
         suggested,
     } = stored(ctx.config.inference.as_ref(), &ctx.root, &user_config_path());
     let mut warnings = view::missing_key_lines(cur.as_ref(), &key_set(ctx));
-    let (lim, origin) = limit(ctx.config.monthly_token_limit, &user_config_path());
+    // A choice no person has seen, first: for every reader, until a person runs unstale at a terminal.
+    if let Some(u) = unseen(&user_config_path(), Some(&ctx.root)) {
+        warnings.insert(0, view::unseen_line(&u, technologies(ctx), &crate::util::today()));
+    }
+    let (lim, origin) = limit_here(
+        ctx.config.monthly_token_limit,
+        &user_config_path(),
+        Some(&ctx.root),
+    );
     let ledger = crate::inference::Ledger::default_location();
     let month = crate::inference::ledger::this_month();
     let used = ledger.spent(&month);
@@ -1334,7 +1688,9 @@ pub fn run(
             return Ok(());
         }
         Plan::Save(c) => {
-            for l in save(ctx, &c, user, own_only)? {
+            // Recorded with no person at the question (an agent or a script): marked until a person sees it.
+            let mark = Mark::of(chooser(&process_env, at_terminal()), &c);
+            for l in save(ctx, &c, user, own_only, mark.as_ref())? {
                 println!("{l}");
             }
             // Recorded, but not usable here yet: said now rather than found out at the first sync.
@@ -1418,12 +1774,16 @@ pub fn run(
         view::Answered::Nothing => return dismiss(ctx),
     };
     let c = Choice::of(&d, pick);
-    for l in save(ctx, &c, user, own_only)? {
+    for l in save(ctx, &c, user, own_only, None)? {
         println!("{l}");
     }
     let _ = crate::warn::changed(&ctx.tool, "setup", None);
     if reopen && !c.is_none() {
-        let (lim, origin) = limit(ctx.config.monthly_token_limit, &user_config_path());
+        let (lim, origin) = limit_here(
+            ctx.config.monthly_token_limit,
+            &user_config_path(),
+            Some(&ctx.root),
+        );
         println!(
             "{}",
             view::tokens_line(

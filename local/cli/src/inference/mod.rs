@@ -184,6 +184,9 @@ impl ProviderConfig {
 pub enum Deferred {
     /// This month's token budget is spent.
     Budget,
+    /// This month's token budget is spent, and it is a tenth of the usual one because the choice in effect was made
+    /// by an agent (`agent`) or a script and no person has seen it yet (`setup::Mark`).
+    BudgetUnseen { agent: bool },
     /// The key's environment variable is unset or empty.
     NoKey(String),
     /// 401 or 403: the key was refused.
@@ -237,6 +240,7 @@ impl Deferred {
     pub fn what(&self) -> String {
         match self {
             Deferred::Budget => "monthly token limit reached".into(),
+            Deferred::BudgetUnseen { .. } => "a tenth of the monthly token limit reached".into(),
             Deferred::NoKey(var) => format!("{var} is not set here"),
             Deferred::Auth => "the provider rejected the key".into(),
             Deferred::Billing => "the provider account is out of credit".into(),
@@ -263,6 +267,7 @@ impl Deferred {
         match self {
             // Tried again by itself: late, not lost.
             Deferred::Budget
+            | Deferred::BudgetUnseen { .. }
             | Deferred::RateLimited
             | Deferred::Unavailable
             | Deferred::Timeout
@@ -278,6 +283,7 @@ impl Deferred {
     pub fn fix(&self) -> String {
         match self {
             Deferred::Budget => "Change it: `unstale setup --limit`.".into(),
+            Deferred::BudgetUnseen { .. } => "Run unstale at a terminal to lift it.".into(),
             Deferred::NoKey(_) => "Set it.".into(),
             Deferred::Auth => "Check the key.".into(),
             Deferred::Billing => "Add credit.".into(),
@@ -300,6 +306,13 @@ impl Deferred {
     /// One line for the terminal, a warning: what happened, what it costs, the one thing to do. Never an error: the
     /// command that prints it still exits 0.
     pub fn line(&self) -> String {
+        // Why the limit is a tenth needs the clause the general shape has no room for.
+        if let Deferred::BudgetUnseen { agent } = self {
+            let whose = if *agent { "your agent's choice" } else { "a scripted choice" };
+            return format!(
+                "warning: release notes wait: {whose} gets a tenth of the token limit until you run unstale at a terminal."
+            );
+        }
         format!(
             "warning: {}, so {}. {}",
             self.what(),
@@ -437,6 +450,8 @@ pub struct Inference {
     pub ledger: Ledger,
     /// Tokens per calendar month (UTC) across every provider.
     pub monthly_budget: u64,
+    /// `Some(agent)` when `monthly_budget` is the tenth that applies to an unseen choice (`setup::Mark`).
+    pub budget_unseen: Option<bool>,
     pub limits: Limits,
     env: Box<EnvFn>,
     codex_ready: std::sync::OnceLock<Result<(), Deferred>>,
@@ -450,6 +465,7 @@ impl Inference {
             provider,
             ledger: Ledger::default_location(),
             monthly_budget: ledger::DEFAULT_MONTHLY_TOKENS,
+            budget_unseen: None,
             limits: Limits::default(),
             env: Box::new(|k| std::env::var(k).ok()),
             codex_ready: std::sync::OnceLock::new(),
@@ -551,7 +567,10 @@ impl Inference {
         }
         match self.ledger.spent(&month) {
             Err(e) => Err(Deferred::storage(&e)),
-            Ok(n) if n >= self.monthly_budget => Err(Deferred::Budget),
+            Ok(n) if n >= self.monthly_budget => Err(match self.budget_unseen {
+                Some(agent) => Deferred::BudgetUnseen { agent },
+                None => Deferred::Budget,
+            }),
             Ok(_) => Ok(()),
         }
     }

@@ -696,8 +696,12 @@ fn model_stage(ctx: &Ctx, techs: &BTreeSet<String>) -> Option<inference::Deferre
         Err(e) => return Some(inference::Deferred::storage(&e)),
     };
     // The limit in effect: the user's own (`unstale setup --limit`), or a lower one this repository sets.
-    if used >= crate::setup::monthly_tokens(ctx) {
-        return Some(inference::Deferred::Budget);
+    let (limit, unseen) = crate::setup::monthly_tokens(ctx);
+    if used >= limit {
+        return Some(match unseen {
+            Some(agent) => inference::Deferred::BudgetUnseen { agent },
+            None => inference::Deferred::Budget,
+        });
     }
     // The client pipeline (change events → records) for the synced technologies, holding the lock, in demand order;
     // every call checks the budget again. `None` when no provider is chosen.
