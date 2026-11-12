@@ -352,10 +352,18 @@ fn combine_adds_the_release_and_evidence_and_bumps_the_revision_once() {
 /// A labelling-service mock: every choice question answered, `no` where it is an option except a same-or-new question
 /// when `same` is set; counts requests.
 fn jev_mock(same: f64) -> (String, Arc<Mutex<usize>>) {
+    let (url, n, _) = jev_mock_judging(same);
+    (url, n)
+}
+
+/// [`jev_mock`], also counting the requests that carried a same-or-new question.
+fn jev_mock_judging(same: f64) -> (String, Arc<Mutex<usize>>, Arc<Mutex<usize>>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let n = Arc::new(Mutex::new(0usize));
     let count = n.clone();
+    let judged = Arc::new(Mutex::new(0usize));
+    let judge_count = judged.clone();
     std::thread::spawn(move || {
         for mut s in listener.incoming().flatten() {
             let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
@@ -382,6 +390,9 @@ fn jev_mock(same: f64) -> (String, Arc<Mutex<usize>>) {
             };
             *count.lock().unwrap() += 1;
             let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            if body.contains("\"same_c") {
+                *judge_count.lock().unwrap() += 1;
+            }
             let mut answers = serde_json::Map::new();
             for (id, q) in v["questions"].as_object().into_iter().flatten() {
                 let opts: Vec<String> =
@@ -423,8 +434,11 @@ fn jev_mock(same: f64) -> (String, Arc<Mutex<usize>>) {
             );
         }
     });
-    (url, n)
+    (url, n, judged)
 }
+
+/// What 2.1.0's notes say of `server.port` in [`fixture`].
+const SAME_QUOTE: &str = "server.port default is now 4000";
 
 struct Fixture {
     _cat: crate::testcat::FixtureCatalog,
@@ -433,8 +447,15 @@ struct Fixture {
 }
 
 /// A synced cache for `example`: a catalog record at 2.0.0 (`example:server.port`), and change events for 2.0.0 (the
-/// catalog covers it) and 2.1.0 (it does not); extraction answers for 2.1.0 replayed from central's fixture.
+/// catalog covers it) and 2.1.0 (it does not); extraction answers for 2.1.0 replayed from central's fixture. The
+/// catalog record's quote is worded unlike any of 2.1.0's, so whether a 2.1.0 change is the same is the judge's call.
 fn fixture() -> Fixture {
+    fixture_quoting("The server now listens on 4000 unless a port is configured")
+}
+
+/// [`fixture`], with the catalog record quoting the notes in these words. 2.1.0's notes say
+/// [`SAME_QUOTE`] of the same subject.
+fn fixture_quoting(old_quote: &str) -> Fixture {
     use crate::testcat::{FixtureCatalog, rec, with};
     let fx: Value = serde_json::from_str(
         &std::fs::read_to_string(
@@ -457,7 +478,7 @@ fn fixture() -> Fixture {
     covered["version"] = json!("2.0.0");
     let old = with(
         rec("example:server.port", "pkg:npm/example", "2.0.0"),
-        json!({"subject": "server.port", "summary": "The default port is now 4000.", "change_type": "default_change", "breaking": false, "evidence": [{"kind": "release_notes", "url": "https://example.org/2.0.0", "quote": "server.port default is now 4000", "snapshot": "sha256:old"}]}),
+        json!({"subject": "server.port", "summary": "The default port is now 4000.", "change_type": "default_change", "breaking": false, "evidence": [{"kind": "release_notes", "url": "https://example.org/2.0.0", "quote": old_quote, "snapshot": "sha256:old"}]}),
     );
     let cat = FixtureCatalog::new();
     cat.tech_events(
@@ -678,9 +699,11 @@ fn a_change_judged_the_same_extends_the_catalog_record_and_catalog_records_win_l
     assert!(td.provenance.is_empty());
 }
 
+/// A route read on its choices (here an Anthropic key alone) is never asked same-or-new: a change the catalog's
+/// record quotes in the same words is the same by rule, and every other record is new.
 #[test]
-fn with_an_anthropic_key_only_matching_is_off_and_every_record_is_new() {
-    let f = fixture();
+fn a_route_read_on_its_choices_is_never_asked_same_or_new_and_merges_by_rule() {
+    let f = fixture_quoting(SAME_QUOTE);
     // Labels on the same chat route: answered with the first option of every question, read on its choices.
     let qs = crate::prompts::prompts().labels.questions();
     let pick: serde_json::Map<String, Value> = qs
@@ -750,7 +773,7 @@ fn with_an_anthropic_key_only_matching_is_off_and_every_record_is_new() {
     );
     assert_eq!(
         (s.created, s.matched, s.deferred.clone()),
-        (4, 0, None),
+        (3, 1, None),
         "{s:?}"
     );
     let sent = prompts.lock().unwrap();
@@ -766,6 +789,15 @@ fn with_an_anthropic_key_only_matching_is_off_and_every_record_is_new() {
             r.provenance.judge.is_none()
         ),
         ("anthropic", true)
+    );
+    let a = &store.amendments[0];
+    assert_eq!(
+        (
+            a.into.as_str(),
+            a.p,
+            a.provenance.judge.as_ref().map(|j| j.provider.as_str())
+        ),
+        ("example:server.port", 1.0, Some(matching::RULE_PROVIDER))
     );
     assert_eq!(
         r.record.classifier.as_ref().unwrap().classifier,
@@ -1225,4 +1257,274 @@ fn snap_asks_four_candidates_with_the_longer_rules_and_reads_its_own_bars() {
     // A fifth candidate is never asked, so never merged.
     let (m, j) = matching::pick_at(p, &inc, false, &refs, &ans(&[0.1, 0.1, 0.1, 0.1]), snap);
     assert!(m.is_none() && j[4].outcome == "unasked");
+}
+
+/// With a calibrated judge, a change the rule decides is not sent to it: the pass with the catalog record quoting the
+/// notes in 2.1.0's words makes one same-or-new request fewer than the pass where the judge must be asked, and merges
+/// although the judge would have said no.
+#[test]
+fn the_rule_merges_without_asking_the_judge_and_the_judge_is_asked_only_for_the_rest() {
+    let judged = |f: &Fixture| {
+        let m = Router::new(f.answers.clone(), vec![]);
+        let (jev, _, jn) = jev_mock_judging(0.1);
+        let s = run(
+            f.cache.path(),
+            &routes(f, &m.url, Some(&jev)),
+            &set(&["example"]),
+            &set(&["pkg:npm/example"]),
+            "2026-11-10",
+        );
+        assert_eq!(s.deferred, None);
+        (s.created, s.matched, *jn.lock().unwrap())
+    };
+    let (created, matched, asked) = judged(&fixture());
+    assert_eq!((created, matched), (4, 0));
+    assert!(asked >= 1, "the judge is asked about server.port");
+    let f = fixture_quoting(SAME_QUOTE);
+    assert_eq!(judged(&f), (3, 1, asked - 1));
+    let store = LocalStore::load(f.cache.path(), "example");
+    let a = &store.amendments[0];
+    assert_eq!(a.into, "example:server.port");
+    let j = a.provenance.judge.as_ref().unwrap();
+    assert_eq!(
+        (j.provider.as_str(), j.model.as_str()),
+        (matching::RULE_PROVIDER, matching::RULE_MODEL)
+    );
+}
+
+/// The rule's candidate: the shared quote, from the same kind of source, names both subjects, and no guard blocks.
+#[test]
+fn the_rule_takes_a_backport_and_nothing_a_guard_blocks() {
+    let p = crate::prompts::prompts();
+    let inc = incoming(json!({}));
+    let same = stored(
+        json!({"key": "next@15.5.9#0.0", "version": "15.5.9", "snapshot": "sha256:b1"}),
+        None,
+    );
+    assert_eq!(matching::by_rule(p, &inc, false, &[&same], &[0]), [0]);
+    // Markdown, a pull-request number and case do not make a quote another quote.
+    let marked = incoming(json!({"quote": "`minimumCacheTTL` default is now 4 hours (#8123)"}));
+    assert_eq!(matching::by_rule(p, &marked, false, &[&same], &[0]), [0]);
+    // Not among the candidates asked about (below the question floor): not taken.
+    assert!(matching::by_rule(p, &inc, false, &[&same], &[]).is_empty());
+    // A breaking change never merges into a record that is not.
+    assert!(matching::by_rule(p, &inc, true, &[&same], &[0]).is_empty());
+    // The same words in another kind of source, or in the same snapshot: the judge's call, not the rule's.
+    let guide = stored(
+        json!({"key": "next@16.0.0+guide.0123abcd#0.0", "version": "16.0.0", "snapshot": "sha256:g1"}),
+        Some(EvidenceKind::UpgradeGuide),
+    );
+    assert!(matching::by_rule(p, &inc, false, &[&guide], &[0]).is_empty());
+    let beside = stored(json!({"key": "next@16.3.2#0.1"}), None);
+    assert!(matching::by_rule(p, &inc, false, &[&beside], &[0]).is_empty());
+    // Worded differently: not the rule's.
+    let other = stored(
+        json!({"key": "next@15.5.9#0.0", "version": "15.5.9", "snapshot": "sha256:b1",
+               "quote": "Optimized images are now cached for at least four hours"}),
+        None,
+    );
+    assert!(matching::by_rule(p, &inc, false, &[&other], &[0]).is_empty());
+    // Several pass: the first in retrieval order is the match, the rest are "not-best", the others unasked.
+    let (m, judged) = matching::pick_by_rule(&[&other, &same, &same], &[1, 2]);
+    assert_eq!(m, Some((same.id.clone(), 1.0)));
+    assert_eq!(
+        judged
+            .iter()
+            .map(|j| j.outcome.as_str())
+            .collect::<Vec<_>>(),
+        ["unasked", "same", "not-best"]
+    );
+}
+
+/// Two different changes that share a quote must stay two records. The shared text here is the kind release notes
+/// repeat: a heading, a boilerplate line, a version bump, one deprecation sentence used for several APIs.
+#[test]
+fn the_rule_refuses_two_changes_that_share_a_boilerplate_quote() {
+    let p = crate::prompts::prompts();
+    let pair = |quote_a: &str,
+                subject_a: &str,
+                summary_a: &str,
+                quote_b: &str,
+                subject_b: &str,
+                summary_b: &str| {
+        let inc = incoming(
+            json!({"quote": quote_a, "subject": subject_a, "summary": summary_a, "terms": [subject_a]}),
+        );
+        // The same changelog page in an earlier release, so retrieval always finds it.
+        let c = stored(
+            json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1",
+                   "quote": quote_b, "subject": subject_b, "summary": summary_b, "terms": [subject_b]}),
+            None,
+        );
+        // Without the subject test the quotes alone would pass every guard: that is what the test adds.
+        let quotes_alone =
+            matching::guard(p, &inc, false, &c, 0.0, matching::bars(p, true)).is_none();
+        (matching::by_rule(p, &inc, false, &[&c], &[0]), quotes_alone)
+    };
+    for (quote, a, sa, b, sb) in [
+        (
+            "Bug fixes",
+            "useFetch",
+            "Aborted requests no longer leave a pending state.",
+            "useAsyncData",
+            "Cleared data is no longer overwritten by an in-flight request.",
+        ),
+        (
+            "Bug Fixes and improvements.",
+            "router.push",
+            "Navigation to the same route resolves.",
+            "next/image",
+            "Images with a zero width no longer throw.",
+        ),
+        (
+            "Updated dependencies",
+            "react",
+            "React 19.2 is now required.",
+            "typescript",
+            "TypeScript 5.9 is now supported.",
+        ),
+        (
+            "Updated dependencies [a1b2c3d]",
+            "@example/core",
+            "Picks up the core fix for config loading.",
+            "@example/cli",
+            "Picks up the new command.",
+        ),
+        (
+            "Version Packages",
+            "create-example",
+            "The template uses the app directory.",
+            "example.config.ts",
+            "The config file may be TypeScript.",
+        ),
+        (
+            "chore: release v4.2.1",
+            "nitro",
+            "Nitro is updated.",
+            "vite",
+            "Vite is updated.",
+        ),
+        (
+            "is deprecated and will be removed in the next major version",
+            "getServerData",
+            "getServerData is deprecated and will be removed in the next major version.",
+            "getStaticData",
+            "getStaticData is deprecated and will be removed in the next major version.",
+        ),
+        (
+            "This option is now enabled by default.",
+            "experimental.typedRoutes",
+            "Typed routes are on by default.",
+            "experimental.viewTransition",
+            "View transitions are on by default.",
+        ),
+        // The same API, two separate fixes, under a heading that names neither.
+        (
+            "Bug fixes",
+            "useFetch",
+            "Aborted requests no longer leave a pending state.",
+            "useFetch",
+            "Query parameters are encoded once.",
+        ),
+    ] {
+        let (rule, quotes_alone) = pair(quote, a, sa, quote, b, sb);
+        assert!(
+            quotes_alone,
+            "{quote:?}: the case is adversarial only if the quotes pass the guards"
+        );
+        assert!(rule.is_empty(), "{quote:?} merged {a} into {b}");
+    }
+    // The same sentence naming each API: the quotes differ by the name, which the quote guard already reads.
+    let (rule, quotes_alone) = pair(
+        "`getServerData` is deprecated and will be removed in the next major version",
+        "getServerData",
+        "getServerData is deprecated.",
+        "`getStaticData` is deprecated and will be removed in the next major version",
+        "getStaticData",
+        "getStaticData is deprecated.",
+    );
+    assert!(!quotes_alone && rule.is_empty());
+    // A quote that names only the incoming record's subject is not evidence for the other record's.
+    let (rule, _) = pair(
+        "Fix useFetch abort handling",
+        "useFetch",
+        "Aborted requests no longer leave a pending state.",
+        "Fix useFetch abort handling",
+        "payload extraction",
+        "Payloads are extracted for prerendered routes.",
+    );
+    assert!(rule.is_empty());
+    // What the subject test reads as a name.
+    assert!(matching::names_subject(
+        "as",
+        None,
+        "Reject top-level `as` prop for islands"
+    ));
+    assert!(matching::names_subject(
+        "addVitePlugin",
+        None,
+        "async functions when adding build plugins"
+    ));
+    assert!(matching::names_subject(
+        "prerendering",
+        None,
+        "deadlocks during prerender"
+    ));
+    assert!(matching::names_subject(
+        "build",
+        Some("--turbopack"),
+        "`--turbopack` is now the default"
+    ));
+    assert!(!matching::names_subject("useFetch", None, "Bug fixes"));
+    assert!(!matching::names_subject(
+        "app",
+        None,
+        "applies to every route"
+    ));
+}
+
+/// `run-step --step match` on a route read on its choices never calls: the rule's candidate is the match, and a
+/// candidate the rule does not take is listed as unasked (the route here points nowhere, so a call would defer).
+#[test]
+fn run_step_match_decides_by_rule_and_asks_a_choice_route_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let inc = incoming(json!({}));
+    let same = stored(
+        json!({"key": "next@15.5.9#0.0", "version": "15.5.9", "snapshot": "sha256:b1",
+               "url": "https://github.com/vercel/next.js/releases/tag/v15.5.9"}),
+        None,
+    );
+    let reworded = stored(
+        json!({"key": "next@15.5.8#0.0", "version": "15.5.8", "snapshot": "sha256:b0",
+               "url": "https://github.com/vercel/next.js/releases/tag/v15.5.8",
+               "quote": "Optimized images are now cached for at least four hours"}),
+        None,
+    );
+    let input = dir.path().join("in.jsonl");
+    std::fs::write(
+        &input,
+        format!(
+            "{}\n{}\n",
+            json!({"name": "Next.js", "incoming": inc, "candidates": [same]}),
+            json!({"name": "Next.js", "incoming": inc, "candidates": [reworded]})
+        ),
+    )
+    .unwrap();
+    let inf = super::tests::inference(ProviderConfig::openai(), "http://127.0.0.1:9", dir.path());
+    let mut out = vec![];
+    super::run_step("match", &input, inf, &mut out).unwrap();
+    let lines: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            json!({"key": "next@16.3.2#0.0", "match": same.id, "by": "rule",
+                   "judged": [{"id": same.id, "p": 1.0, "outcome": "same"}]}),
+            json!({"key": "next@16.3.2#0.0", "match": null,
+                   "judged": [{"id": reworded.id, "p": 0.0, "outcome": "unasked"}]}),
+        ]
+    );
 }

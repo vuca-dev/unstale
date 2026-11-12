@@ -1,6 +1,9 @@
 //! Same-or-new matching (central's step E, `central/src/pipeline/match.ts`) and record assembly (`store.ts`,
 //! `lines.ts`): up to eight candidates of the same technology, one same-or-new question per candidate, the
 //! deterministic guards, and the combine rule. A record id never changes on a match.
+//!
+//! What the guards alone decide is decided without a call ([`by_rule`]): a route read on its choices is then asked
+//! nothing, and a calibrated judge only about the rest.
 
 use super::extract::Incoming;
 use super::js;
@@ -663,6 +666,114 @@ pub fn pick_at(
         }
     }
     (best.map(|i| (judged[i].id.clone(), judged[i].p)), judged)
+}
+
+// ---- Same-or-new by rule
+
+/// Who judged a merge made by rule, in a record's provenance.
+pub const RULE_PROVIDER: &str = "rule";
+pub const RULE_MODEL: &str = "near-identical-quote";
+
+/// The candidates of a request that are asked about, by their place in it (`same_c{n}` is candidate `n - 1`).
+pub fn asked(qs: &[(String, crate::inference::ChoiceQuestion)]) -> Vec<usize> {
+    qs.iter()
+        .filter_map(|(id, _)| {
+            id.strip_prefix("same_c")?
+                .parse::<usize>()
+                .ok()?
+                .checked_sub(1)
+        })
+        .collect()
+}
+
+/// Lower-case runs of letters and digits, camelCase split; nothing is left out (a subject may be `as` or `v2`).
+fn words(s: &str) -> BTreeSet<String> {
+    static CAMEL: OnceLock<Regex> = OnceLock::new();
+    let t = regex(&CAMEL, "([a-z])([A-Z])")
+        .replace_all(s, "${1} ${2}")
+        .to_lowercase();
+    t.split(|c: char| !(c.is_ascii_lowercase() || c.is_ascii_digit()))
+        .filter(|w| !w.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+/// Whether a quote names a record's subject or facet: one of their words is in the quote, or (for words of four or
+/// more letters) one begins the other (`plugin` and `plugins`, `prerender` and `prerendering`). A quote that names
+/// neither ("Bug fixes", "Updated dependencies", "is deprecated and will be removed in the next major") says nothing
+/// about which change it is, however alike two such quotes are.
+pub fn names_subject(subject: &str, facet: Option<&str>, quote: &str) -> bool {
+    let q = words(quote);
+    words(&format!("{subject} {}", facet.unwrap_or("")))
+        .iter()
+        .any(|w| {
+            q.contains(w)
+                || (w.len() >= 4
+                    && q.iter().any(|x| {
+                        x.len() >= 4 && (x.starts_with(w.as_str()) || w.starts_with(x.as_str()))
+                    }))
+        })
+}
+
+/// The candidates (by place, in retrieval order, of those `asked`) an incoming record is the same change as by rule,
+/// with no model call: no guard blocks the merge even when nothing is known of how sure a judge would be (every
+/// probability-gated guard read at 0, so the candidate cites a near-identical quote from the same kind of source, and
+/// it is not another version of the same document or a record of the same snapshot), and that quote names both
+/// records' subjects.
+///
+/// This is all a text model's "yes" could ever merge ([`pick_at`] reads an uncalibrated answer at 0), so a route that
+/// answers by choice is not asked at all; a calibrated judge is asked only when the rule finds no candidate. Measured
+/// in `eval/edge-port/RESULTS.md`, "Same-or-new by rule".
+pub fn by_rule(
+    p: &Prompts,
+    inc: &Incoming,
+    breaking: bool,
+    cands: &[&CapabilityRecord],
+    asked: &[usize],
+) -> Vec<usize> {
+    if !names_subject(&inc.subject, inc.facet.as_deref(), &inc.quote) {
+        return vec![];
+    }
+    let kind = kind_of(inc);
+    asked
+        .iter()
+        .copied()
+        .filter(|&i| {
+            let Some(c) = cands.get(i) else { return false };
+            guard(p, inc, breaking, c, 0.0, bars(p, false)).is_none()
+                && c.evidence.iter().any(|e| {
+                    kind_str(e.kind) == kind
+                        && near_identical_quote(p, &inc.quote, &e.quote)
+                        && names_subject(&c.subject, c.facet.as_deref(), &e.quote)
+                })
+        })
+        .collect()
+}
+
+/// [`pick`]'s result for a merge by rule: the first such candidate is the same change (probability 1), the others
+/// that passed are "not-best", and the rest were not asked.
+pub fn pick_by_rule(
+    cands: &[&CapabilityRecord],
+    rule: &[usize],
+) -> (Option<(String, f64)>, Vec<Judged>) {
+    let judged = cands
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let at = rule.iter().position(|&r| r == i);
+            Judged {
+                id: c.id.clone(),
+                p: if at.is_some() { 1.0 } else { 0.0 },
+                outcome: match at {
+                    Some(0) => "same",
+                    Some(_) => "not-best",
+                    None => "unasked",
+                }
+                .into(),
+            }
+        })
+        .collect();
+    (rule.first().map(|&i| (cands[i].id.clone(), 1.0)), judged)
 }
 
 // ---- Releases and record assembly

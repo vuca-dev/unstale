@@ -614,24 +614,21 @@ pub(crate) fn check(s: &Scenario, se: &Session) -> Vec<String> {
             "model steps: with the provider answering, only {asked:?} of {due:?} were read"
         ));
     }
-    // Matching asks whether a new change is one the catalog knows: never with an Anthropic key alone (matching is off
-    // there), and on every other route once the releases were read (one of them repeats a catalog record's subject).
+    // Same-or-new is asked only of a calibrated judge, the labelling service, once the releases were read (one of them
+    // repeats a catalog record's subject in other words). A route read on its choices is never asked: there the rule
+    // decides (`pipeline::matching::by_rule`).
     let judged = provider
         .iter()
         .map(|r| r.body.clone())
         .chain(codex_calls.iter().map(|r| r.body.clone()))
         .filter(|b| b.contains("same change as candidate"))
         .count();
-    if provider_id == "anthropic" && !labels_service && judged > 0 {
+    if !labels_service && judged > 0 {
         v.push(format!(
-            "model steps: matching asked {judged} questions with an Anthropic key alone"
+            "model steps: matching asked {judged} questions of a route read on its choices"
         ));
     }
-    if (provider_id != "anthropic" || labels_service)
-        && asked == due
-        && s.answer == Answer::Ok
-        && judged == 0
-    {
+    if labels_service && asked == due && s.answer == Answer::Ok && judged == 0 {
         v.push("model steps: the releases were read but matching never asked".into());
     }
 

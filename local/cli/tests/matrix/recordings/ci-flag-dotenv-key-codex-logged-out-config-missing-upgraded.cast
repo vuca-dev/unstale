@@ -316,5 +316,5 @@
 [19.8,"o","  \r\n"]
 [19.86,"o","  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n"]
 [19.92,"o","Release notes         OpenAI (OPENAI_API_KEY), this repo's config\r\n"]
-[19.98,"o","Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)\r\n"]
+[19.98,"o","Tokens                72 of 48M this month (the default limit; `unstale setup --limit` changes it)\r\n"]
 [20.04,"o","Cache                 under 1 MB of 100 MB\r\n"]

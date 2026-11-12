@@ -69,9 +69,9 @@ pub fn run(
     let judge = routes.matching.as_ref().unwrap_or(classify);
     let snap = routes.matching.is_some();
     let jch = Chooser::new(judge, &results);
-    // With an Anthropic key only, matching is off: every record is new.
-    let matching_on =
-        routes.labels.is_some() || snap || routes.main.provider.kind != Kind::Anthropic;
+    // Only a calibrated judge (the labelling service, Snap) is ever asked, and only when the rule finds no candidate
+    // (`matching::by_rule`): a text model's "yes" could merge nothing the rule does not.
+    let judge_calibrated = judge.provider.kind == Kind::Jev;
     let p = crate::prompts::prompts();
     let questions = p.labels.questions();
     let mut s = Summary::default();
@@ -166,7 +166,7 @@ pub fn run(
             super::store::overlay(&mut view, &store, &cover);
             let mut chosen = None;
             let mut judge_prov = None;
-            if matching_on {
+            {
                 let cands: Vec<matching::Cand> = view
                     .records
                     .iter()
@@ -192,7 +192,17 @@ pub fn run(
                             Some(&scores),
                         )
                     };
-                    if !qs.is_empty() {
+                    let rule =
+                        matching::by_rule(p, inc, labels.breaking, &recs, &matching::asked(&qs));
+                    if !rule.is_empty() {
+                        judge_prov = Some(Provenance {
+                            provider: matching::RULE_PROVIDER.into(),
+                            model: matching::RULE_MODEL.into(),
+                            model_version: None,
+                            prompt_version: p.judge.version,
+                        });
+                        chosen = matching::pick_by_rule(&recs, &rule).0;
+                    } else if !qs.is_empty() && judge_calibrated {
                         let jc = if snap { &jch } else { &ch };
                         match jc.ask(STEP_JUDGE, &jstate, &qs) {
                             Ok(Some(a)) => {
@@ -265,57 +275,32 @@ pub fn run(
                     continue;
                 }
             }
+            // A match: the record it is the same change as takes it.
+            let Some((id, pr)) = chosen else { continue };
             let provenance = RecordProvenance {
                 extraction,
                 labels: lab_prov,
                 judge: judge_prov,
             };
-            match chosen {
-                Some((id, pr)) => {
-                    if let Some(l) = store.records.get_mut(&id) {
-                        matching::combine(&mut l.record, inc, &labels, &comps, &line_of);
-                        l.sources.push(inc.key.clone());
-                        l.folded.push(Folded {
-                            incoming: (*inc).clone(),
-                            labels: labels.clone(),
-                            provenance,
-                        });
-                    } else {
-                        store.amendments.push(Amendment {
-                            into: id.clone(),
-                            incoming: (*inc).clone(),
-                            labels: labels.clone(),
-                            p: pr,
-                            provenance,
-                        });
-                    }
-                    store.ingested.insert(inc.key.clone(), id);
-                    s.matched += 1;
-                }
-                None => {
-                    // Matching off: every record is new.
-                    let taken = |id: &str| {
-                        view.records.iter().any(|r| r.r.id == id)
-                            || view.merged.contains_key(id)
-                            || view.retracted.iter().any(|x| x == id)
-                            || store.records.contains_key(id)
-                    };
-                    let r = matching::create(inc, &labels, &comps, &line_of, &taken);
-                    let id = r.id.clone();
-                    store.records.insert(
-                        id.clone(),
-                        Local {
-                            record: r,
-                            sources: vec![inc.key.clone()],
-                            version: inc.version.clone(),
-                            provenance,
-                            folded: vec![],
-                        },
-                    );
-                    store.ingested.insert(inc.key.clone(), id);
-                    s.created += 1;
-                }
+            if let Some(l) = store.records.get_mut(&id) {
+                matching::combine(&mut l.record, inc, &labels, &comps, &line_of);
+                l.sources.push(inc.key.clone());
+                l.folded.push(Folded {
+                    incoming: (*inc).clone(),
+                    labels: labels.clone(),
+                    provenance,
+                });
+            } else {
+                store.amendments.push(Amendment {
+                    into: id.clone(),
+                    incoming: (*inc).clone(),
+                    labels: labels.clone(),
+                    p: pr,
+                    provenance,
+                });
             }
+            store.ingested.insert(inc.key.clone(), id);
+            s.matched += 1;
             touched = true;
             store.save(cache);
         }

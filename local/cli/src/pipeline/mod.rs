@@ -379,9 +379,23 @@ pub fn run_step(
                         &recs,
                         Some(&scores),
                     );
-                    if qs.is_empty() {
-                        // No candidate at the question floor: nothing is asked, and central's `pick` on no answers
-                        // lists each candidate as unasked.
+                    let rule = matching::by_rule(
+                        p,
+                        &it.incoming,
+                        it.breaking,
+                        &recs,
+                        &matching::asked(&qs),
+                    );
+                    if !rule.is_empty() {
+                        // The same change by rule: no call on any route.
+                        let (m, judged) = matching::pick_by_rule(&recs, &rule);
+                        Ok(
+                            serde_json::json!({"key": key, "match": m.map(|x| x.0), "judged": judged, "by": "rule"}),
+                        )
+                    } else if qs.is_empty() || main.provider.kind != crate::inference::Kind::Jev {
+                        // No candidate at the question floor, or a route read on its choices (whose "yes" could merge
+                        // nothing the rule does not): nothing is asked, and `pick` on no answers lists each candidate
+                        // as unasked.
                         let none = labels::Answers {
                             classifier: String::new(),
                             model: String::new(),

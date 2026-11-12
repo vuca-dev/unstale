@@ -20,7 +20,7 @@ use unstale_schema::catalog::CapabilityRecord;
 pub struct RecordProvenance {
     pub extraction: Provenance,
     pub labels: Provenance,
-    /// Absent when matching was off (every record new).
+    /// Who said same-or-new: a judge, or the rule (`matching::RULE_PROVIDER`). Absent when nothing was asked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub judge: Option<Provenance>,
 }

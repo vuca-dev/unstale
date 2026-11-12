@@ -364,17 +364,29 @@ const LABELS_BELOW: Quality = Quality::MoreWrong {
         "on upgrade guides ≈ 93%, against 95% (228 flags)",
     ],
 };
-/// Matching on the same model: about 4 more duplicate records per technology-year than Jev's (4.0 to 4.5), from the
-/// re-measurement with text answers read as options; no false merge in 141 merges (`eval/edge-port/RESULTS.md`,
-/// "After the fixes (addendum 1)"). It was about 6 before text answers were read.
+/// Matching without a calibrated judge, which is by rule alone (`pipeline::matching::by_rule`; a text model's "yes"
+/// could merge nothing more, so none is asked): about 4 more duplicate records per technology-year than Jev's (4.1 to
+/// 4.4: 55 true merges missed of 197 against Jev's 24 with the rule, or 22 in slice 5's run, over 867 records, × 114.6),
+/// and no false merge in 142 merges. The model it replaces merged 141 of the 197 (`eval/edge-port/RESULTS.md`,
+/// "Same-or-new by rule").
 const MATCHING_BELOW: u32 = 4;
+
+/// Same-or-new requests left for a calibrated judge per record once the rule has decided what it can, from replaying
+/// 1,866 records of four technologies in ingest order (the same section): Jev is asked about a record when a
+/// candidate is at the question floor and the rule finds none (1,164 records, where 1,372 had a question before the
+/// rule); Snap, which has no floor, whenever there is a candidate and the rule finds none (1,561). The dollar figures
+/// below were measured per request and published at one request per record.
+const JEV_JUDGE_REQUESTS_PER_RECORD: f64 = 1164.0 / 1866.0;
+const SNAP_JUDGE_REQUESTS_PER_RECORD: f64 = 1561.0 / 1866.0;
 
 /// Matching on SubQ Snap 1.2 (longer rules, four candidates, its own bars): about 1 more duplicate record per
 /// technology-year than Jev's (3.1 against 2.5 duplicates per 100 records on the judge's held-out set, × 114.6
 /// records), with 0.3 false merges per 100; gpt-6-luna leaves 4.5 per 100 on the same set. $0.0059 per technology-year
-/// ($0.04 per M input, output free). Source: `eval/select/slice19/RESULTS.md`, part 2.
+/// ($0.04 per M input, output free) at one request per record. Source: `eval/select/slice19/RESULTS.md`, part 2. With
+/// the rule ahead of it Snap merges 171 of the same 197 against 170 alone, with the same false merges (stored answers
+/// replayed, `eval/edge-port/RESULTS.md`, "Same-or-new by rule").
 const SNAP_MATCHING_BELOW: u32 = 1;
-const SNAP_MATCHING_USD: f64 = 0.0059;
+const SNAP_MATCHING_USD: f64 = 0.0059 * SNAP_JUDGE_REQUESTS_PER_RECORD;
 
 /// Extraction through Codex, batched by length: 60.1% pooled recall on short release notes against 75.6% for the
 /// client's direct run, which is what the best option runs (79% of it; about 90% of central's direct runs), and
@@ -392,15 +404,18 @@ const CODEX_EXTRACTION: Quality = Quality::Share {
 ///   Haiku 5.5 $0.0189;
 /// - labels: Jev $0.0101; gpt-6-luna read on its choices $0.025 to $0.026 (`eval/edge-port/RESULTS.md`); Haiku
 ///   $0.0564;
-/// - matching: Jev $0.0077; gpt-6-luna read on its choices $0.020 (`eval/edge-port/RESULTS.md`); Anthropic does not
-///   match (never merge, $0);
+/// - matching: Jev $0.0077 at one request per record, × [`JEV_JUDGE_REQUESTS_PER_RECORD`]; a route read on its
+///   choices (gpt-6-luna, Haiku, Codex) matches by rule and makes no call, $0 (`eval/edge-port/RESULTS.md`,
+///   "Same-or-new by rule"; it was $0.020 on gpt-6-luna);
 /// - Codex: extraction 167k plan tokens (≈ $0.015 at API prices), measured with batching by length
 ///   (`eval/edge-port/RESULTS.md`, addendum 1); every step ≈ 649k ($0.071), of which labels and matching are still
-///   the estimate of 482k ($0.0556) from Codex at 8 items per call with the lean flags, not a measurement;
-/// - quality: Haiku finds 79.6% of required changes against 88.7% (upgrade guides 68.4% against 81.9%); never merge
-///   leaves 22.7 duplicates per 100 records against Jev's 2.54.
+///   the estimate of 482k ($0.0556) from Codex at 8 items per call with the lean flags, not a measurement. That
+///   estimate was made with matching asked through Codex, which no longer happens; its labels part was not kept
+///   apart, so the figure stands as an upper bound;
+/// - quality: Haiku finds 79.6% of required changes against 88.7% (upgrade guides 68.4% against 81.9%); its
+///   duplicates are the rule's ([`MATCHING_BELOW`]; never merging left 22.7 per 100 records against Jev's 2.54).
 pub fn quote(p: Pick, no_key: bool) -> Quote {
-    let jev = 0.0101 + 0.0077;
+    let jev = 0.0101 + 0.0077 * JEV_JUDGE_REQUESTS_PER_RECORD;
     match p {
         Pick::JevKey(r) => Quote {
             usd: jev + extraction_usd(r),
@@ -427,11 +442,12 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
                 of: "changes",
                 detail: " (fewer from upgrade guides)",
             },
-            more_duplicates: 23,
+            // The rule is the one the other key routes match by; it was measured on gpt-6-luna's records, not Haiku's.
+            more_duplicates: MATCHING_BELOW,
             ..NO_QUOTE
         },
         Pick::Key(r) => Quote {
-            usd: extraction_usd(r) + 0.026 + 0.020,
+            usd: extraction_usd(r) + 0.026,
             quality: LABELS_BELOW,
             more_duplicates: MATCHING_BELOW,
             ..NO_QUOTE

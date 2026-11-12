@@ -2,22 +2,22 @@ Costs are estimates from evaluation runs, billed by the provider to your key or 
 This repo has 38 packages unstale follows.
 
 1  Jev labelling API + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY)
-   per package, per year  $0.036
-   this repo, a year      ≈ $1.36
-   first sync, once       ≈ $1.36
+   per package, per year  $0.033
+   this repo, a year      ≈ $1.25
+   first sync, once       ≈ $1.25
    results                the best option: the most complete
 
 2  Jev labelling API + Codex plan (JEV_API_KEY)
-   per package, per year  $0.018 + 170k Codex tokens ($0.015 at API prices)
-   this repo, a year      ≈ $0.68 + 6.3M Codex tokens
-   first sync, once       ≈ $0.68 + 6.3M Codex tokens
+   per package, per year  $0.015 + 170k Codex tokens ($0.015 at API prices)
+   this repo, a year      ≈ $0.57 + 6.3M Codex tokens
+   first sync, once       ≈ $0.57 + 6.3M Codex tokens
    results                somewhat less complete: ≈ 80% of the best option's changes
                           its changes are right as often as the best option's
 
 3  Vercel AI Gateway (AI_GATEWAY_API_KEY)
-   per package, per year  $0.064
-   this repo, a year      ≈ $2.43
-   first sync, once       ≈ $2.43
+   per package, per year  $0.044
+   this repo, a year      ≈ $1.67
+   first sync, once       ≈ $1.67
    results                as many breaking changes found as the best option; ≈ 3% less precise
                           ≈ 89% of breaking-change flags right, against 92%
                           on short release notes ≈ 62%, against 75% (42 flags)
@@ -39,7 +39,7 @@ This repo has 38 packages unstale follows.
    first sync, once       ≈ $2.86
    results                somewhat less complete: ≈ 90% of the best option's changes
                           fewer from upgrade guides
-   repeats                ≈ 23 more changes listed twice per package, per year
+   repeats                ≈ 4 more changes listed twice per package, per year
 
 6  Not now
    cost     free: no model is called

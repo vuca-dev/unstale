@@ -376,7 +376,7 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
         "{first}"
     );
     assert!(
-        first.contains("\n  1  Jev + OpenAI       ≈ $0.036 ")
+        first.contains("\n  1  Jev + OpenAI       ≈ $0.033 ")
             && first.contains("\n     Keys: JEV_API_KEY, OPENAI_API_KEY (.env)\n"),
         "{first}"
     );

@@ -67,6 +67,95 @@ Spend for the addendum: $0.0044 on the gateway (cap $0.50), 400k Codex plan toke
 from the one variable `AI_GATEWAY_API_KEY` in the gateway key file that `central/src/pipeline/llm.ts` names; the
 labelling-service key was not needed. Nothing was printed.
 
+## Same-or-new by rule (addendum 2, 11 November 2026)
+
+No paid call. Pass rule, stated before the replay: false merges not above the current route on any set, and merge
+recall not lower. One run.
+
+**What changed in the client.** A new record whose quote is near-identical to a candidate's quote from the same kind
+of source, where no guard blocks the pair and the quote names both records' subjects, is the same change by rule
+(`local/cli/src/pipeline/matching.rs`, `by_rule`), with no model call on any route. A route read on its choices
+(`gpt-6-luna`, Haiku, Codex) is then asked nothing: its "yes" is read at probability 0 by every guard, so it could
+only ever merge a pair with a near-identical quote. A calibrated judge (the labelling service, Snap) is asked only
+when the rule finds no candidate. An Anthropic key alone, which did not match at all, now matches by the same rule.
+
+**Why the rule also asks that the quote name both subjects.** Without it, two different changes that share a
+boilerplate quote ("Bug fixes", "Updated dependencies", a version-bump line, one deprecation sentence used for several
+APIs) pass every guard: the unit test `the_rule_refuses_two_changes_that_share_a_boilerplate_quote` holds nine such
+pairs, checks each would pass on its quote alone, and checks the rule refuses it. The test costs the rule 3 of 145
+merges on the held-out set, all three audited same.
+
+| Set | Route | Before | After | Paired | Requests sent |
+|---|---|---|---|---|---|
+| Held-out (236 items, 197 with a true match) | `gpt-6-luna` by choice | 141/197 = 71.6%, 0 false in 141 | **142/197 = 72.1%, 0 false in 142** | 3 true merges only before, 4 only after (McNemar p 1); false 0 and 0 | 235 → **0** |
+| Held-out | Labelling service, stored answers | 171/197 = 86.8%, 1.4 false per 100 | **173/197 = 87.8%, 1.4 per 100** | 0 only before, 2 only after (p 0.5); false 0 and 0 | 235 → **93** |
+| Held-out | Snap 1.2, stored answers (four candidates, its bars) | 170/197 = 86.3%, 0.3 per 100 | 171/197 = 86.8%, 0.3 per 100 | 1 item differs, a true merge gained | 236 → 94 |
+| Dev (129 items, 109 with a true match) | by rule alone | not run on this split | 55/109 = 50.5%; 56 merges: 55 audited same, 0 different, **1 into a candidate no audit read** | | 127 → 0 |
+| Dev | Labelling service, stored answers | 103/109 = 94.5%, 0 false in 103 | 103/109 = 94.5%; 104 merges, the same unaudited one | 0 and 0 true merges; 1 item differs | 127 → 71 |
+
+- **Verdict by the rule: pass on the held-out set on every route. On the dev split the rule is not met as written**,
+  because the scorer counts a merge into a candidate no audit read as a false one, and there is one:
+  `next@16.3.8#0.2` ("Cache poisoning of SSG and ISR pages in self-hosted Next.js applications", subject "SSG and ISR
+  pages") merges into `next:isr`, whose evidence is that same sentence from release 15.5.27 (summary "Security fix
+  prevents cache poisoning of ISR pages in self-hosted Next.js applications."). The audit read another candidate for
+  this item (`next:ssg-isr-rendering`, unsure) and the service made a new record. The two records quote one sentence
+  of one security fix shipped on two release lines, which the judge's own rules call the same change; no audited
+  verdict says so. No merge on any set went into a candidate an audit called different.
+- **How it ran.** The client's `run-step --step match` over the held-out inputs of this file and over the dev split
+  built the same way (`rule_dev_inputs.mts`: 129 items, 127 requests, all 127 byte-identical to the stored run's);
+  the labelling service's stored answers given back through `recorder.py`; scored by `rule_score.py` (this file's
+  scorer, on either split). The "before" columns are this file's own runs (`match-choice-fixed`, the replayed service
+  cell) and, for the dev service row, the client at `5b7c36b` on the same replay. Snap's row is a replica of the
+  client's rule and bars over slice 19's stored answers, outside the client (it reproduces the published 170/197 and
+  0.3); `run-step` has no Snap route.
+- **Limits of the sets.** Their pairs exist only where the service scored a candidate 0.5 or more, so they cannot show
+  a rule merge the service would have scored low. The population replay below covers that.
+
+### How often the rule decides on ordinary records
+
+`rule_population.mts`: every stored record of four technologies ingested again from empty in ingest order, following
+each store's own decisions (1,866 of 1,866 reproduce), with the rule applied to the candidates production asks about
+(question floor 0.6). Labels are the stored record's.
+
+| Technology | Records | With a question today | Rule decides | Same record the store merged into | Store merged elsewhere | Store made a new record |
+|---|---|---|---|---|---|---|
+| Nuxt | 794 | 669 | 143 (18.0% of records) | 142 | 0 | 1 |
+| Next.js | 541 | 400 | 65 (12.0%) | 64 | 0 | 1 |
+| Prisma | 253 | 145 | 0 | | | |
+| NestJS | 278 | 158 | 0 | | | |
+| All | 1,866 | 1,372 (73.5%) | **208 (11.1% of records, 15.2% of requests)** | 206 | 0 | 2 |
+
+- The two the stores kept apart are `next@16.3.8#0.2` above and `nuxt@4.4.6#0.13` ("Use `statusCode` for nitro v2
+  compatibility", subject `statusCode`, into the record of the same sentence, subject and summary from 3.21.6).
+- The rule decides where release notes repeat a line across release lines (backports); a technology that does not
+  backport gives it nothing. So the saving on a calibrated judge is **0 to 18% of records, 11% pooled**, not the 60%
+  of the held-out set, whose items were chosen for having a likely match.
+- **A published figure to correct:** the cost tables below count one same-or-new request per record. In this replay
+  73.5% of records have a candidate at the question floor; the rest send nothing.
+
+### Input tokens per package per year (114.6 records)
+
+| Route | Step | Published below | As measured now, before the rule | With the rule |
+|---|---|---|---|---|
+| Key alone | Extraction | 53k | 53k | 53k |
+| | Labels | 187k | 187k | 187k |
+| | Same-or-new | 185k (1.29 calls per request, before PR #237) | 143k at 1.0 calls and one request per record; 105k at 0.735 requests per record | **0** |
+| | All | 425k | 383k; 345k | **240k** |
+| Labelling service + key | Extraction | 53k | 53k | 53k |
+| | Labels | 241k | 241k | 241k |
+| | Same-or-new | 184k | 135k at 0.735 requests per record | **115k** (0.624 requests per record; 0 to 33k saved by technology) |
+| | All | 478k | 429k | **409k** |
+| Snap + key | Same-or-new | 145k (1,263 per request) | 137k (a request whenever there is a candidate: 94.8% of records) | 121k (83.7%) |
+| Anthropic key alone | Same-or-new | 0, no matching | 0, no matching | 0, matching by rule |
+
+- Duplicates against the labelling service: a route by rule alone misses 55 of the 197 true merges against the
+  service's 24 (with the rule ahead of it) or 22 (slice 5's run): 31 to 33 more over 867 records, **4.1 to 4.4 more
+  per package per year**, as before ("about 4"). An Anthropic key alone goes from never merging (about 23 more) to the
+  rule; the rule was measured on `gpt-6-luna`'s records, not Haiku's.
+- Codex alone: same-or-new through Codex was an estimate inside the 482k for labels and matching and was never
+  measured; it is no longer asked. The estimate is left as an upper bound.
+- Not measured: the rule on records extracted by Haiku or through Codex; a first sync; Snap through the client.
+
 Everything below is the first run, on `8835d5c`, as recorded before the fixes.
 
 ## Conclusions (first run)

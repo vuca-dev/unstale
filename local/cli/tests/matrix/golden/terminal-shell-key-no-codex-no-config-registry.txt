@@ -5,7 +5,7 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with   Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI      OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.13                  ≈ 3% less precise labels
   2  Not now                      free                     ≈ 27% of its changes in new releases
 
 Enter for 1, a number to choose, or d for details:
@@ -51,6 +51,6 @@ New release notes read: 2 new changes, 0 added to known ones, for 2 technologies
 
 # contacted
 #   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: POST /v1/chat/completions (7 requests)
+#   model provider: POST /v1/chat/completions (6 requests)
 #   codex: not run
 #   through the proxy: CONNECT registry.npmjs.org:443

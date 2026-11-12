@@ -1,7 +1,7 @@
 How should unstale read new release notes?
 
   1  OpenAI (OPENAI_API_KEY)
-     ≈ $2.43 a year · ≈ 3% less precise labels
+     ≈ $1.67 a year · ≈ 3% less precise labels
   2  Not now
      free · ≈ 27% of its changes in new releases
 
