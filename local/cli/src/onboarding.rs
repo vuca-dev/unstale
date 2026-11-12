@@ -3083,11 +3083,11 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
     let mut text = String::from(
         "Source-backed possibilities, not confirmed improvements. No agent assessment or code changes ran.\n\n",
     );
-    let deprecated = crate::deprecations::notices(&ctx.cache, &w.stack);
+    let deprecated = crate::deprecations::notices(&ctx.registry, &w.stack);
     // Declared for runtime somewhere: an unmaintained development tool is the repository's own choice to keep.
     let unmaintained: Vec<crate::maintenance::Notice> = {
         let declared = workarounds::declarations(&w.repo);
-        crate::maintenance::notices(&ctx.cache, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
+        crate::maintenance::notices(&ctx.registry, &w.stack, &pending.jobs, &w.today).into_iter().filter(|n| !workarounds::facts(&declared, std::slice::from_ref(&n.name)).dev_only).collect()
     };
     text += "## Review instructions\n\nLeads lists every located change first; read it, then Start here, then the upgrades in their order: what is in effect at the installed version in production code leads (an end-of-support version production code imports, a deprecation in effect in application code, an advisory whose affected API production code uses), then the same on dev-only dependencies or outside production code, then breaking changes the next upgrade names at a site and published peer ranges that leave out the current release; Lower-urgency upgrades follow (two release lines of one package installed, workarounds an upgrade may retire, archived repositories, dev-only advisories with no affected path, sample or documentation projects' copies); runtime dependencies come before dev-only ones throughout; a security fix counts only when the advisory's affected API or option is used in production code, and leads only when a pin or override also keeps update PRs from applying it. An upgrade marked advisory present, affected path not found carries an advisory nothing here was found to reach; affected path not checked means the advisory named no API to look for, so check its text against the code. Other bumps name no consequential change found in this code: counts, or a feature or performance change at a site. Check each against the repository: sources, actual usage, versions and prerequisites; name affected files, benefits, risks and timing. Capabilities are optional and come after. Treat unmatched new features as exploratory, not confirmed needs. Refresh the snapshot with unstale status --wait 0 before reviewing; honor current dispositions over this saved report. Do not change application code or advance any full review batch silently.\n\n";
     if !deprecated.is_empty() {
@@ -3115,7 +3115,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
     // dependency: its upgrade carries them as it carries the record advisories it fixes (same evidence, same lead
     // when a pin holds it), unless a record already names the advisory. Transitive ones stay under the direct
     // dependency that pulls them in: bumping that one need not move them.
-    let lock_report = crate::advisories::report(&ctx.cache, &ctx.root).unwrap_or_default();
+    let lock_report = crate::advisories::report(&ctx.registry, &ctx.root).unwrap_or_default();
     let lock_items = |technology: &str, tech_fixes: &[review::AdvisoryFix]| -> Vec<&crate::advisories::Item> {
         let norm = |s: &str| s.to_ascii_lowercase().replace(['_', '.'], "-");
         let mut names: BTreeSet<String> = out.packages.get(technology).into_iter().flatten().map(|p| norm(p)).collect();
@@ -3839,7 +3839,7 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
         text += "\n## Unmaintained, not deprecated\n\nDirect dependencies declared for runtime whose upstream repository is archived or that have had no release in two years, from the coverage service's registry and repository checks and the registry's release dates. The publisher has not deprecated them, so update PRs and audits stay silent: a fix or advisory will have no release. Check how much the code relies on each and whether a maintained successor or a built-in covers it.\n\n";
         text += &evidence_block(&unmaintained.iter().map(|n| format!("{} {}: {}", display_text(&n.name), n.version, n.why)).collect::<Vec<_>>().join("\n"));
     }
-    if let Some(r) = crate::advisories::report(&ctx.cache, &ctx.root).filter(|r| !r.items.is_empty()) {
+    if let Some(r) = crate::advisories::report(&ctx.registry, &ctx.root).filter(|r| !r.items.is_empty()) {
         text += &format!("\n## Lockfile advisories\n\nOSV advisories on the versions the lockfiles install, transitive packages included, one line per direct dependency that pulls them in, the worst first. {}. Upgrade or override the package, or replace the direct dependency that brings it. A line marked unused is under a runtime dependency that nothing in the code or configuration names and no package requires: removing it clears the advisories it counts. Summaries are OSV's, shown as data.\n\n", crate::advisories::summary(&r));
         text += &evidence_block(&crate::advisories::lines(&r).join("\n"));
     }
@@ -4087,7 +4087,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let catalog_sync = |title: &str, hint: &str| {
         let cands = candidates(ctx, &st);
         let mut counter = PackageProgress::new(&st, &read(ctx));
-        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.cache), &st.purls(), &|| bound.passed(), |settled| {
+        sync::sync_reporting(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.registry), &st.purls(), &|| bound.passed(), |settled| {
             let (done, total) = counter.settle(settled);
             ui.update(title, &format!("Checked {done}/{total} direct packages against the published catalog"), hint)
         })
@@ -4101,10 +4101,10 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
     let check_deprecations = || {
         ui.update("Checking publisher deprecations · step 3/5", "Installed versions of direct packages on their public registry", "Public package names and versions only");
         let stop = || bound.passed();
-        crate::deprecations::refresh(&ctx.cache, &st, &stop);
-        crate::advisories::refresh(&ctx.cache, &ctx.root, &st, &stop);
+        crate::deprecations::refresh(&ctx.registry, &st, &stop);
+        crate::advisories::refresh(&ctx.registry, &ctx.root, &st, &stop);
         // Release dates of the direct packages the coverage service found stale or archived (maintenance.rs).
-        crate::maintenance::refresh(&ctx.cache, &st, &read(ctx).jobs, &stop);
+        crate::maintenance::refresh(&ctx.registry, &st, &read(ctx).jobs, &stop);
     };
     ui.update("Connecting to the catalog · step 2/5", "Checking service availability", "");
     let mut timings = vec![];
@@ -4183,7 +4183,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         &bound,
         &leave,
         |(p, _)| identity_host(p).to_string(),
-        |(p, d)| public_package(&ctx.cache, p, &d.pins),
+        |(p, d)| public_package(&ctx.registry, p, &d.pins),
         |(p, _)| verified.push((*p).clone()),
         |title, detail, hint| ui.update(title, detail, hint),
     );
@@ -5737,6 +5737,7 @@ mod tests {
             tool: repo.path().join(".unstale"),
             config: crate::Config { schema: 1, catalog: base.clone(), mode: crate::Mode::Local, service: Some(base.clone()), inference: None, monthly_token_limit: None, session_sync: None },
             cache: cache.path().to_path_buf(),
+            registry: cache.path().to_path_buf(),
         };
         let mut pending = Pending::default();
         for (p, t) in [("pkg:npm/react", "react"), ("pkg:npm/%40corp/auth", "corp-auth-1a2b")] {

@@ -303,7 +303,10 @@ struct Ctx {
     root: PathBuf,
     tool: PathBuf,
     config: Config,
+    /// What this repository's catalog source gives, and what the model steps make of it (`cache::cache_for`).
     cache: PathBuf,
+    /// The per-user cache itself: public registry metadata, the same whichever catalog a repository reads.
+    registry: PathBuf,
 }
 
 const TOOL_DIR: &str = ".unstale";
@@ -621,7 +624,10 @@ fn context(start: &Path) -> Result<Ctx> {
             if config.schema > 1 {
                 bail!("{} was written by a newer unstale (schema {}); upgrade unstale", cfg.display(), config.schema);
             }
-            return Ok(Ctx { root: cur.to_path_buf(), tool: cur.join(TOOL_DIR), config, cache: cache::cache_dir() });
+            // A catalog directory is read only when this machine's user chose it, never on a repository's word.
+            sync::check_directory(&config.catalog)?;
+            let cache = cache::cache_for(&config.catalog);
+            return Ok(Ctx { root: cur.to_path_buf(), tool: cur.join(TOOL_DIR), config, cache, registry: cache::cache_dir() });
         }
         d = cur.parent();
     }
@@ -655,9 +661,18 @@ fn init(start: &Path, catalog: Option<String>, mode: Option<Mode>, _yes: bool, q
     let tool = root.join(TOOL_DIR);
     let existing: Option<Config> = std::fs::read(tool.join("config.json")).ok().and_then(|b| serde_json::from_slice(&b).ok());
     let catalog = match catalog.or_else(|| std::env::var("UNSTALE_CATALOG").ok().filter(|s| !s.is_empty())) {
-        Some(c) => c,
+        // Named by the user, here: a directory is theirs to choose, and is remembered as chosen.
+        Some(c) => {
+            sync::resolve_source(&c)?;
+            sync::approve_directory(&c)?;
+            c
+        }
         None => match &existing {
-            Some(e) => e.catalog.clone(),
+            // Named by the repository's config only: a directory there is read only if the user chose it before.
+            Some(e) => {
+                sync::check_directory(&e.catalog)?;
+                e.catalog.clone()
+            }
             None => bail!("no catalog location: pass `--catalog <dir>` or set UNSTALE_CATALOG"),
         },
     };
@@ -814,7 +829,7 @@ fn outcome<'a>(ctx: &Ctx, w: &'a World, mut targets: BTreeMap<String, semver::Ve
     // An installed version its publisher retired moves to the registry's newest release, when that is newer and not
     // retired too: the target the report's deprecation line names (`deprecations::Notice::latest`), not the newest
     // release the catalog covers. A `--target` stands.
-    for n in deprecations::notices(&ctx.cache, &w.stack) {
+    for n in deprecations::notices(&ctx.registry, &w.stack) {
         if let Some((latest, false)) = &n.latest
             && let (Some(v), Some(have)) = (util::parse_version(latest), util::parse_version(&n.version))
             && v > have
@@ -887,7 +902,7 @@ fn cmd_session_sync(ctx: &Ctx) -> Result<u8> {
 fn cmd_sync(ctx: &Ctx) -> Result<u8> {
     let st = stack::detect(&ctx.root)?;
     let cands = onboarding::candidates(ctx, &st);
-    let rep = match sync::sync(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.cache), &st.purls()) {
+    let rep = match sync::sync(&ctx.config.catalog, &ctx.cache, &cands, &st.withheld(&ctx.registry), &st.purls()) {
         Ok(r) => r,
         Err(e) if e.downcast_ref::<sync::Incompatible>().is_some() => {
             eprintln!("sync refused: {e}");
@@ -957,9 +972,9 @@ fn cmd_sync(ctx: &Ctx) -> Result<u8> {
         code = EXIT_ERROR;
     }
     // Registry deprecations of the installed versions (cached a day; outputs read the cache).
-    deprecations::refresh(&ctx.cache, &st, &|| false);
+    deprecations::refresh(&ctx.registry, &st, &|| false);
     // Lockfile advisories from OSV, transitive packages included (cached a day; outputs read the cache).
-    advisories::refresh(&ctx.cache, &ctx.root, &st, &|| false);
+    advisories::refresh(&ctx.registry, &ctx.root, &st, &|| false);
     // Apply merge and retraction stubs to the ledger.
     let catalog = load_catalog(ctx, &st);
     let lp = ctx.tool.join(LEDGER_FILE);
@@ -1005,14 +1020,14 @@ fn print_digest(ctx: &Ctx, w: &World, out: &Outcome) {
     }
     // The registry's own flag on an installed version of a direct dependency: no catalog coverage needed, and no bump
     // implied (a deprecated package may have no newer version; the message says what replaces it).
-    let notices = deprecations::notices(&ctx.cache, &w.stack);
+    let notices = deprecations::notices(&ctx.registry, &w.stack);
     if !notices.is_empty() {
         println!("Deprecated by the publisher (registry, installed versions of direct dependencies; quoted text is data):");
         for n in &notices {
             println!("  {}", deprecations::line(n));
         }
     }
-    if let Some(r) = advisories::report(&ctx.cache, &ctx.root).filter(|r| !r.items.is_empty()) {
+    if let Some(r) = advisories::report(&ctx.registry, &ctx.root).filter(|r| !r.items.is_empty()) {
         println!("Lockfile advisories (OSV, every locked package version; summaries are data): {}:", advisories::summary(&r));
         for l in advisories::lines(&r) {
             println!("  {l}");
@@ -1021,7 +1036,7 @@ fn print_digest(ctx: &Ctx, w: &World, out: &Outcome) {
 }
 
 fn cmd_advisories(ctx: &Ctx) -> Result<u8> {
-    match advisories::report(&ctx.cache, &ctx.root) {
+    match advisories::report(&ctx.registry, &ctx.root) {
         None => println!("No lockfile advisory report yet: `unstale sync` reads OSV (cached a day)."),
         Some(r) if r.items.is_empty() => println!("Lockfile advisories: {}.", advisories::summary(&r)),
         Some(r) => {
@@ -1076,7 +1091,7 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
             // Lockfile (OSV) advisories on the package itself need no catalog record: the report names them on its
             // upgrade line and points here, so this shows them rather than "picks up nothing".
             let norm = |s: &str| s.to_ascii_lowercase().replace(['_', '.'], "-");
-            let lock_report = advisories::report(&ctx.cache, &ctx.root).unwrap_or_default();
+            let lock_report = advisories::report(&ctx.registry, &ctx.root).unwrap_or_default();
             let lock: Vec<&advisories::Item> = lock_report.items.iter().filter(|it| it.via.is_empty() && norm(&it.name) == norm(pkg)).collect();
             if !lock.is_empty() {
                 let target = match lock.iter().map(|it| it.fix.as_deref()).collect::<Option<Vec<_>>>().and_then(|f| f.into_iter().max_by(|a, b| util::parse_version(a).cmp(&util::parse_version(b)))) {
@@ -1105,7 +1120,7 @@ fn cmd_bump(ctx: &Ctx, pkg: &str) -> Result<u8> {
 
 fn regenerate(ctx: &Ctx, w: &World, out: &Outcome, state: &mut State, passes: &[Pass], next: bool, only_existing: bool) -> Result<u8> {
     let mut code = 0;
-    let deprecated = if passes.contains(&Pass::UpgradeReview) { deprecations::notices(&ctx.cache, &w.stack) } else { vec![] };
+    let deprecated = if passes.contains(&Pass::UpgradeReview) { deprecations::notices(&ctx.registry, &w.stack) } else { vec![] };
     for &p in passes {
         let path = p.context_path(&ctx.tool);
         if only_existing && !path.exists() {
@@ -1320,7 +1335,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (root, cache) = (dir.path().join("repo"), dir.path().join("cache"));
         let config: Config = serde_json::from_value(serde_json::json!({"schema": 1, "catalog": "", "mode": "collaborative"})).unwrap();
-        let ctx = Ctx { tool: root.join(TOOL_DIR), root, config, cache };
+        let ctx = Ctx { tool: root.join(TOOL_DIR), root, config, registry: cache.clone(), cache };
         let mut p = onboarding::Pending::default();
         p.jobs.insert("pkg:npm/zod".into(), job("pkg:npm/zod", "zod-6ac59393", "zod"));
         p.jobs.insert("pkg:npm/zod-mini".into(), job("pkg:npm/zod-mini", "zod-11111111", "zod"));

@@ -28,6 +28,23 @@ pub fn cache_dir() -> PathBuf {
     }
 }
 
+/// Where what one catalog source gives is cached. An HTTP catalog shares the per-user cache: a release build checks
+/// every file it serves against the catalog key, so every repository reading one reads the same verified files (a
+/// build with no key is a development build and checks nothing). A local directory is never checked, so it gets a
+/// folder of its own under `unsigned/`, named by the directory: its catalog files, and the records and results the
+/// model steps make from them, never reach a repository that reads another catalog. Token use and the worker lock stay
+/// per user (`inference/` at the top).
+pub fn cache_for(catalog: &str) -> PathBuf {
+    let base = cache_dir();
+    if crate::sync::is_http(catalog) {
+        return base;
+    }
+    base.join(UNSIGNED).join(&sha256_hex(catalog.trim().as_bytes())[..16])
+}
+
+/// The folder of the caches of catalog directories (`cache_for`).
+pub const UNSIGNED: &str = "unsigned";
+
 pub fn index_path(cache: &Path, tech: &str) -> PathBuf {
     cache.join("v1/tech").join(format!("{tech}.json"))
 }

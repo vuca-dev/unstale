@@ -80,6 +80,7 @@ impl World {
             .env("HOME", self.path("home"))
             .env("UNSTALE_CONFIG_DIR", self.path("config"))
             .env("UNSTALE_CACHE_DIR", self.path("cache"))
+            .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             .env("UNSTALE_TODAY", "2026-11-10")
             .env("UNSTALE_NO_REGISTRY", "1")
             .env("JEV_API_KEY", SHELL_CANARY)

@@ -133,6 +133,68 @@ fn http_timeout() -> Duration {
     Duration::from_secs(secs)
 }
 
+/// Whether `loc` is an `http(s)://` location (anything else is a local directory).
+pub fn is_http(loc: &str) -> bool {
+    let lower = loc.trim().to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
+/// The directory a non-HTTP catalog location names (a path or `file://` URL), as written.
+pub fn directory_of(loc: &str) -> PathBuf {
+    let loc = loc.trim();
+    match loc.strip_prefix("file://") {
+        Some(rest) => PathBuf::from(rest.replace("%20", " ")),
+        None => PathBuf::from(loc),
+    }
+}
+
+/// Set to `1` on a development machine to read a catalog directory without approving it first (tests and eval
+/// scripts). Read from the process environment only; never from a repository's files.
+pub const DEV_UNSIGNED_CATALOG: &str = "UNSTALE_DEV_UNSIGNED_CATALOG";
+
+fn dev_unsigned_catalog() -> bool {
+    cfg!(test) || std::env::var(DEV_UNSIGNED_CATALOG).is_ok_and(|v| v.trim() == "1")
+}
+
+/// A local directory is not signature-checked, so one is read only when this machine's user chose it: `unstale init
+/// --catalog <dir>` records its canonical path in the user's own config (`approved`), which no repository can write.
+/// A directory named only by a repository's `.unstale/config.json` is refused, and a relative path always (it would
+/// name whatever sits in the repository). HTTP catalogs are not this function's concern: their files are checked
+/// against the catalog key.
+pub fn directory_allowed(loc: &str, approved: &[String], dev: bool) -> Result<()> {
+    if is_http(loc) || dev {
+        return Ok(());
+    }
+    let dir = directory_of(loc);
+    let canonical = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+    if dir.is_absolute() && approved.iter().any(|a| Path::new(a) == canonical) {
+        return Ok(());
+    }
+    bail!(
+        "this repository names a catalog directory ({}) that you have not chosen on this machine, so it is not read. If it is yours, run `unstale init --catalog <dir>`.",
+        dir.display()
+    )
+}
+
+/// [`directory_allowed`] for this machine's user: their approved directories, and the development setting.
+pub fn check_directory(loc: &str) -> Result<()> {
+    if is_http(loc) || dev_unsigned_catalog() {
+        return Ok(());
+    }
+    directory_allowed(loc, &crate::setup::approved_catalog_dirs(&crate::setup::user_config_path()), false)
+}
+
+/// Records a catalog directory the user named (`unstale init --catalog <dir>`) as approved, by its canonical path.
+/// Nothing for an HTTP catalog, or under the development setting.
+pub fn approve_directory(loc: &str) -> Result<()> {
+    if is_http(loc) || dev_unsigned_catalog() {
+        return Ok(());
+    }
+    let dir = directory_of(loc);
+    let canonical = dir.canonicalize().with_context(|| format!("catalog directory {}", dir.display()))?;
+    crate::setup::approve_catalog_dir(&crate::setup::user_config_path(), &canonical.to_string_lossy())
+}
+
 /// Where the catalog is read from: a local directory (a path or `file://` URL) or an `http(s)://` base URL. A
 /// location ending in `/v1` is taken as the catalog's `v1/` directory. Over HTTP nothing is fetched here.
 pub fn resolve_source(loc: &str) -> Result<Source> {
@@ -803,6 +865,25 @@ fn sync_tech(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_catalog_directory_is_read_only_when_the_user_chose_it() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().canonicalize().unwrap();
+        let chosen = vec![dir.to_string_lossy().to_string()];
+        let loc = dir.to_string_lossy().to_string();
+        assert!(directory_allowed(&loc, &chosen, false).is_ok());
+        assert!(directory_allowed(&format!("file://{loc}"), &chosen, false).is_ok());
+        // Not chosen; relative (whatever sits in the repository), even when its canonical path was chosen.
+        let e = directory_allowed(&loc, &[], false).unwrap_err().to_string();
+        assert!(e.contains("that you have not chosen on this machine") && e.contains("unstale init --catalog <dir>"), "{e}");
+        assert!(directory_allowed("docs/cat", &chosen, false).is_err());
+        assert!(directory_allowed(".", &[std::env::current_dir().unwrap().canonicalize().unwrap().to_string_lossy().to_string()], false).is_err());
+        // HTTP is checked by signature, not here; the development setting reads any directory.
+        assert!(directory_allowed("https://catalog.example", &[], false).is_ok());
+        assert!(directory_allowed("docs/cat", &[], true).is_ok());
+    }
+
     use crate::testcat::{FixtureCatalog, event, rec};
 
     fn purls(p: &[&str]) -> BTreeSet<String> {

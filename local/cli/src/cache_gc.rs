@@ -51,6 +51,8 @@ const KNOWN: &[&str] = &[
     "pypi-requires",
     "inference",
     "uninstalled",
+    // The caches of catalog directories (`cache::cache_for`), each cleaned as a cache of its own.
+    crate::cache::UNSIGNED,
     "needed.json",
     "cache-clean.json",
     MARKER,

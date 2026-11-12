@@ -21,6 +21,8 @@ impl Env {
             .current_dir(self.repo.path())
             .env("UNSTALE_CACHE_DIR", self.cache.path())
             .env("UNSTALE_TODAY", "2026-10-15")
+            // The fixture catalogs are directories no user config names.
+            .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             // No public registry is read in tests (deprecations.rs); a cached answer is seeded where one is needed.
             .env("UNSTALE_NO_REGISTRY", "1")
             .env_remove("UNSTALE_CATALOG")
