@@ -234,11 +234,18 @@ fn failure(model: &str, text: &str) -> Deferred {
 fn attempt(inf: &Inference, p: &Prompt) -> Result<Answer, Option<Deferred>> {
     let hints = !inf.codex.no_hints.load(Ordering::SeqCst);
     match attempt_with(inf, p, hints) {
-        Err(Refused::Options) if hints => {
+        // Only an attempt with the hint options returns this.
+        Err(Refused::Options) => {
             inf.codex.no_hints.store(true, Ordering::SeqCst);
+            // Once per process, in the progress a person running `unstale session-sync` by hand sees; nowhere else.
+            static SAID: AtomicBool = AtomicBool::new(false);
+            if !SAID.swap(true, Ordering::SeqCst) {
+                crate::pipeline::progress(
+                    "Codex would not start with its multi-agent hint options off; calls run without them.",
+                );
+            }
             Err(None)
         }
-        Err(Refused::Options) => Err(Some(Deferred::Unavailable)),
         Err(Refused::Deferred(d)) => Err(Some(d)),
         Ok(a) => Ok(a),
     }
@@ -344,7 +351,9 @@ fn attempt_with(inf: &Inference, p: &Prompt, hints: bool) -> Result<Answer, Refu
                 usage: usage.unwrap_or_default(),
             })
         }
-        // No event at all: Codex stopped at start-up ("Error loading config.toml: …" for an option it rejects).
+        // No event at all: Codex stopped at start-up ("Error loading config.toml: …" for an option it rejects). Any
+        // failure with no event drops the hint options, whatever its cause, not only a refused option: a network
+        // failure before the thread starts does too, and later calls in the run then go without them.
         None if !ok && !started && hints => Err(Refused::Options),
         _ => Err(failure(&model, &format!("{errors}\n{stderr}")).into()),
     }

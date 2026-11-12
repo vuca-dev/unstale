@@ -136,32 +136,42 @@ At list price that is $0.013 to $0.015 for labels; the setup screen quotes $0.01
 Codex CLI 0.166.0, plan-billed. Most of what a Codex call costs is Codex's own input, the same on every call. Two
 reductions were tried; the client ships the first.
 
-| Flags | Input on a trivial call | Mean input per call in a sync | Cached share |
-|---|---|---|---|
-| Before (the lean flag set) | 4,299 | 6,547 (35 calls) | 52% |
-| **Hint options off** (multi-agent tools and the three hint texts) | **2,735** | 5,064 (31 calls) | 45% |
-| Also a model catalog copy with no tool mode | 651 | 2,880 (38 calls) | 0% |
-
 - **Method.** `unstale session-sync` on a scratch repository whose local catalog leaves axios 1.20.0, 1.21.0 and
-  1.21.1 unread (the other technologies marked read), so one sync runs every step through Codex on three releases.
-  One run per row; the "before" and catalog runs resumed earlier runs stopped by the monthly limit, the cached answers
-  reused. Tokens are the usage ledger's.
-- **The catalog copy, under its pass rule (every answer read; records within 10% of the run before; at least 90% of
-  records agreeing on labels and on same-or-new): fails, so it is left out.** Every answer was read. Records: 31
-  against 28 (+10.7%). Of the 17 records the two runs share by id, labels agree on 12 (71%) and same-or-new on 17. The
-  run with the hint options off, for comparison: 25 records (−10.7%), labels agree on 16 of 18 (89%), same-or-new on
-  18 of 18. Record counts move by about this much between runs; the label agreement of the catalog copy is lower.
-- **The Codex quote** is the run with the hint options off, scaled per record: 163,136 tokens (156,986 in, 70,656 of
-  them cached; 6,150 out) for 25 records, × 114.6 records per technology-year = **750k plan tokens, ≈ $0.057 at API
-  prices**. The quote was 649k, of which 482k was an estimate. Scaled the same way, the run before gives 967k; less
-  the measured 1,564 tokens per call at its 1.25 calls per record, 743k.
+  1.21.1 unread (the other technologies marked read), so one sync runs every step through Codex. One package, one
+  run per arm. Baseline 1 and the catalog arm resumed earlier runs stopped by the monthly limit, reusing their cached
+  answers; baseline 2 and the hint-options arm started from an empty results cache. Records are paired by id; labels
+  agree when change type, breaking, benefits and surface all match. Tokens are the usage ledger's.
+
+| | Baseline 1 | Baseline 2 | Hint options off | Also the catalog copy |
+|---|---|---|---|---|
+| Input on a trivial call | 4,299 | 4,299 | **2,735** | 651 |
+| Calls; mean input per call; cached share | 35; 6,547; 52% | 33; 6,585; 52% | 31; 5,064; 45% | 38; 2,880; 0% |
+| Answers read | all | all | all | all |
+| Records | 28 | 27 | 25 | 31 |
+| Records against baseline 1 / 2 | | −3.6% / | −10.7% / −7.4% | +10.7% / +14.8% |
+| Labels agree with baseline 1 / 2 | | 15 of 19 (79%) / | 16 of 18 (89%) / 15 of 19 (79%) | 12 of 17 (71%) / 13 of 16 (81%) |
+| Same-or-new agree with baseline 1 / 2 | | 19 of 19 / | 18 of 18 / 19 of 19 | 17 of 17 / 16 of 16 |
+| Tokens; per package-year (× 114.6 per record) | 236k; 967k | 225k; 953k | 163k; **750k** | 117k; 433k |
+
+- **Noise floor** (baseline 1 against baseline 2): records differ by 3.6%, labels agree on 79%, same-or-new on all.
+- **The catalog copy**, held to a fixed rule before the noise floor was measured (every answer read; records within
+  10%; at least 90% agreeing on labels and on same-or-new): **fails** on records (+10.7%) and labels (71%), so it is
+  left out. Against baseline 2 its records differ by +14.8%, beyond the noise floor too.
+- **The hint options**, held to a rule set against the noise floor (label agreement with a baseline at most 5 points
+  below 79%; record difference at most 3.6% + 5 = 8.6%): against baseline 2, both runs from an empty cache, labels
+  79% and records −7.4%, **pass**; against baseline 1 labels pass (89%) and records do not (−10.7%). They ship; with
+  one run per arm, the record count is the figure to re-check.
+- **The Codex quote** is the hint-options run: 163,136 tokens (156,986 in, 70,656 of them cached; 6,150 out) for 25
+  records, × 114.6 = **750k plan tokens, ≈ $0.057 at API prices**. It was 649k, of which 482k was an estimate. The
+  two baselines give 953k to 967k the same way; less the measured 1,564 tokens per call at 1.25 calls per record,
+  about 740k.
 - **Monthly limit.** 40 technologies × 0.75M = 30M for a first sync; 48M is 20% below twice that, inside the 25% that
   would change it, so the default stays.
 - **Not measured:** extraction alone with the hint options off (the 167k figure for Jev + Codex is from before them,
   so a little high); other Codex releases (unknown options are ignored, and a release that refuses one at start-up
   gets the calls without them); label and same-or-new quality through Codex against a reference set (above is
-  agreement between runs only); notes longer than axios's.
-- Spend: 311k Codex plan tokens (133k, 15k and 163k for the three runs).
+  agreement between runs only); other packages, and notes longer than axios's.
+- Spend: 535k Codex plan tokens (133k, 225k, 163k and 15k for the four runs as run here).
 
 Everything below is the first run, on `8835d5c`, as recorded before the fixes.
 
