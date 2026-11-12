@@ -120,3 +120,6 @@ unstale setup --inference none                    # not now
 ```
 
 An agent is shown the same options with the command for each, and is told to ask you. It never chooses.
+A choice that spends, or a higher token limit, recorded by an agent or a script is shown to you the next time you run
+unstale at a terminal, and an install script or a Git hook cannot record one at all. This guards against an agent or a
+script acting without you noticing, not against a program that can already edit your config.

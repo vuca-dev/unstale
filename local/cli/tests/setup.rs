@@ -913,3 +913,40 @@ fn a_choice_from_ci_or_of_none_is_not_marked_and_hooks_cannot_record_one_that_sp
         assert_eq!(code, 0, "none is taken from anywhere");
     }
 }
+
+#[test]
+fn raising_the_limit_does_not_lift_the_tenth_and_is_refused_from_hooks() {
+    let w = World::new(None);
+    w.init(true, &[]);
+    let status = |w: &World| w.run_with(&["status", "--wait", "0", "--no-animation"], &[("CLAUDECODE", "1")]).1;
+    // An agent chooses a provider and raises the limit in one command: a tenth of the default, not of the limit.
+    let (code, out) = w.run_with(&["setup", "--inference", "openai", "--limit", "480M"], &[("CLAUDECODE", "1")]);
+    assert_eq!(code, 0, "{out}");
+    let s = status(&w);
+    assert!(s.contains("0 of 4.8M this month (a tenth of the limit"), "{s}");
+    assert!(s.contains("on your OpenAI key (≈ $0.052 a year) with a token limit of 480M, chosen through your agent on 10 November."), "{s}");
+    // A person sees it; then an agent removes the limit on its own: the tenth again, and the line says what it did.
+    w.at_terminal(&["report"], "");
+    assert!(status(&w).contains("0 of 480M this month"));
+    let (code, _) = w.run_with(&["setup", "--limit", "none"], &[("CLAUDECODE", "1")]);
+    assert_eq!(code, 0);
+    let s = status(&w);
+    assert!(s.contains("with no token limit, set through your agent on 10 November. Undo: `unstale setup --limit default`") && s.contains("of 4.8M this month"), "{s}");
+    w.at_terminal(&["report"], "");
+    // An install script or a Git hook cannot raise or remove it; lowering is taken.
+    for (hook, why) in [
+        (&[("npm_lifecycle_event", "postinstall")][..], "a package install script"),
+        (&[("GIT_EXEC_PATH", "/usr/libexec/git-core"), ("GIT_INDEX_FILE", ".git/index"), ("GIT_PREFIX", "")], "a Git hook"),
+    ] {
+        w.ok(&["setup", "--limit", "10M"], true);
+        let before = std::fs::read(w.path("config/config.json")).unwrap();
+        for raise in ["1000000M", "none", "default"] {
+            let (code, out) = w.run_with(&["setup", "--limit", raise], hook);
+            assert_ne!(code, 0, "{raise}: {out}");
+            assert_eq!(out.trim(), format!("error: not saved: a higher token limit is not taken from {why}. Run `unstale setup --limit` yourself."));
+            assert_eq!(std::fs::read(w.path("config/config.json")).unwrap(), before, "{raise}");
+        }
+        let (code, _) = w.run_with(&["setup", "--limit", "1M"], hook);
+        assert_eq!(code, 0, "lowering is taken");
+    }
+}

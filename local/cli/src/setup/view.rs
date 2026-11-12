@@ -1193,13 +1193,23 @@ pub fn unseen_line(u: &Unseen, techs: usize, today: &str) -> String {
     } else {
         "through a script"
     };
-    let undo = if u.every_repo {
-        "unstale setup --user --inference none"
-    } else {
-        "unstale setup --inference none"
+    let undo = match (u.chosen, u.every_repo) {
+        (false, _) => "unstale setup --limit default",
+        (true, true) => "unstale setup --user --inference none",
+        (true, false) => "unstale setup --inference none",
     };
+    // A limit raised or removed with it, named with what it was set to.
+    let limit = match u.limit {
+        Some(Limit::Tokens(n)) => format!(
+            " with a token limit of {}",
+            crate::inference::ledger::short_tokens(n)
+        ),
+        Some(Limit::None) => " with no token limit".to_string(),
+        None => String::new(),
+    };
+    let verb = if u.chosen { "chosen" } else { "set" };
     format!(
-        "unstale reads release notes on your {on} ({cost}), chosen {by} on {}. Undo: `{undo}`",
+        "unstale reads release notes on your {on} ({cost}){limit}, {verb} {by} on {}. Undo: `{undo}`",
         day(&u.mark.on, today)
     )
 }

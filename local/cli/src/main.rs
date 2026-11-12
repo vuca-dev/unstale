@@ -422,9 +422,14 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
                 return Ok(0);
             }
             // The limit is the user's own: always saved in their config.
+            let raised = limit.is_some_and(|l| setup::raises(&setup::user_config_path(), l));
             if let Some(l) = limit { setup::set_limit(&ctx, l)?; }
             // `--limit` alone changes the limit and asks nothing.
             if limit.is_none() || choice.is_some() { setup::run(&mut ctx, choice, true, user, false)?; }
+            // Raised by an agent or a script beside a choice that spends: unseen, like the choice itself.
+            if raised {
+                setup::mark_limit(&setup::user_config_path(), &ctx.root, setup::chooser(&setup::process_env, setup::at_terminal()))?;
+            }
             Ok(0)
         }
         Cmd::Report => {

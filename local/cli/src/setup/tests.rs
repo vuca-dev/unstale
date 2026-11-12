@@ -1460,7 +1460,7 @@ fn an_unseen_choice_is_marked_beside_it_and_seen_once() {
         serde_json::json!({"inference": {"provider": "openai", "key_env": "OPENAI_API_KEY"}, "chosen_by": "agent", "chosen_on": "2026-11-12"})
     );
     let u = unseen(&path, Some(&root)).unwrap();
-    assert_eq!((u.choice.clone(), u.mark.clone(), u.every_repo), (key.clone(), mark.clone(), false));
+    assert_eq!((u.choice.clone(), u.mark.clone(), u.chosen, u.limit, u.every_repo), (key.clone(), mark.clone(), true, None, false));
     // The choice itself reads as before.
     assert_eq!(stored(None, &root, &path).choice, Some((key.clone(), Origin::User)));
     // Only where it is in effect: another repository has no choice here.
@@ -1508,6 +1508,8 @@ fn an_unseen_choice_gets_a_tenth_of_the_limit_that_would_apply() {
         (Some(serde_json::json!(1_000_000)), None, 100_000),
         (Some(serde_json::json!(1_000_000)), Some(Limit::Tokens(50_000)), 5_000),
         (Some(serde_json::json!("none")), None, default / 10),
+        // Raised past the default: still a tenth of the default.
+        (Some(serde_json::json!(480_000_000u64)), None, default / 10),
         (Some(serde_json::json!(5)), None, 1),
         (Some(serde_json::json!(0)), None, 0),
     ] {
@@ -1537,6 +1539,8 @@ fn the_unseen_line_names_what_spends_this_repos_cost_who_and_when_and_the_undo()
     let u = |c: Choice, by: &str, every_repo: bool| Unseen {
         choice: c,
         mark: Mark { by: by.into(), on: "2026-11-12".into() },
+        chosen: true,
+        limit: None,
         every_repo,
     };
     let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
@@ -1567,4 +1571,50 @@ fn view_pick(c: &Choice) -> Pick {
         "codex" => Pick::Codex,
         p => Pick::Key(route_by_id(p).unwrap()),
     }
+}
+
+#[test]
+fn a_limit_an_agent_or_a_script_raises_beside_a_choice_that_spends_is_unseen_too() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("unstale/config.json");
+    let root = dir.path().join("shop");
+    let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
+    let default = crate::inference::ledger::DEFAULT_MONTHLY_TOKENS;
+    // Raising and removing count; lowering, and going back to a default above a lower limit, are told apart.
+    assert!(raises(&path, Some(Limit::Tokens(default + 1))) && raises(&path, Some(Limit::None)));
+    assert!(!raises(&path, Some(Limit::Tokens(1_000))) && !raises(&path, None));
+    write_user_key(&path, "monthly_token_limit", Some(serde_json::json!(1_000))).unwrap();
+    assert!(raises(&path, None));
+    // A choice a person made, then a limit an agent raised: unseen, so a tenth of the default applies.
+    write_user_repo(&path, &root, Some(&key)).unwrap();
+    write_user_key(&path, "monthly_token_limit", Some(serde_json::json!(480_000_000u64))).unwrap();
+    for who in [Chooser::Person, Chooser::Ci] {
+        mark_limit(&path, &root, who).unwrap();
+        assert_eq!(unseen(&path, Some(&root)), None, "{who:?}");
+    }
+    mark_limit(&path, &root, Chooser::Agent).unwrap();
+    let u = unseen(&path, Some(&root)).unwrap();
+    assert_eq!((u.chosen, u.limit, u.mark.by.as_str()), (false, Some(Limit::Tokens(480_000_000)), "agent"));
+    assert_eq!(limit_here(None, &path, Some(&root)).0, Limit::Tokens(default / 10));
+    let mut line_of = u.clone();
+    line_of.mark.on = "2026-11-12".into();
+    assert_eq!(
+        view::unseen_line(&line_of, 38, "2026-11-12"),
+        format!(
+            "unstale reads release notes on your OpenAI key (≈ ${:.2} a year) with a token limit of 480M, set through your agent on 12 November. Undo: `unstale setup --limit default`",
+            quote(Pick::Key(Route::OpenAi), false).usd * 38.0
+        )
+    );
+    // With the choice unseen too, the line says it was chosen, and names the limit.
+    line_of.chosen = true;
+    line_of.limit = Some(Limit::None);
+    assert!(view::unseen_line(&line_of, 38, "2026-11-12").contains(") with no token limit, chosen through your agent on 12 November. Undo: `unstale setup --inference none`"));
+    // Seen at a terminal: both marks go.
+    mark_seen(&path, Some(&root)).unwrap();
+    assert_eq!(unseen(&path, Some(&root)), None);
+    assert_eq!(limit_here(None, &path, Some(&root)).0, Limit::Tokens(480_000_000));
+    // With no choice that spends, nothing is marked.
+    write_user_repo(&path, &root, Some(&Choice::none())).unwrap();
+    mark_limit(&path, &root, Chooser::Script).unwrap();
+    assert!(!std::fs::read_to_string(&path).unwrap().contains("limit_set_by"));
 }
