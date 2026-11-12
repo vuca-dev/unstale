@@ -364,10 +364,11 @@ const SUMMARY =
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
 const READING = `${REPO}/blob/main/docs/reading-release-notes.md`;
 const PRIVACY = `${REPO}/blob/main/docs/privacy.md`;
-/** What reading new release notes costs, why it is small, and what going without gives up; the figures are the
- *  client's own (`quote()` in `local/cli/src/setup.rs`, at the 38 packages of its golden transcripts). */
+/** What reading new release notes costs in tokens, why it is small, and what going without gives up. Sources:
+ *  `eval/edge-port/RESULTS.md` (about 425k input and 40k to 50k output tokens per package, per year, on a key alone),
+ *  `eval/beat-naive/RESULTS.md` (409K tokens, Claude Code's plain ask), `NO_PROVIDER_SHARE` in the client's setup. */
 const COST =
-  "unstale reads new release notes with a small model, on your own API key or your Codex plan. On an OpenAI key that is about $2.43 a year for a repository with 38 packages, because each release note is read once, only for the packages you use, and every answer is kept. Or pay nothing: new releases then get advisories and deprecations only, about 27% of the changes in new releases.";
+  "unstale reads new release notes with a small model, on your own API key or your Codex plan. A package takes about 470,000 small-model tokens a year, about 1,300 a day, because each release note is read once, only for the packages you use, and every answer is kept. For scale, Claude Code alone spent 409,000 tokens on one review of one repository. Or pay nothing: new releases then get advisories and deprecations only, about 27% of the changes in new releases.";
 const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */

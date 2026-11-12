@@ -42,8 +42,8 @@ To keep `unstale` on your PATH for the commands below:
 npm install -g @unstale/cli      # or: brew install vuca-dev/tap/unstale
 ```
 
-`init` asks once how to read new release notes and shows the cost first: about $2.43 a year for 38 packages on an
-OpenAI key, or free with less ([Reading new release notes](#reading-new-release-notes)).
+`init` asks once how to read new release notes and shows the cost first: about 1,300 small-model tokens a day per
+package on your own key, or free with less ([Reading new release notes](#reading-new-release-notes)).
 
 Building from source: [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -106,9 +106,10 @@ its progress.
 
 ## Reading new release notes
 
-unstale reads new release notes with a small model, on your own API key or your Codex plan. On an OpenAI key that is
-about $2.43 a year for a repository with 38 packages, about 6 cents a package. It stays that small because unstale
-reads each release note once, only for the packages you use, and keeps every answer.
+unstale reads new release notes with a small model, on your own API key or your Codex plan. A package takes about
+470,000 small-model tokens a year, about 1,300 a day. For scale, Claude Code alone spent 409,000 tokens on one review
+of one repository ([how we measured](eval/beat-naive/RESULTS.md)). It stays that small because unstale reads each
+release note once, only for the packages you use, and keeps every answer.
 
 Or pay nothing: with no provider, new releases get advisories and deprecations only, ≈ 27% of the changes in new
 releases.

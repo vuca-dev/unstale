@@ -22,9 +22,10 @@ Then, in your agent, inside that repository:
 Use the same skill for your first review and later check-ins. It recommends where to start, respects prior decisions,
 and can focus on a package, upgrade target, or capability you name.
 
-unstale reads new release notes with a small model, on your own API key or your Codex plan: about $2.43 a year for a
-repository with 38 packages on an OpenAI key, because each release note is read once, only for the packages you use.
-`init` asks once and shows your repository's cost first. Or pay nothing: new releases then get advisories and
+unstale reads new release notes with a small model, on your own API key or your Codex plan: about 470,000 small-model
+tokens per package a year, about 1,300 a day, because each release note is read once, only for the packages you use.
+Claude Code alone spent 409,000 tokens on one review of one repository. `init` asks once and shows your repository's
+cost first. Or pay nothing: new releases then get advisories and
 deprecations only, about 27% of the changes in new releases
 ([every option](https://github.com/vuca-dev/unstale/blob/main/docs/reading-release-notes.md)).
 
