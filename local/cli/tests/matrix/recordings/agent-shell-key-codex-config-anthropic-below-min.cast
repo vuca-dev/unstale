@@ -263,7 +263,7 @@
 [17.41,"o","Never choose for them.\r\n"]
 [17.47,"o","\r\n"]
 [17.53,"o","     Read with    Key              Cost a year, this repo   Compared with the best option\r\n"]
-[17.59,"o","  1  OpenAI       OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels\r\n"]
+[17.59,"o","  1  OpenAI       OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels\r\n"]
 [17.65,"o","  2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured\r\n"]
 [17.71,"o","  3  Not now                       free                     ≈ 27% of its changes in new releases\r\n"]
 [17.77,"o","\r\n"]

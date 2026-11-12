@@ -5,7 +5,7 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
      Read with   Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI      OPENAI_API_KEY   ≈ $0.19                  ≈ 3% less precise labels
+  1  OpenAI      OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels
   2  Not now                      free                     ≈ 27% of its changes in new releases
 
 Enter for 1, a number to choose, or d for details:

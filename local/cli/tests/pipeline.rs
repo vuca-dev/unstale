@@ -71,8 +71,18 @@ fn fixture() -> Value {
 }
 
 fn run_step(cache: &std::path::Path, events: &std::path::Path, url: &str, switch: bool) -> String {
+    run_step_of("extract", cache, events, url, switch)
+}
+
+fn run_step_of(
+    step: &str,
+    cache: &std::path::Path,
+    events: &std::path::Path,
+    url: &str,
+    switch: bool,
+) -> String {
     let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
-    c.args(["internal", "run-step", "--step", "extract", "--in"])
+    c.args(["internal", "run-step", "--step", step, "--in"])
         .arg(events)
         .args([
             "--provider",
@@ -155,6 +165,115 @@ fn run_step_extract_prints_centrals_records_and_a_second_run_asks_nothing() {
         2,
         "every answer came from the user-level cache"
     );
+}
+
+/// Answers label requests: one record's with one option per question, a batched one with the same for every record
+/// id it lists. Counts the records of each request.
+fn label_mock() -> (String, Arc<Mutex<Vec<usize>>>) {
+    let labels: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/prompts/labels.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let mut pick = serde_json::Map::new();
+    pick.insert("change_type".into(), labels["change_types"][0]["id"].clone());
+    pick.insert("surface".into(), labels["surfaces"][0]["id"].clone());
+    pick.insert("breaking".into(), "no".into());
+    for b in labels["benefits"].as_array().unwrap() {
+        pick.insert(format!("benefit_{}", b["id"].as_str().unwrap()), "no".into());
+    }
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            let prompt = serde_json::from_str::<Value>(&body)
+                .ok()
+                .and_then(|v| v["messages"][0]["content"].as_str().map(String::from))
+                .unwrap_or_default();
+            let records = prompt
+                .split("Records:\n")
+                .nth(1)
+                .map(|t| t.lines().take_while(|l| !l.is_empty()).count());
+            log.lock().unwrap().push(records.unwrap_or(1));
+            let content = match records {
+                None => Value::Object(pick.clone()),
+                Some(n) => Value::Object(
+                    (1..=n)
+                        .map(|i| (format!("r{i}"), Value::Object(pick.clone())))
+                        .collect(),
+                ),
+            }
+            .to_string();
+            let reply = serde_json::json!({"model": "gpt-6-luna", "choices": [{"message": {"content": content}, "finish_reason": "stop"}], "usage": {"prompt_tokens": 10, "completion_tokens": 2}}).to_string();
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+        }
+    });
+    (url, seen)
+}
+
+/// `run-step --step labels` on a key batches as a pass does (four records to a call, a lone record alone), prints one
+/// line per record in input order, asks nothing a second time, and makes no call with the switch off.
+#[test]
+fn run_step_labels_go_several_records_to_a_call_on_a_key() {
+    let (url, seen) = label_mock();
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("records.jsonl");
+    let lines: Vec<String> = (0..9)
+        .map(|i| {
+            serde_json::json!({"name": "Example.js", "incoming": {
+                "key": format!("example@2.1.0#0.{i}"), "technology": "example", "version": "2.1.0", "date": "2026-10-01",
+                "line": "2", "url": "https://example.org/2.1.0", "snapshot": "sha256:aa", "subject": format!("option{i}"),
+                "subject_kind": "literal", "summary": format!("Option {i} changed."), "introduces": [],
+                "quote": format!("option{i} changed"), "grounded": true, "terms": [], "replaces": [], "requires": [],
+                "prerequisites": [], "conditions": []}})
+            .to_string()
+        })
+        .collect();
+    std::fs::write(&input, lines.join("\n") + "\n").unwrap();
+    let cache = dir.path().join("cache");
+    let off = run_step_of("labels", &cache, &input, &url, false);
+    assert!(off.contains("turned off"), "{off}");
+    assert!(seen.lock().unwrap().is_empty());
+    let out = run_step_of("labels", &cache, &input, &url, true);
+    let got: Vec<Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(got.len(), 9, "{out}");
+    for (i, v) in got.iter().enumerate() {
+        assert_eq!(v["key"], format!("example@2.1.0#0.{i}"));
+        assert_eq!(v["labels"]["breaking"], false, "{v}");
+    }
+    assert_eq!(*seen.lock().unwrap(), [4, 4, 1]);
+    assert_eq!(run_step_of("labels", &cache, &input, &url, true), out);
+    assert_eq!(seen.lock().unwrap().len(), 3, "every answer came from the cache");
 }
 
 #[path = "../src/testcat.rs"]

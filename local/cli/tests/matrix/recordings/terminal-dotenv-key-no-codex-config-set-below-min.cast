@@ -137,7 +137,7 @@
 [9.27,"o","How should unstale read new release notes?\r\n"]
 [9.33,"o","\r\n"]
 [9.39,"o","     Read with  Key                    Cost a year, this repo  Compared with the best option\r\n"]
-[9.45,"o","  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.19                 ≈ 3% less precise labels\r\n"]
+[9.45,"o","  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.16                 ≈ 3% less precise labels\r\n"]
 [9.51,"o","  2  Not now                           free                    ≈ 27% of its changes in new releases\r\n"]
 [9.57,"o","\r\n"]
 [9.63,"o","This repo's config suggests option 1. Nothing is spent until you choose.\r\n"]

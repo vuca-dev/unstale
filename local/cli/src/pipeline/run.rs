@@ -131,9 +131,10 @@ pub fn run(
             .iter()
             .map(|(i, _)| record_state(p, &name, i))
             .collect();
-        if let Err(d) = ch.prefetch(STEP_LABELS, &states, &questions) {
-            s.deferred = Some(d);
-        }
+        // A deferral here (the monthly limit between two label calls, say) does not stop the pass yet: the labels the
+        // earlier calls returned are cached and paid for, so their records are still written. The loop below stops at
+        // the first record whose own request defers.
+        let _ = ch.prefetch(STEP_LABELS, &states, &questions);
         let comps = components(&td);
         let line_of = matching::line_fn(&td.index);
         let mut touched = false;
