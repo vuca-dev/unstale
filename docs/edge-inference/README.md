@@ -54,6 +54,7 @@ Tests and the environment matrix turn the switch on. WS7 flips the default.
 | Extraction (A+B) model | `gpt-6-luna`, reasoning low, two calls, on any OpenAI-compatible route or Codex | `eval/provider-matrix/RESULTS.md` |
 | Labels (D) without Jev | `gpt-6-luna`, read on its choices; **allowed as a fallback, marked below Jev** on breaking recall | `eval/provider-matrix/RESULTS.md` addendum 1 |
 | Matching (E) without Jev | `gpt-6-luna` answering by choice, with central's production rule (an uncalibrated answer counts as 0 in the guards): **allowed**. From the re-measurement with text answers read as options: no false merges measured on 141 merges; about 4 more duplicate records (4.0 to 4.5) per technology-year, which the reading agent absorbs. The fitted 0.82 / 0.97 / 1.01 bars need the stated-probability prompt, which the client does not send | `eval/provider-matrix/RESULTS.md` addendum 2; duplicates: `eval/edge-port/RESULTS.md`, addendum 1; WS4 review, 11 November |
+| Matching (E) on SubQ Snap | **Snap 1.2 is the no-Jev matcher**. It is asked with the longer rules and the first 4 candidates, at its own bars (0.61 / 0.93 / 0.95), and offered as "Snap + <key>", ahead of the key alone. Against gpt-6-luna on two sets it had not seen: 86.3% and 89.1% of merges against 80.2% and 85.1% (both significant), with 0.3 and 0.4 false merges per 100. $0.0059 per technology-year. Labels stay on the key: Snap fails H2 breaking precision there (−3.4) | `eval/select/slice19/RESULTS.md`, part 2 |
 | Key detection | Names only: environment variable names, CLIs on PATH, `codex login status`. Never values before consent; never other repos' `.env` files; never other tools' auth files | — |
 | Consent | One picker, recommended option preselected; Enter accepts. No "what was checked" line | — |
 | Cost quotes | Always with units and scope: per technology-year, this repo's total, first sync once. Plan-billed tools in tokens plus "≈ $X at API prices" | — |
@@ -62,7 +63,7 @@ Tests and the environment matrix turn the switch on. WS7 flips the default.
 | Grace period | 20 days, then `min_client` is raised | — |
 | No key and no Codex | Pass deterministic signals and the raw change events (unparsed, sometimes duplicated) to the agent, with one line stating the extra token spend. **Shipped only if WS9 shows the agent with this mode beats the agent alone**; otherwise the client says a key or Codex is needed. Encoder deferred | WS9; `eval/edge-encoder/RESULTS.md` |
 | Anthropic key only | Offered last, with its trade stated (extraction misses more changes in upgrade guides; matching off, so more duplicates) | `eval/provider-matrix/RESULTS.md` |
-| Picker order | Jev + OpenAI-compatible key; Jev + Codex; OpenAI-compatible key alone; Codex alone; Anthropic key alone. Options below Jev say so in one line | — |
+| Picker order | Jev + OpenAI-compatible key; Jev + Codex; Snap + OpenAI-compatible key; OpenAI-compatible key alone; Codex alone; Anthropic key alone. Options below Jev say so in one line | Snap's place: `eval/select/slice19/RESULTS.md` |
 | Day 0 / day 20 | Day 0 is the day the release ships; day 20 follows automatically | — |
 
 ## Open decisions (CEO)

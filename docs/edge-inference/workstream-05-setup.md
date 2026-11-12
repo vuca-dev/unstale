@@ -16,8 +16,8 @@ WS3 merged.
 - [ ] **Picker:** one numbered list, recommended option preselected, Enter accepts.
   - Each option on one line with a cost quote that states units and scope, for example "$0.03 per technology-year ·
     this repo: 38 technologies ≈ $1.20/yr · first sync ≈ $0.40 once"; Codex as tokens plus "≈ $X at API prices".
-  - Order: Jev + OpenAI-compatible key; Jev + Codex; OpenAI-compatible key alone; Codex alone; Anthropic key alone;
-    then no-key mode. Only options this machine can use are listed; if none can, one line says what to set.
+  - Order: Jev + OpenAI-compatible key; Jev + Codex; Snap + OpenAI-compatible key (SubQ Snap matches,
+    `eval/select/slice19/RESULTS.md`); OpenAI-compatible key alone; Codex alone; Anthropic key alone; then no-key mode. Only options this machine can use are listed; if none can, one line says what to set.
   - Options below the first say what is traded (see Copy).
   - **No-key mode** appears only if WS9 passes. Until WS9 reports, and if it fails, that line reads that a key or
     Codex is needed. Build the option behind a constant so WS9's result is a one-line change.
