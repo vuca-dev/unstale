@@ -413,3 +413,9 @@ OpenRouter parity, repeat eval runs.
 - Lanes: cost closed, performance closed, security closed, throughput has #253 merged (watch `metrics.docs_rotation` and the listing-cache refill on 13 November, 03:00–15:00 UTC), developer experience building two PRs (picker with default marked on its row; status warnings first, Snap note and `subq+` help, two wording fixes).
 - PM decisions: accepted #254's trade (a round with no response from any host ends retries; recovered next run). Not approved: restart ingest after a failed run. Codex picker rows show "no extra cost", never a token count.
 - Open with the CEO: `setup --inference` records consent with no check a person is present; `setup` must be made visible in `--help` at release; the 27% no-provider figure rests on unmerged #231; `/Users/jason/unstale-lane-cost-1` holds 6 MB of paid answer caches.
+
+## Update, 12 November 2026 (late)
+
+- Merged: #255 `ca53ef5` (status warnings first, Snap note, `subq+` in help, wording), #256 `6b825f7` (arrow-key picker, default marked on its row; review found and fixed typed-ahead input choosing the default, and terminal state after an external signal).
+- All five lanes closed. Draft #252 (head `1f185d4`) carries dollars copy, Codex wording, security corrections and the new picker example; held for the CEO.
+- Left before the release: CEO review of #252; CEO decision on `setup --inference` recording consent with no person present; make `setup` visible in `--help` at release; merge this tracker branch and write the final report.
