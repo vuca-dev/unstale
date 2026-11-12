@@ -79,6 +79,7 @@ Choice pending: how unstale reads new release notes. Run `unstale setup` and ask
 warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -107,7 +108,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
@@ -141,6 +141,7 @@ $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 warning: the sync at session start failed, so newer changes are missing. `unstale status` says why.
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -169,7 +170,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

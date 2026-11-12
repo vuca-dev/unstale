@@ -58,6 +58,7 @@ react: 1 upstream change on file, nothing new
 # the repository commits its own agent settings, so no session-start hook of unstale's is installed
 
 $ unstale status --wait 0 --no-animation
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -85,7 +86,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 
@@ -94,6 +94,7 @@ Syncing the catalog, then reading new release notes with your provider. Ctrl-C s
 You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -121,7 +122,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 

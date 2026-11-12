@@ -59,6 +59,7 @@ Syncing the catalog, then reading new release notes with your provider. Ctrl-C s
 warning: the provider is not answering, so new release notes wait. The next sync tries again.
 
 $ unstale status --wait 0 --no-animation
+warning: the provider is not answering, so new release notes wait. The next sync tries again.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -86,7 +87,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the provider is not answering, so new release notes wait. The next sync tries again.
 Release notes         Jev + Codex plan (JEV_API_KEY), your user config
 Tokens                24 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

@@ -736,7 +736,8 @@ pub fn status_lines(ctx: &Ctx) -> (Vec<String>, Vec<String>) {
 fn ago(then: u64, now: u64) -> String {
     let m = now.saturating_sub(then) / 60;
     match m {
-        0..60 => format!("{m} min ago"),
+        0 => "just now".into(),
+        1..60 => format!("{m} min ago"),
         60..2_880 => format!("{} h ago", m / 60),
         _ => format!("{} days ago", m / 1_440),
     }
@@ -1090,7 +1091,7 @@ mod tests {
         assert_eq!(median_p90(&mut [7]), (7, 7));
         assert_eq!(
             [ago(0, 30), ago(0, 7_200), ago(0, 3 * 86_400)],
-            ["0 min ago", "2 h ago", "3 days ago"]
+            ["just now", "2 h ago", "3 days ago"]
         );
     }
 

@@ -50,6 +50,7 @@ Syncing the catalog, then reading new release notes with your provider. Ctrl-C s
 warning: this key or plan lacks gpt-6-luna, so new release notes are not read. Run `unstale setup`.
 
 $ unstale status --wait 0 --no-animation
+warning: this key or plan lacks gpt-6-luna, so new release notes are not read. Run `unstale setup`.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -76,7 +77,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: this key or plan lacks gpt-6-luna, so new release notes are not read. Run `unstale setup`.
 Release notes         Codex plan, your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

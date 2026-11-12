@@ -363,7 +363,8 @@ impl Display {
             });
         echoes.then(|| self.echoed_lines.clone())
     }
-    pub fn present(mut self, lines: Vec<Line>, linger: bool, leave: &AtomicBool) {
+    /// Shows the result: `lead` as printed (warnings, before the result they qualify), then `lines`.
+    pub fn present(mut self, lead: &[String], lines: Vec<Line>, linger: bool, leave: &AtomicBool) {
         self.flush_plain();
         let size = if self.thread.is_some() {
             dimensions().unwrap_or(self.size)
@@ -428,6 +429,9 @@ impl Display {
         let color = std::io::stdout().is_terminal()
             && std::env::var_os("NO_COLOR").is_none()
             && std::env::var("TERM").unwrap_or_default() != "dumb";
+        for line in lead {
+            println!("{line}");
+        }
         for line in render(&lines, size.1.saturating_sub(1), color) {
             println!("{line}");
         }

@@ -102,6 +102,7 @@ $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 warning: the provider is not answering, so new release notes wait. The next sync tries again.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
+warning: the provider is not answering, so new release notes wait. The next sync tries again.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -133,7 +134,6 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: the provider is not answering, so new release notes wait. The next sync tries again.
 Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

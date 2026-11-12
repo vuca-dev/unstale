@@ -259,7 +259,7 @@ pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<Stri
             continue;
         }
         let mut t = build(with_keys, gutter);
-        t.extend(jev_note(&opts));
+        t.extend(notes(&opts));
         // Without the column, the keys the options read are named once, under the table.
         if !with_keys && let Some(k) = keys_line(d, &opts).filter(|k| len(k) <= width) {
             t.push(k);
@@ -294,19 +294,22 @@ pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<Stri
             out.push(format!("     {}", c[3]));
         }
     }
-    if let Some(n) = jev_note(&opts) {
+    for n in notes(&opts) {
         out.extend(wrap(n.trim_start(), width, 5));
     }
     out
 }
 
-/// What Jev is, said once under a table that offers it: the name alone tells the reader nothing.
-fn jev_note(opts: &[Pick]) -> Option<String> {
-    opts.iter()
-        .any(|p| matches!(p, Pick::JevKey(_) | Pick::JevCodex))
-        .then(|| {
-            "     Jev: a labelling service, used beside the provider that reads the notes.".into()
-        })
+/// What Jev and Snap are, each said once under a table that offers it: the names alone tell the reader nothing.
+fn notes(opts: &[Pick]) -> Vec<String> {
+    let mut out = vec![];
+    if opts.iter().any(|p| matches!(p, Pick::JevKey(_) | Pick::JevCodex)) {
+        out.push("     Jev: a labelling service, used beside the provider that reads the notes.".into());
+    }
+    if opts.iter().any(|p| matches!(p, Pick::SnapKey(_))) {
+        out.push("     Snap: a matching service, used beside the provider; fewer changes listed twice.".into());
+    }
+    out
 }
 
 /// The key variables the options read, as one line under a table too narrow for a key column.
@@ -813,8 +816,9 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
         out.push((
             "repeats",
             format!(
-                "≈ {} more changes listed twice per package, per year",
-                q.more_duplicates
+                "≈ {} more {} listed twice per package, per year",
+                q.more_duplicates,
+                if q.more_duplicates == 1 { "change" } else { "changes" }
             ),
         ));
     }
