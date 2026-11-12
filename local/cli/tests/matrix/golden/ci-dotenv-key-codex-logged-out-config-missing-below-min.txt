@@ -87,7 +87,7 @@ sync refused: the catalog needs unstale <newer version> or newer and this is <th
 
 $ unstale session-sync  (no terminal)
 warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
-No provider is chosen, so no release notes were read. Choose one: `unstale setup`.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Shared setup ready

@@ -8,6 +8,8 @@ None is set up here (Codex is not logged in).
   1  Set one up   shows the one line to add
   2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases
 
+This repo's config suggests Codex plan: install Codex and run `codex login`, then run `unstale setup`.
+
 Enter for 1, or 2:
 
 Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
@@ -56,7 +58,7 @@ react: 1 upstream change on file, nothing new
 
 $ unstale session-sync
 Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
-No provider is chosen, so no release notes were read. Choose one: `unstale setup`.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready

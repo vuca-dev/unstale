@@ -497,11 +497,14 @@ static CATALOG_KEY: Option<&str> = option_env!("UNSTALE_CATALOG_KEY");
 
 /// The catalog's Ed25519 public key (hex): `UNSTALE_CATALOG_KEY`, else the one compiled into release builds.
 fn catalog_key() -> Result<Option<[u8; 32]>> {
-    let Some(hex) = std::env::var("UNSTALE_CATALOG_KEY")
-        .ok()
-        .or_else(|| CATALOG_KEY.map(String::from))
-        .filter(|s| !s.trim().is_empty())
-    else {
+    catalog_key_from(std::env::var("UNSTALE_CATALOG_KEY").ok(), CATALOG_KEY)
+}
+
+/// The key from the variable's value, else the compiled one. A variable set but empty is not set: it must not turn
+/// the compiled key's check off.
+fn catalog_key_from(env: Option<String>, compiled: Option<&str>) -> Result<Option<[u8; 32]>> {
+    let filled = |s: &String| !s.trim().is_empty();
+    let Some(hex) = env.filter(filled).or_else(|| compiled.map(String::from).filter(filled)) else {
         return Ok(None);
     };
     let bytes = from_hex(hex.trim()).filter(|b| b.len() == 32).ok_or_else(|| anyhow!("UNSTALE_CATALOG_KEY is not a 32-byte hex Ed25519 public key"))?;
@@ -865,6 +868,20 @@ fn sync_tech(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_empty_key_variable_does_not_turn_the_compiled_key_off() {
+        let compiled = "07".repeat(32);
+        let other = "09".repeat(32);
+        assert_eq!(catalog_key_from(None, Some(&compiled)).unwrap(), Some([7u8; 32]));
+        for empty in ["", "  "] {
+            assert_eq!(catalog_key_from(Some(empty.into()), Some(&compiled)).unwrap(), Some([7u8; 32]), "{empty:?}");
+        }
+        assert_eq!(catalog_key_from(Some(other), Some(&compiled)).unwrap(), Some([9u8; 32]));
+        assert_eq!(catalog_key_from(Some(String::new()), None).unwrap(), None);
+        assert!(catalog_key_from(Some("zz".into()), Some(&compiled)).is_err());
+    }
+
 
     #[test]
     fn a_catalog_directory_is_read_only_when_the_user_chose_it() {

@@ -104,4 +104,4 @@
 [5.17,"o","n"]
 [5.19,"o","c"]
 [5.59,"o","\r\n"]
-[5.65,"o","No provider is chosen, so no release notes were read. Choose one: `unstale setup`.\r\n"]
+[5.65,"o","You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.\r\n"]

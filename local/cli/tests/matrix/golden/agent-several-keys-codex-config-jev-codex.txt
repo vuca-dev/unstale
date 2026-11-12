@@ -95,7 +95,7 @@ Record their answer with the matching command:
   5  unstale setup --inference env:ANTHROPIC_API_KEY
   6  unstale setup --inference none
 Full costs: unstale setup --details
-This repo's config suggests option 2. Nothing is spent until you choose.
+This repo's config suggests option 2. Nothing is spent until the user chooses.
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference jev+env:AI_GATEWAY_API_KEY  (no terminal)

@@ -76,7 +76,7 @@ Record their answer with the matching command:
   1  unstale setup --inference env:OPENAI_API_KEY
   2  unstale setup --inference none
 Full costs: unstale setup --details
-This repo's config suggests option 1. Nothing is spent until you choose.
+This repo's config suggests option 1. Nothing is spent until the user chooses.
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference env:OPENAI_API_KEY

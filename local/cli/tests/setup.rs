@@ -126,6 +126,13 @@ impl World {
             .unwrap()
     }
 
+    /// The user's answer for this repository, kept in their own config (null before they gave one). A personal-mode
+    /// repository's config never holds it.
+    fn chosen(&self) -> serde_json::Value {
+        let root = self.path("repo").canonicalize().unwrap();
+        self.user_config()["repositories"][&*root.to_string_lossy()]["inference"].clone()
+    }
+
     /// The user's own config, or an empty object before anything was saved there.
     fn user_config(&self) -> serde_json::Value {
         std::fs::read(self.path("config/config.json"))
@@ -182,7 +189,7 @@ fn no_canary_reaches_output_config_cache_or_any_written_file() {
     let mut out = w.init(true, &[]);
     // Without a terminal: no question, and nothing is chosen.
     assert!(!out.contains(QUESTION), "{out}");
-    assert!(w.config().get("inference").is_none());
+    assert!((w.chosen().is_null() && w.config().get("inference").is_none()));
     let listed = w.ok(&["setup"], true);
     out += &listed;
     // Names from the shell (JEV_API_KEY) and from this repository's .env (OPENAI_API_KEY); nothing from the other
@@ -208,7 +215,7 @@ fn no_canary_reaches_output_config_cache_or_any_written_file() {
     );
     out += &user;
     assert_eq!(
-        w.config()["inference"]["key_env"],
+        w.chosen()["key_env"],
         "OPENAI_API_KEY",
         "the variable's name is stored"
     );
@@ -260,7 +267,7 @@ fn with_the_switch_off_setup_is_inert() {
     w.plant();
     let out = w.init(false, &["--inference", "codex"]);
     assert!(
-        w.config().get("inference").is_none(),
+        (w.chosen().is_null() && w.config().get("inference").is_none()),
         "the flag is ignored with the switch off"
     );
     for line in SWITCH_ON_LINES {
@@ -368,7 +375,7 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
         !quiet.contains("warning:"),
         "unchanged, so not said again:\n{quiet}"
     );
-    assert!(w.config().get("inference").is_none(), "{quiet}");
+    assert!((w.chosen().is_null() && w.config().get("inference").is_none()), "{quiet}");
     let first = w.at_terminal(&init, "\n");
     assert_eq!(first.matches(QUESTION).count(), 1, "one question:\n{first}");
     // The question on its own line, a blank line, the table.
@@ -383,12 +390,12 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     );
     assert!(
         first.contains(
-            "Saved for this repo: Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY) reads release notes."
+            "Saved for you: Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY) reads release notes."
         ),
         "{first}"
     );
     assert_eq!(
-        w.config()["inference"]["labels"]["key_env"],
+        w.chosen()["labels"]["key_env"],
         "JEV_API_KEY",
         "Enter accepted the first option"
     );
@@ -396,13 +403,13 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     // Never asked again unprompted: a second init at a terminal keeps the choice and asks nothing.
     let again = w.at_terminal(&init, "4\n");
     assert!(!again.contains(QUESTION), "{again}");
-    assert_eq!(w.config()["inference"]["provider"], "openai");
+    assert_eq!(w.chosen()["provider"], "openai");
 
     // `unstale setup` reopens it.
     let changed = w.at_terminal(&["setup"], "4\n");
     assert_eq!(changed.matches(QUESTION).count(), 1, "{changed}");
     assert!(
-        changed.contains("Saved for this repo: Codex plan reads release notes."),
+        changed.contains("Saved for you: Codex plan reads release notes."),
         "{changed}"
     );
     // `unstale setup` also states the token limit, a setting of the user's, and how to change it.
@@ -420,14 +427,14 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
         );
         assert!(!kept.contains("Nothing chosen"), "{typed:?}: {kept}");
         assert_eq!(
-            w.config()["inference"],
+            w.chosen(),
             serde_json::json!({"provider": "codex"})
         );
         assert!(!w.path("repo/.unstale/state/setup-dismissed").exists());
     }
 
     assert_eq!(
-        w.config()["inference"],
+        w.chosen(),
         serde_json::json!({"provider": "codex"})
     );
 
@@ -449,7 +456,7 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     );
     w.ok(&["setup", "--inference", "none"], true);
     assert_eq!(
-        w.config()["inference"],
+        w.chosen(),
         serde_json::json!({"provider": "none"})
     );
 }
@@ -513,7 +520,7 @@ fn status_shows_the_provider_this_months_tokens_and_the_users_limit() {
     let warning =
         "warning: AI_GATEWAY_API_KEY is not set here, so new release notes are not read. Set it.";
     let provider =
-        "Release notes         Vercel AI Gateway (AI_GATEWAY_API_KEY), this repo's config";
+        "Release notes         Vercel AI Gateway (AI_GATEWAY_API_KEY), your user config";
     assert!(
         after
             .find(warning)
@@ -577,7 +584,7 @@ fn status_shows_the_provider_this_months_tokens_and_the_users_limit() {
         );
     }
     assert_eq!(
-        w.config()["inference"]["provider"],
+        w.chosen()["provider"],
         "vercel",
         "the choice beside it is kept"
     );
@@ -617,7 +624,7 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
         "{out}"
     );
     assert!(
-        w.config().get("inference").is_none(),
+        (w.chosen().is_null() && w.config().get("inference").is_none()),
         "a dismissal writes nothing to the shared config"
     );
     assert!(
@@ -638,16 +645,16 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
     // init does not ask again here; `unstale setup` does, and typing None's number records "none".
     let again = w.at_terminal(&INIT_AT_TERMINAL, "\n");
     assert!(!again.contains(QUESTION), "{again}");
-    assert!(w.config().get("inference").is_none());
+    assert!((w.chosen().is_null() && w.config().get("inference").is_none()));
     let chosen = w.at_terminal(&["setup"], "5\n");
     assert!(
         chosen.contains(
-            "Saved for this repo: release notes not read, so new releases get advisories and deprecations only."
+            "Saved for you: release notes not read, so new releases get advisories and deprecations only."
         ),
         "{chosen}"
     );
     assert_eq!(
-        w.config()["inference"],
+        w.chosen(),
         serde_json::json!({"provider": "none"})
     );
 }
@@ -689,7 +696,7 @@ fn an_agent_in_a_pseudo_terminal_gets_the_listing_never_the_question() {
             "{agent:?}: {init}"
         );
         assert!(
-            w.config().get("inference").is_none(),
+            (w.chosen().is_null() && w.config().get("inference").is_none()),
             "{agent:?}: a stray Enter chose nothing"
         );
         let setup = w.at_terminal_with(&["setup"], "\n", &[agent]);
@@ -701,7 +708,7 @@ fn an_agent_in_a_pseudo_terminal_gets_the_listing_never_the_question() {
             setup.contains("  1  unstale setup --inference jev+env:OPENAI_API_KEY"),
             "{agent:?}: {setup}"
         );
-        assert!(w.config().get("inference").is_none(), "{agent:?}");
+        assert!((w.chosen().is_null() && w.config().get("inference").is_none()), "{agent:?}");
     }
 }
 

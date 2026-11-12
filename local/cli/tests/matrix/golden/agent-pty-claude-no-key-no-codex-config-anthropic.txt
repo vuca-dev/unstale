@@ -81,6 +81,7 @@ For 1, they add one line to their shell profile or this repo's .env, then you ru
 Or use their Codex plan: install Codex and run `codex login`.
 
 For 2: unstale setup --inference none
+This repo's config suggests Anthropic: the user sets ANTHROPIC_API_KEY, then you run `unstale setup`.
 
 $ unstale sync
 next: 2 upstream changes on file, nothing new

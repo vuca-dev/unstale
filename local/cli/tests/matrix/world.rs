@@ -443,7 +443,7 @@ impl World {
                 &repo.join(".unstale/config.json"),
                 &serde_json::to_string_pretty(&config).unwrap(),
             );
-            // Committed, as a teammate left it: Git tracks it.
+            // Committed, as a teammate left it (the client does not ask Git: no file here grants anything).
             Command::new("git")
                 .args(["add", "-f", ".unstale/config.json"])
                 .current_dir(&repo)

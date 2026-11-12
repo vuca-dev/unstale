@@ -113,7 +113,7 @@
 [6.43,"o","c"]
 [6.83,"o","\r\n"]
 [6.89,"o","Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.\r\n"]
-[6.95,"o","No provider is chosen, so no release notes were read. Choose one: `unstale setup`.\r\n"]
+[6.95,"o","You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.\r\n"]
 [7.85,"o","\u001b[1m$\u001b[0m "]
 [7.88,"o","u"]
 [7.9,"o","n"]

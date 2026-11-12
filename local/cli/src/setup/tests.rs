@@ -696,47 +696,51 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
 }
 
 #[test]
-fn a_choice_is_the_users_own_and_a_committed_one_is_only_a_suggestion() {
+fn consent_is_read_from_the_users_config_only_and_a_repositorys_provider_is_a_suggestion() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("unstale/config.json");
     let root = dir.path().join("repo");
     let team = Choice::key(Route::Vercel, "AI_GATEWAY_API_KEY");
-    assert_eq!(stored_with(None, false, &root, &path), Stored::default());
-    // Not tracked by Git: the user's own config for this repository, as before.
+    assert_eq!(stored(None, &root, &path), Stored::default());
+    // A provider in the repository's config, whoever wrote it: a suggestion, never in effect.
     assert_eq!(
-        stored_with(Some(&team), false, &root, &path).choice,
-        Some((team.clone(), Origin::Repo))
-    );
-    // Committed, and the user has chosen nothing: a suggestion, never in effect.
-    assert_eq!(
-        stored_with(Some(&team), true, &root, &path),
+        stored(Some(&team), &root, &path),
         Stored {
             choice: None,
             suggested: Some(team.clone())
         }
     );
-    // The user's own choice wins over a committed one, "none" included; the user config keeps its other keys.
+    // The repository's "no provider" spends nothing, so it stands without anyone's consent.
+    assert_eq!(
+        stored(Some(&Choice::none()), &root, &path),
+        Stored {
+            choice: Some((Choice::none(), Origin::Repo)),
+            suggested: None
+        }
+    );
+    // The user's own choice wins, "none" included; the user config keeps its other keys.
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, r#"{"other": 1}"#).unwrap();
     for mine in [Choice::none(), Choice::codex()] {
         write_user(&path, &mine).unwrap();
-        assert_eq!(
-            stored_with(Some(&team), true, &root, &path),
-            Stored {
-                choice: Some((mine.clone(), Origin::User)),
-                suggested: None
-            }
-        );
-        assert_eq!(stored_with(None, false, &root, &path).choice, Some((mine, Origin::User)));
+        for repo in [Some(&team), None] {
+            assert_eq!(
+                stored(repo, &root, &path),
+                Stored {
+                    choice: Some((mine.clone(), Origin::User)),
+                    suggested: None
+                }
+            );
+        }
     }
     // Their answer for this repository wins over their choice for every repository, here only.
     write_user_repo(&path, &root, Some(&team)).unwrap();
     assert_eq!(
-        stored_with(Some(&Choice::none()), true, &root, &path).choice,
+        stored(Some(&Choice::none()), &root, &path).choice,
         Some((team.clone(), Origin::User))
     );
     assert_eq!(
-        stored_with(None, true, &dir.path().join("other"), &path).choice,
+        stored(None, &dir.path().join("other"), &path).choice,
         Some((Choice::codex(), Origin::User))
     );
     let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
@@ -747,15 +751,67 @@ fn a_choice_is_the_users_own_and_a_committed_one_is_only_a_suggestion() {
 }
 
 #[test]
+fn without_a_config_directory_there_is_no_user_config() {
+    use std::ffi::OsString;
+    let env = |vars: &'static [(&'static str, &'static str)]| {
+        move |k: &str| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| OsString::from(v))
+    };
+    assert_eq!(
+        user_config_path_from(env(&[("HOME", "/home/u")])),
+        Path::new("/home/u/.config/unstale/config.json")
+    );
+    assert_eq!(
+        user_config_path_from(env(&[("HOME", "/home/u"), ("XDG_CONFIG_HOME", "/x")])),
+        Path::new("/x/unstale/config.json")
+    );
+    assert_eq!(
+        user_config_path_from(env(&[("HOME", "/home/u"), ("XDG_CONFIG_HOME", "/x"), ("UNSTALE_CONFIG_DIR", "/c")])),
+        Path::new("/c/config.json")
+    );
+    // Empty or relative names nothing: the next one applies, never a path under the working directory.
+    assert_eq!(
+        user_config_path_from(env(&[("HOME", "/home/u"), ("XDG_CONFIG_HOME", ""), ("UNSTALE_CONFIG_DIR", "")])),
+        Path::new("/home/u/.config/unstale/config.json")
+    );
+    for none in [&[][..], &[("XDG_CONFIG_HOME", "")], &[("HOME", "")], &[("HOME", "."), ("XDG_CONFIG_HOME", "conf")]] {
+        let path = user_config_path_from(env(none));
+        assert_eq!(path, Path::new(""), "{none:?}");
+        // Nothing is chosen or approved there, and nothing can be saved.
+        assert_eq!(read_user(&path), None);
+        assert!(approved_catalog_dirs(&path).is_empty());
+        let e = write_user(&path, &Choice::codex()).unwrap_err().to_string();
+        assert!(e.contains("HOME is not set"), "{e}");
+        assert!(approve_catalog_dir(&path, "/tmp/cat").is_err());
+    }
+}
+
+#[test]
 fn a_suggestion_is_the_option_enter_accepts_and_is_named_under_the_options() {
     let team = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
     assert_eq!(
-        view::suggested_line(&team, Some(2)),
-        "This repo's config suggests option 3. Nothing is spent until you choose.\n"
+        view::suggested_line(&team, Some(2), true, Reader::Person),
+        "This repo's config suggests option 3. Nothing is spent until you choose."
     );
     assert_eq!(
-        view::suggested_line(&team, None),
-        "This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here.\n"
+        view::suggested_line(&team, Some(2), true, Reader::Agent),
+        "This repo's config suggests option 3. Nothing is spent until the user chooses."
+    );
+    assert_eq!(
+        view::suggested_line(&team, None, true, Reader::Person),
+        "This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here."
+    );
+    // Nothing usable on this machine: what to set for it.
+    assert_eq!(
+        view::suggested_line(&Choice::key(Route::Anthropic, "ANTHROPIC_API_KEY"), None, false, Reader::Person),
+        "This repo's config suggests Anthropic: set ANTHROPIC_API_KEY, then run `unstale setup`."
+    );
+    assert_eq!(
+        view::suggested_line(&team, None, false, Reader::Agent),
+        "This repo's config suggests OpenAI: the user sets OPENAI_API_KEY, then you run `unstale setup`."
+    );
+    assert_eq!(
+        view::suggested_line(&Choice::codex().with_jev("JEV_API_KEY"), None, false, Reader::Person),
+        "This repo's config suggests Jev + Codex plan: set JEV_API_KEY, install Codex and run `codex login`, then run `unstale setup`."
     );
     assert_eq!(view::prompt_default(4, 2), "Enter for 3, a number to choose, or d for details: ");
     assert_eq!(view::prompt_default(4, 0), view::prompt(4));

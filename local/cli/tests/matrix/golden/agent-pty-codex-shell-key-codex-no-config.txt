@@ -80,7 +80,7 @@ Full costs: unstale setup --details
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference env:OPENAI_API_KEY
-Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
 
 $ unstale sync
 next: 2 upstream changes on file, nothing new
@@ -119,7 +119,7 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

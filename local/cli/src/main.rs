@@ -365,7 +365,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             std::io::stdin().read_line(&mut a).ok()?;
             Some(matches!(a.trim(), "y" | "Y" | "yes"))
         };
-        return Ok(cache_gc::clean_command(&cache::cache_dir(), results, yes, &mut ask, &mut |l| println!("{l}")));
+        return Ok(cache_gc::clean_all(&cache::cache_dir(), results, yes, &mut ask, &mut |l| println!("{l}")));
     }
     let start = start_dir(&cli.dir)?;
     if matches!(cli.cmd, Cmd::Uninstall) { return uninstall::run(&start); }
@@ -870,6 +870,10 @@ fn cmd_session_sync(ctx: &Ctx) -> Result<u8> {
     let choice = pipeline::stored_choice(Some(&ctx.root));
     // No choice, or "Not now" (a choice of none): nothing was set to read them.
     let no_choice = match &choice {
+        // A provider this repository's config names is a suggestion until the user makes it theirs.
+        None if ctx.config.inference.as_ref().is_some_and(|c| !c.is_none()) => {
+            Some("You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.")
+        }
         None => Some("No provider is chosen, so no release notes were read. Choose one: `unstale setup`."),
         Some(c) if c.is_none() => Some("No release notes were read: this repo is set to Not now. To change it: `unstale setup`."),
         Some(_) => None,

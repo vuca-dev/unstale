@@ -759,20 +759,27 @@ pub enum Origin {
 }
 
 /// The user's config: `$UNSTALE_CONFIG_DIR/config.json`, else `$XDG_CONFIG_HOME/unstale/config.json`, else
-/// `~/.config/unstale/config.json`.
+/// `~/.config/unstale/config.json`. A variable that is unset, empty or not an absolute path names nothing. With none
+/// of them there is no user config: the path is empty, so nothing is read (nothing chosen, nothing approved) and a
+/// write is refused ([`write_user_key`]). It is never a path relative to the working directory, which a repository's
+/// files could stand in for.
 pub fn user_config_path() -> std::path::PathBuf {
-    let dir = std::env::var_os("UNSTALE_CONFIG_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::var_os("XDG_CONFIG_HOME")
-                .map(std::path::PathBuf::from)
-                .or_else(|| {
-                    std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
-                })
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join("unstale")
-        });
-    dir.join("config.json")
+    user_config_path_from(|k| std::env::var_os(k))
+}
+
+fn user_config_path_from(
+    env: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> std::path::PathBuf {
+    let dir = |k: &str| {
+        env(k)
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_absolute())
+    };
+    dir("UNSTALE_CONFIG_DIR")
+        .or_else(|| dir("XDG_CONFIG_HOME").map(|d| d.join("unstale")))
+        .or_else(|| dir("HOME").map(|h| h.join(".config/unstale")))
+        .map(|d| d.join("config.json"))
+        .unwrap_or_default()
 }
 
 fn user_doc(path: &Path) -> serde_json::Map<String, serde_json::Value> {
@@ -796,6 +803,11 @@ pub fn write_user(path: &Path, c: &Choice) -> anyhow::Result<()> {
 
 /// Sets (or with `None` removes) one key of the user's config, keeping anything else there.
 fn write_user_key(path: &Path, key: &str, value: Option<serde_json::Value>) -> anyhow::Result<()> {
+    if path.as_os_str().is_empty() {
+        anyhow::bail!(
+            "there is nowhere to save this for you: HOME is not set. Set HOME or UNSTALE_CONFIG_DIR, then run it again"
+        );
+    }
     // A file that is there but cannot be read as a JSON object is left alone rather than replaced.
     if path.exists() {
         let ok = std::fs::read(path)
@@ -846,9 +858,10 @@ pub fn approve_catalog_dir(path: &Path, dir: &str) -> anyhow::Result<()> {
 /// What is chosen for a repository, and by whom.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Stored {
-    /// The choice in effect: one this machine's user made.
+    /// The choice in effect: one this machine's user made, or the repository's own "no provider" (which spends
+    /// nothing, so needs nobody's consent).
     pub choice: Option<(Choice, Origin)>,
-    /// A choice in a config Git tracks, where the user has made none: the team's suggestion. It is offered first when
+    /// A provider the repository's config names, where the user has chosen nothing: a suggestion. It is offered when
     /// the user is asked, and never used before they answer (it would spend on their key or plan unasked).
     pub suggested: Option<Choice>,
 }
@@ -881,35 +894,27 @@ pub fn write_user_repo(path: &Path, root: &Path, c: Option<&Choice>) -> anyhow::
     write_user_key(path, "repositories", value)
 }
 
-/// [`stored`] with whether Git tracks the repository's config given.
-pub fn stored_with(repo: Option<&Choice>, tracked: bool, root: &Path, user_path: &Path) -> Stored {
-    // A config Git does not track is this user's own (personal mode, or a choice not committed yet): as before.
-    if let Some(c) = repo.filter(|_| !tracked) {
+/// The choice for the repository at `root`, whose config holds `repo`. Consent to spend on the user's key or plan is
+/// read from the user's own config only: their answer for this repository, else their choice for every repository,
+/// "none" included. Nothing under the repository grants it, whoever wrote the file and whether or not it is committed:
+/// a provider named there is a suggestion.
+pub fn stored(repo: Option<&Choice>, root: &Path, user_path: &Path) -> Stored {
+    if let Some(c) = read_user_repo(user_path, root).or_else(|| read_user(user_path)) {
         return Stored {
-            choice: Some((c.clone(), Origin::Repo)),
+            choice: Some((c, Origin::User)),
             suggested: None,
         };
     }
-    // The user's own word: for this repository, else for every repository. It wins over a committed choice, "none"
-    // included.
-    let own = read_user_repo(user_path, root).or_else(|| read_user(user_path));
-    match own {
-        Some(c) => Stored {
-            choice: Some((c, Origin::User)),
+    match repo {
+        Some(c) if c.is_none() => Stored {
+            choice: Some((c.clone(), Origin::Repo)),
             suggested: None,
         },
-        None => Stored {
+        _ => Stored {
             choice: None,
             suggested: repo.cloned(),
         },
     }
-}
-
-/// The choice for the repository at `root`, whose config holds `repo`. A choice in a config Git tracks came with the
-/// repository: it is a suggestion until this machine's user makes a choice of their own.
-pub fn stored(repo: Option<&Choice>, root: &Path, user_path: &Path) -> Stored {
-    let tracked = repo.is_some() && crate::hooks::tracked(root, ".unstale/config.json");
-    stored_with(repo, tracked, root, user_path)
 }
 
 // --------------------------------------------------------------------------------------------------------- agent
@@ -1193,8 +1198,8 @@ fn save_repo(ctx: &crate::Ctx) -> anyhow::Result<()> {
     )
 }
 
-/// Records the choice and returns the lines that confirm it.
-/// `own_only` answers a committed suggestion: the answer is the user's, and the team's config is left as it is.
+/// Records the choice and returns the lines that confirm it. `own_only` answers the repository's suggestion: the
+/// answer is the user's, and the repository's config is left as it is.
 fn save(
     ctx: &mut crate::Ctx,
     c: &Choice,
@@ -1208,15 +1213,15 @@ fn save(
         let kept = here.choice.filter(|(k, _)| k != c).map(|(k, _)| k);
         return Ok(view::saved_lines(c, Origin::User, kept.as_ref()));
     }
-    // The user's own answer for this repository, kept where no repository can write: the repository's config may be
-    // committed, and a committed choice alone is never consent.
+    // The user's own answer for this repository, kept where no repository can write: it alone lets anything be spent.
     write_user_repo(&user_config_path(), &ctx.root, Some(c))?;
-    if own_only {
-        return Ok(view::saved_lines(c, Origin::User, None));
+    // In shared mode the repository's config also carries it, as the team's suggestion to whoever clones it; not
+    // when this answers such a suggestion (the committed file stays as it was).
+    if !own_only && ctx.config.mode == crate::Mode::Collaborative {
+        ctx.config.inference = Some(c.clone());
+        save_repo(ctx)?;
     }
-    ctx.config.inference = Some(c.clone());
-    save_repo(ctx)?;
-    Ok(view::saved_lines(c, Origin::Repo, None))
+    Ok(view::saved_lines(c, Origin::User, None))
 }
 
 /// Where this machine remembers the picker was dismissed: under `.unstale/state/`, which is never committed.
@@ -1346,9 +1351,12 @@ pub fn run(
                 println!("{l}");
             }
             let opts = options(&d, NO_KEY_MODE);
-            if let Some(t) = suggested.as_ref().filter(|_| !opts.is_empty()) {
+            if let Some(t) = &suggested {
                 let at = opts.iter().position(|p| Choice::of(&d, *p) == *t);
-                println!("{}", view::suggested_line(t, at).trim_end());
+                println!(
+                    "{}",
+                    view::suggested_line(t, at, !opts.is_empty(), Reader::Agent)
+                );
             }
             return Ok(());
         }
@@ -1364,9 +1372,12 @@ pub fn run(
         .as_ref()
         .and_then(|t| opts.iter().position(|p| Choice::of(&d, *p) == *t))
         .unwrap_or(0);
-    if let Some(t) = suggested.as_ref().filter(|_| !opts.is_empty()) {
+    if let Some(t) = &suggested {
         let at = opts.iter().position(|p| Choice::of(&d, *p) == *t);
-        println!("{}", view::suggested_line(t, at));
+        println!(
+            "{}\n",
+            view::suggested_line(t, at, !opts.is_empty(), Reader::Person)
+        );
     }
     // Dismissed, or "not now" with nothing to use: no config is written, so a team's shared choice is never set by a
     // slip or by one machine's lack of a key. With a choice already made (`unstale setup` reopened), it stays, and

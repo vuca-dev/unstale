@@ -42,7 +42,7 @@ next: 2 upstream changes on file, nothing new
 react: 1 upstream change on file, nothing new
 
 $ unstale session-sync  (no terminal)
-No provider is chosen, so no release notes were read. Choose one: `unstale setup`.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation  (no terminal)
   ✓ shop · Shared setup ready

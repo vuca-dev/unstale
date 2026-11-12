@@ -214,30 +214,25 @@ pub(crate) fn exec(w: &World, s: &Scenario, args: Vec<String>, terminal: bool) -
     }
 }
 
-/// The provider the session ended up with: the user's own choice. A config Git does not track is theirs; otherwise
-/// their answer for this repository, else their choice for every repository. A committed choice alone is nobody's.
+/// The provider the session ended up with: the user's own choice, read from the user's config and nowhere else (their
+/// answer for this repository, else their choice for every repository). A provider named in the repository's config
+/// is nobody's choice; its "none" stands, since it spends nothing.
 pub(crate) fn chosen(w: &World) -> Option<serde_json::Value> {
     let read = |p: PathBuf| -> Option<serde_json::Value> {
         serde_json::from_slice(&std::fs::read(p).ok()?).ok()
     };
-    let tracked = Command::new("git")
-        .args(["ls-files", "--error-unmatch", "--", ".unstale/config.json"])
-        .current_dir(w.repo())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success());
-    let repo = read(w.repo().join(".unstale/config.json")).and_then(|v| v.get("inference").cloned());
-    if let Some(c) = repo.filter(|_| !tracked) {
-        return Some(c);
-    }
-    let user = read(w.home().join(".config/unstale/config.json"))?;
+    let user = read(w.home().join(".config/unstale/config.json")).unwrap_or_default();
     let root = w.repo().canonicalize().ok()?;
     user.get("repositories")
         .and_then(|r| r.get(&*root.to_string_lossy()))
         .and_then(|r| r.get("inference"))
         .or_else(|| user.get("inference"))
         .cloned()
+        .or_else(|| {
+            read(w.repo().join(".unstale/config.json"))
+                .and_then(|v| v.get("inference").cloned())
+                .filter(|c| c["provider"] == "none")
+        })
 }
 
 /// The agent whose session starts, by the variable it sets: its name and the hook file it installs.

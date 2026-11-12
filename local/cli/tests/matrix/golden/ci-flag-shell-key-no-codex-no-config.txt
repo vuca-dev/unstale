@@ -2,7 +2,7 @@
 # keys: shell-key · Codex: no-codex · run: ci-flag · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation --yes --inference env:OPENAI_API_KEY  (no terminal)
-Saved for this repo: OpenAI (OPENAI_API_KEY) reads release notes.
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local
@@ -77,7 +77,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         OpenAI (OPENAI_API_KEY), this repo's config
+Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

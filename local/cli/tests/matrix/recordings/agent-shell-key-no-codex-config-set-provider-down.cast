@@ -170,7 +170,7 @@
 [9.74,"o","  1  unstale setup --inference env:OPENAI_API_KEY\r\n"]
 [9.8,"o","  2  unstale setup --inference none\r\n"]
 [9.86,"o","Full costs: unstale setup --details\r\n"]
-[9.92,"o","This repo's config suggests option 1. Nothing is spent until you choose.\r\n"]
+[9.92,"o","This repo's config suggests option 1. Nothing is spent until the user chooses.\r\n"]
 [10.82,"o","\u001b[2m# the agent showed the options and asked; the user chose option 1\u001b[0m\r\n"]
 [11.42,"o","\u001b[1m$\u001b[0m "]
 [11.44,"o","u"]

@@ -115,7 +115,7 @@
 [6.59,"o","n"]
 [6.61,"o","c"]
 [7.01,"o","\r\n"]
-[7.07,"o","No provider is chosen, so no release notes were read. Choose one: `unstale setup`.\r\n"]
+[7.07,"o","You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.\r\n"]
 [7.97,"o","\u001b[1m$\u001b[0m "]
 [8.0,"o","u"]
 [8.02,"o","n"]

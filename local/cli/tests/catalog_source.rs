@@ -201,13 +201,18 @@ impl World {
 
     /// Runs the client in `repo` as this machine's user would: no development setting.
     fn run(&self, repo: &str, args: &[&str], switch: bool) -> (bool, String) {
+        let (home, config) = (self.path("home"), self.path("config"));
+        self.run_with(repo, args, switch, &[("HOME", home.to_str().unwrap()), ("UNSTALE_CONFIG_DIR", config.to_str().unwrap())])
+    }
+
+    /// [`World::run`] with the variables that place the user's config given by the caller.
+    fn run_with(&self, repo: &str, args: &[&str], switch: bool, env: &[(&str, &str)]) -> (bool, String) {
         let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
         c.args(args)
             .current_dir(self.path(repo))
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
-            .env("HOME", self.path("home"))
-            .env("UNSTALE_CONFIG_DIR", self.path("config"))
+            .envs(env.iter().copied())
             .env("UNSTALE_CACHE_DIR", self.path("cache"))
             .env("UNSTALE_CATALOG_KEY", &self.key)
             .env("UNSTALE_TODAY", "2026-11-10")
@@ -320,6 +325,8 @@ fn a_chosen_catalog_directory_leaves_nothing_for_a_repository_on_the_signed_cata
         let dir = w.path("sibling/docs/cat");
         w.ok("sibling", &["init", "--catalog", dir.to_str().unwrap(), "--yes"], switch);
         w.ok("sibling", &["run"], switch);
+        // The provider the sibling's config names is a suggestion: the user makes the choice theirs.
+        w.ok("sibling", &["setup", "--inference", "env:OPENAI_API_KEY"], switch);
         w.ok("sibling", &["session-sync"], switch);
         if switch {
             assert!(*w.calls.lock().unwrap() > 0, "the chosen directory's release notes are read");
@@ -331,6 +338,23 @@ fn a_chosen_catalog_directory_leaves_nothing_for_a_repository_on_the_signed_cata
         assert_eq!(w.shared_cache(), before, "switch {switch}: nothing of it is in the cache the signed catalog's repositories read");
         let seen = w.main_sees(switch);
         assert!(!seen.contains(PLANTED), "switch {switch}: {seen}");
+        // `cache clean` removes the directory's cache too: what it says it removed is everything.
+        if switch {
+            // Files written in the last few minutes are never removed: these are an hour old.
+            let hour_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+            for f in files(&w.path("cache/unsigned")) {
+                if let Ok(file) = std::fs::File::options().write(true).open(&f) {
+                    let _ = file.set_modified(hour_ago);
+                }
+            }
+            let out = w.ok("main", &["cache", "clean", "--results", "--yes"], switch);
+            assert!(out.contains("A catalog directory's cache"), "{out}");
+            let left: Vec<PathBuf> = files(&w.path("cache/unsigned"))
+                .into_iter()
+                .filter(|p| p.to_string_lossy().contains("/v1/shards/") || p.to_string_lossy().contains("/inference/"))
+                .collect();
+            assert!(left.is_empty(), "{out}\n{left:?}");
+        }
         // The approval is the user's own, by canonical path; another directory stays refused.
         let config = std::fs::read_to_string(w.path("config/config.json")).unwrap();
         assert!(config.contains(dir.canonicalize().unwrap().to_str().unwrap()), "{config}");
@@ -353,4 +377,35 @@ fn a_catalog_address_a_repository_names_is_checked_against_the_catalog_key() {
     assert_eq!(*w.calls.lock().unwrap(), 0);
     assert_eq!(w.shared_cache(), before);
     assert!(!w.main_sees(true).contains(PLANTED));
+}
+
+/// With no place for a user config (no `HOME`, no config directory named, or only empty or relative ones), there is no
+/// user config: a file a repository commits at `unstale/config.json` is never read as one. It approves no catalog
+/// directory and is nobody's provider choice, and nothing is saved into the repository in its place.
+#[test]
+fn a_file_in_the_repository_is_never_the_users_config() {
+    let w = World::new();
+    let dir = w.path("sibling/docs/cat").canonicalize().unwrap();
+    w.sibling_config(dir.to_str().unwrap());
+    let planted = json!({"catalog_directories": [dir], "inference": {"provider": "openai", "key_env": "OPENAI_API_KEY"}}).to_string();
+    for at in ["unstale/config.json", ".config/unstale/config.json", "config.json"] {
+        write(&w.path("sibling").join(at), &planted);
+    }
+    for env in [&[][..], &[("XDG_CONFIG_HOME", "")], &[("HOME", ""), ("XDG_CONFIG_HOME", "")], &[("HOME", "."), ("UNSTALE_CONFIG_DIR", ".")]] {
+        // It approves nothing: the directory stays refused.
+        let (ok, out) = w.run_with("sibling", &["session-sync"], true, env);
+        assert!(!ok && out.contains("that you have not chosen on this machine"), "{env:?}: {out}");
+        // With the directory read all the same (the development setting), it is nobody's choice of provider.
+        let mut dev = env.to_vec();
+        dev.push(("UNSTALE_DEV_UNSIGNED_CATALOG", "1"));
+        let (_, out) = w.run_with("sibling", &["session-sync"], true, &dev);
+        assert!(!out.contains("New release notes read"), "{env:?}: {out}");
+        // And nothing is saved in its place.
+        let (ok, out) = w.run_with("sibling", &["setup", "--inference", "env:OPENAI_API_KEY"], true, &dev);
+        assert!(!ok && out.contains("HOME is not set"), "{env:?}: {out}");
+        for at in ["unstale/config.json", ".config/unstale/config.json", "config.json"] {
+            assert_eq!(std::fs::read_to_string(w.path("sibling").join(at)).unwrap(), planted, "{env:?} {at}");
+        }
+    }
+    assert_eq!(*w.calls.lock().unwrap(), 0, "no request to a provider");
 }

@@ -98,7 +98,7 @@ Full costs: unstale setup --details
 
 # the agent showed the options and asked; the user chose option 1
 $ unstale setup --inference jev+env:AI_GATEWAY_API_KEY  (no terminal)
-Saved for this repo: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
+Saved for you: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
 
 $ unstale sync  (no terminal)
 next: 2 upstream changes on file, nothing new
@@ -143,7 +143,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), this repo's config
+Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), your user config
 Tokens                81 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
 

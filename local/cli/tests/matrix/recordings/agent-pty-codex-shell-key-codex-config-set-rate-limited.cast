@@ -165,7 +165,7 @@
 [9.44,"o","  2  unstale setup --inference codex\r\n"]
 [9.5,"o","  3  unstale setup --inference none\r\n"]
 [9.56,"o","Full costs: unstale setup --details\r\n"]
-[9.62,"o","This repo's config suggests option 1. Nothing is spent until you choose.\r\n"]
+[9.62,"o","This repo's config suggests option 1. Nothing is spent until the user chooses.\r\n"]
 [10.52,"o","\u001b[2m# the agent showed the options and asked; the user chose option 1\u001b[0m\r\n"]
 [11.12,"o","\u001b[1m$\u001b[0m "]
 [11.14,"o","u"]

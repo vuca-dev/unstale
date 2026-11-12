@@ -40,7 +40,7 @@ react: 1 upstream change on file, nothing new
 
 $ unstale session-sync
 Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
-No provider is chosen, so no release notes were read. Choose one: `unstale setup`.
+You have not chosen a provider, so no release notes were read. Choose one: `unstale setup`.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready

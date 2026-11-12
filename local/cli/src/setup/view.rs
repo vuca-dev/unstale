@@ -382,16 +382,51 @@ pub fn prompt_default(n: usize, default: usize) -> String {
     }
 }
 
-/// Under the options, when this repository's committed config names a choice and the user has made none: which
-/// option that is (`at`, where this machine can use it), and that it is theirs to make.
-pub fn suggested_line(team: &Choice, at: Option<usize>) -> String {
-    let what = suggestion(team);
+/// Under the options, when this repository's config names a provider and the user has chosen nothing: which option
+/// that is (`at`, where this machine offers it) and that the choice is the user's; with nothing usable here
+/// (`usable` false), what to set for it.
+pub fn suggested_line(team: &Choice, at: Option<usize>, usable: bool, reader: Reader) -> String {
+    let who = match reader {
+        Reader::Person => "you choose",
+        Reader::Agent => "the user chooses",
+    };
     match at {
         Some(i) => format!(
-            "This repo's config suggests option {}. Nothing is spent until you choose.\n",
+            "This repo's config suggests option {}. Nothing is spent until {who}.",
             i + 1
         ),
-        None => format!("This repo's config suggests {what}, which is not one of the options here.\n"),
+        None if usable => format!(
+            "This repo's config suggests {}, which is not one of the options here.",
+            suggestion(team)
+        ),
+        None => {
+            // Its name without the variables, which the instruction names.
+            let name = suggestion(team);
+            let name = name.split(" (").next().unwrap_or(&name);
+            let mut steps: Vec<String> = vec![];
+            let vars = team.key_vars();
+            if !vars.is_empty() {
+                let set = match reader {
+                    Reader::Person => "set",
+                    Reader::Agent => "the user sets",
+                };
+                steps.push(format!("{set} {}", vars.join(" and ")));
+            }
+            if team.provider == "codex" {
+                steps.push(match reader {
+                    Reader::Person => "install Codex and run `codex login`".into(),
+                    Reader::Agent => "the user installs Codex and runs `codex login`".into(),
+                });
+            }
+            let run = match reader {
+                Reader::Person => "then run",
+                Reader::Agent => "then you run",
+            };
+            format!(
+                "This repo's config suggests {name}: {}, {run} `unstale setup`.",
+                steps.join(", ")
+            )
+        }
     }
 }
 
