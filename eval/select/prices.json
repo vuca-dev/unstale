@@ -3496,6 +3496,16 @@
    "max_output": 128000,
    "source": "GET https://ai-gateway.vercel.sh/v1/models",
    "checked": "2026-10-20"
+  },
+  {
+   "provider": "openai",
+   "model": "gpt-6-luna",
+   "input": 0.1,
+   "cached_input": 0.01,
+   "output": 0.5,
+   "max_output": 128000,
+   "source": "the gateway row for openai/gpt-6-luna (the cost notes: the gateway charges OpenAI's list price with no markup); Standard tier",
+   "checked": "2026-11-10"
   }
  ]
 }
