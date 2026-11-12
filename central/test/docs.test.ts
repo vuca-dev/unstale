@@ -368,6 +368,36 @@ describe("pass gate", () => {
     expect(passDue({ release: "r1" }, undefined, new Date(T - 3600_000).toISOString(), T, g)).toBeUndefined();
     expect(passDue({ release: "r1" }, "r1", new Date(T - 31 * day).toISOString(), T, { ...g, maxAgeMs: 30 * day })).toBe("age");
   });
+  test("a site over the page budget is covered in turn, then waits for the next release", () => {
+    // 7,000 pages under a budget of 3,000: each pass takes the 3,000 least recently checked.
+    const pages = new Array<number>(7000).fill(0);
+    let gate: ReturnType<typeof nextGate> | undefined = { release: "r0" };
+    let passes = 0;
+    const pass = (at: number, release: string) => {
+      const reason = passDue(gate, release, last, at, g)!;
+      const since = reason === "continue" && gate?.since ? Date.parse(gate.since) : at;
+      [...pages.keys()].sort((a, b) => pages[a]! - pages[b]!).slice(0, 3000).forEach((i) => (pages[i] = at));
+      gate = nextGate(gate, reason, release, 3000, 3000, at, g, false, { at: new Date(at).toISOString(), left: pages.filter((c) => c < since).length });
+      passes++;
+      return reason;
+    };
+    expect(pass(T, "r1")).toBe("release");
+    expect(pass(T + day / 2, "r1")).toBe("continue");
+    expect(pass(T + day, "r1")).toBe("continue");
+    // Every page has been checked since the release's pass: no fourth pass, at the next refresh or a week later.
+    expect(Math.min(...pages)).toBeGreaterThanOrEqual(T);
+    expect([gate!.incomplete, gate!.since]).toEqual([undefined, undefined]);
+    expect(passDue(gate, "r1", last, T + 1.5 * day, g)).toBeUndefined();
+    expect(passDue(gate, "r1", last, T + 2.9 * day, g)).toBeUndefined();
+    // The follow-up and the next release each start a new turn through the site.
+    expect(pass(T + 3 * day, "r1")).toBe("followup");
+    expect(gate!.since).toBe(new Date(T + 3 * day).toISOString());
+    expect(passDue(gate, "r2", last, T + 3.1 * day, g)).toBe("release");
+    expect(passes).toBe(4);
+    // A gate saved before `since` was kept starts its turn at the pass that reads it.
+    const old = nextGate({ release: "r1", incomplete: true }, "continue", "r1", 3000, 3000, T, g, false, { at: new Date(T).toISOString(), left: 4000 });
+    expect([old.incomplete, old.since]).toEqual([true, new Date(T).toISOString()]);
+  });
   test("a site whose listing named no page is listed again a day later, without waiting for a release", () => {
     const failed = nextGate(undefined, "baseline", "r1", 0, 3000, T, g, true);
     expect(passDue(failed, "r1", last, T + 3600_000, g)).toBeUndefined();
@@ -547,6 +577,12 @@ describe("monitor", () => {
     expect(await checkedOn(1)).toEqual(["/docs/a", "/docs/b", "/docs/upgrading/version-3"]);
     expect(await checkedOn(2)).toEqual(["/docs/c", "/docs/d", "/docs/upgrading/version-3"]);
     expect(await checkedOn(3)).toEqual(["/docs/a", "/docs/b", "/docs/upgrading/version-3"]);
+    // `left`: the pages no pass has checked since the turn began (this pass, unless `since` names an earlier one).
+    const at = (day: number) => new Date(Date.UTC(2026, 9, day));
+    const fourth = await refresh(src, { http, budget: 2, now: () => at(4) });
+    expect([fourth.at, fourth.left]).toEqual([at(4).toISOString(), 2]);
+    expect((await refresh(src, { http, budget: 2, since: fourth.at, now: () => at(5) })).left).toBe(0);
+    expect((await refresh(src, { http, budget: 2, now: () => at(6) })).left).toBe(2);
   });
 
   test("baseline, then created, modified, deleted, moved and attributed sections; a rerun adds nothing", async () => {

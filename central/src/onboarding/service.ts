@@ -268,6 +268,7 @@ export class CoverageService {
   private tally = blankTally();
   /** Rate-limit pauses begun this drain (a 429 while one holds extends it, and is not counted again). */
   private pauses = 0;
+  private docsRotation = { continues: 0, covered: 0 };
   /** The pause holding every start now, logged as one `rate_pause` line when it ends (or when the drain does). */
   private pause?: { host: string; status: number; retry_after_ms: number | null; pause_ms: number; at: number; extended: number };
   /** This drain's slices of the kept slot (the due refresh with the oldest upstream read, `pumpJobs`), and the due
@@ -673,6 +674,7 @@ export class CoverageService {
     this.draining = deadline;
     this.tally = blankTally();
     this.pauses = 0;
+    this.docsRotation = { continues: 0, covered: 0 };
     this.kept = blankSlice();
     this.keptBefore = this.dueRefreshes();
     const tokensBefore = this.budget.tokensLeft();
@@ -719,6 +721,7 @@ export class CoverageService {
       kept_slot: { ...this.kept, due_before: this.keptBefore.due, overdue_before: this.keptBefore.overdue, oldest_overdue_age_s_before: this.keptBefore.oldest_overdue_age_s,
         due_after: after.due, overdue_after: after.overdue, oldest_overdue_age_s_after: after.oldest_overdue_age_s },
       pauses: this.pauses,
+      docs_rotation: this.docsRotation,
       tokens: Number.isFinite(tokensBefore) ? Math.max(0, tokensBefore - this.budget.tokensLeft()) : null,
       docs_pool: { waits: docsHttp.poolWaits().waits - pool.waits, waited_ms: docsHttp.poolWaits().waited_ms - pool.waited_ms },
       cpu_s: ((used) => Math.round((used.user + used.system) / 1e5) / 10)(process.cpuUsage(cpu)),
@@ -1459,6 +1462,7 @@ export class CoverageService {
         }
       },
     });
+    if (pass?.rotation) this.docsRotation[pass.rotation]++;
     if (pass) {
       const listed = pass.sites.reduce((n, x) => n + x.pages, 0);
       job.docs_total = pass.checked;
@@ -1523,7 +1527,7 @@ export class CoverageService {
     stage("guides_ms");
     const slice = this.slices.get(job.purl);
     console.error(JSON.stringify({ event: "coverage_stages", technology: tech.id, refresh: refresh || !!job.monitored,
-      check, kept_slot: !!slice?.oldest, ...timings, release_requests: releases.stats.requests, new_releases: releases.stats.newReleases,
+      check, kept_slot: !!slice?.oldest, ...timings, docs_pass: pass?.reason ?? null, docs_pages: pass?.checked ?? 0, docs_left: pass?.left ?? 0, release_requests: releases.stats.requests, new_releases: releases.stats.newReleases,
       detection_to_refresh_s: job.change_detected ? Math.round((Date.now() - Date.parse(job.change_detected)) / 1000) : null }));
     job.next_task = "history";
     job.retry_at = new Date(Date.now() + REFRESH_MS).toISOString();
@@ -1732,6 +1736,9 @@ export interface DrainMetrics {
    * upstream read. The old tail clears when that age falls cycle over cycle. */
   kept_slot: SliceTally & { due_before: number; overdue_before: number; oldest_overdue_age_s_before: number | null; due_after: number; overdue_after: number; oldest_overdue_age_s_after: number | null };
   pauses: number;
+  /** Docs passes that reached the page budget: `continues`, pages are left and the next refresh takes them;
+   * `covered`, every page has been checked since the rotation began, so the site waits for its next release. */
+  docs_rotation: { continues: number; covered: number };
   /** Coverage-budget tokens this drain spent; null without a cap. */
   tokens: number | null;
   /** The docs crawl's shared pool: requests that queued for a slot and their total wait. */
