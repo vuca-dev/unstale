@@ -543,6 +543,8 @@ impl World {
             ("UNSTALE_SERVICE".into(), self.catalog_host.url.clone()),
             ("UNSTALE_TODAY".into(), TODAY.into()),
             ("UNSTALE_EDGE_INFERENCE".into(), "1".into()),
+            // The fault steps run the internal `unstale infer`.
+            ("UNSTALE_DEV_INFER".into(), "1".into()),
             ("LANG".into(), "C.UTF-8".into()),
             (
                 "UNSTALE_TEST_SHIM".into(),
