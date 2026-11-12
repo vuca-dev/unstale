@@ -419,3 +419,11 @@ OpenRouter parity, repeat eval runs.
 - Merged: #255 `ca53ef5` (status warnings first, Snap note, `subq+` in help, wording), #256 `6b825f7` (arrow-key picker, default marked on its row; review found and fixed typed-ahead input choosing the default, and terminal state after an external signal).
 - All five lanes closed. Draft #252 (head `1f185d4`) carries dollars copy, Codex wording, security corrections and the new picker example; held for the CEO.
 - Left before the release: CEO review of #252; CEO decision on `setup --inference` recording consent with no person present; make `setup` visible in `--help` at release; merge this tracker branch and write the final report.
+
+## Update, 12 November 2026 (night)
+
+- Merged: #252 `85d5498` (dollars copy, CEO approved), #259 `ef27b82` (opencode `/unstale-review` command file; typed picker fallback numbered), #257 `fc33e9f` (choice or limit raise made with no person present is marked, announced once at a terminal, held at a tenth of min(limit, default); refused in install scripts and Git hooks), #262 `f0364a7` (`infer` and `run-step --provider` need `UNSTALE_DEV_INFER=1`), #261 `3ffbd01` (Codex per-call settings; quote 750k plan tokens per package per year, measured), #260 `ab9ab93` (opencode 2.x session plugin; acts only on its own directory).
+- First real runs: Codex plan route works end to end; opencode review works. Live catalog leaves the client nothing to read until central stops reading release notes at cutover.
+- Codex findings: identical runs agree on 79% of labels (19 records, one package), same-or-new 100%. Dropped-tools arm failed its rule and is out (patch in scratchpad `b-runs/with-catalog.patch`). Label quality through Codex against a reference set is unmeasured.
+- Agent pick-up evaluation (24 runs, Claude Code and Codex): named, recommended or conditional 14 of 16; need-only, mentioned 0 of 8. Draft #258 carries the copy changes; held for the CEO, not before the release.
+- Open: two e2e tests fail on main with the switch forced on (diagnosis running); CEO to claim `unstale` on npm; `setup` visible in `--help` at release; #231 no-key evaluation; merge this branch and final report.
