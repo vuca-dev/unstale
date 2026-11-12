@@ -514,7 +514,11 @@ fn routes(f: &Fixture, main_url: &str, jev_url: Option<&str>) -> Routes {
         };
         j
     });
-    Routes { main, labels }
+    Routes {
+        main,
+        labels,
+        matching: None,
+    }
 }
 
 fn set(items: &[&str]) -> std::collections::BTreeSet<String> {
@@ -735,7 +739,11 @@ fn with_an_anthropic_key_only_matching_is_off_and_every_record_is_new() {
     let main = inference(ProviderConfig::anthropic(), &url, f.cache.path());
     let s = run(
         f.cache.path(),
-        &Routes { main, labels: None },
+        &Routes {
+            main,
+            labels: None,
+            matching: None,
+        },
         &set(&["example"]),
         &set(&["pkg:npm/example"]),
         "2026-11-10",
@@ -864,11 +872,13 @@ fn a_route_can_be_moved_only_to_this_machine() {
         provider: "openai".into(),
         key_env: Some("OPENAI_API_KEY".into()),
         labels: None,
+        matching: None,
     };
     let codex = crate::setup::Choice {
         provider: "codex".into(),
         key_env: None,
         labels: None,
+        matching: None,
     };
     let route = |choice: &crate::setup::Choice, url: &str| {
         // SAFETY of the test: the variable is this test's own and read by `routes` in this thread only.
@@ -1147,4 +1157,72 @@ fn run_step_match_lists_unasked_candidates_and_skips_a_line_that_does_not_parse(
         [json!({"key": "next@16.3.2#0.0", "match": null,
                 "judged": [{"id": cand.id, "p": 0.0, "outcome": "unasked"}]})]
     );
+}
+
+/// SubQ Snap judges in the one form it passed in: the longer rules for every request, the first four candidates, no
+/// question floor; and its answers are read at its own bars (`eval/select/slice19/RESULTS.md`).
+#[test]
+fn snap_asks_four_candidates_with_the_longer_rules_and_reads_its_own_bars() {
+    let p = crate::prompts::prompts();
+    let inc = incoming(json!({}));
+    let cands: Vec<CapabilityRecord> = (0..6)
+        .map(|i| {
+            let mut c = stored(
+                json!({"key": format!("next@16.3.1#0.{i}"), "version": "16.3.1", "snapshot": format!("sha256:s{i}")}),
+                None,
+            );
+            c.id = format!("next:c{i}");
+            c
+        })
+        .collect();
+    let refs: Vec<&CapabilityRecord> = cands.iter().collect();
+    // Central's form for these: the shorter rules.
+    let (_, short) = matching::match_request(p, "Next.js", &inc, false, &refs, None);
+    assert_eq!(short.len(), 6);
+    assert!(!short[0].1.instructions.contains(&p.judge.rules));
+    let (state, qs) = matching::match_request_snap(p, "Next.js", &inc, false, &refs);
+    assert_eq!(
+        qs.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+        ["same_c1", "same_c2", "same_c3", "same_c4"]
+    );
+    assert!(
+        qs.iter()
+            .all(|(_, q)| q.instructions.contains(&p.judge.rules))
+    );
+    let st: Value = serde_json::from_str(state.get()).unwrap();
+    assert_eq!(st["candidates"].as_object().unwrap().len(), 4);
+
+    let ans = |ps: &[f64]| super::labels::Answers {
+        classifier: "jev".into(),
+        model: "subq-snap-1.2".into(),
+        answers: ps
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                (
+                    format!("same_c{}", i + 1),
+                    super::labels::Choice {
+                        choice: if *x >= 0.5 { "yes".into() } else { "no".into() },
+                        confidence: 1.0,
+                        probabilities: [("yes".to_string(), *x), ("no".to_string(), 1.0 - x)]
+                            .into(),
+                    },
+                )
+            })
+            .collect(),
+        calibrated: true,
+    };
+    let snap = matching::snap_bars(p);
+    // 0.65 is a merge at Snap's 0.61 and below central's longer-rules 0.70.
+    let (m, _) = matching::pick_at(p, &inc, false, &refs, &ans(&[0.65]), snap);
+    assert_eq!(m.map(|x| x.0).as_deref(), Some("next:c0"));
+    let lr = matching::bars(p, false);
+    assert!(
+        matching::pick_at(p, &inc, false, &refs, &ans(&[0.65]), lr)
+            .0
+            .is_none()
+    );
+    // A fifth candidate is never asked, so never merged.
+    let (m, j) = matching::pick_at(p, &inc, false, &refs, &ans(&[0.1, 0.1, 0.1, 0.1]), snap);
+    assert!(m.is_none() && j[4].outcome == "unasked");
 }

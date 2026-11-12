@@ -221,11 +221,52 @@ pub fn match_request(
     Box<RawValue>,
     Vec<(String, crate::inference::ChoiceQuestion)>,
 ) {
+    request(p, tech_name, inc, breaking, cands, scores, false)
+}
+
+/// SubQ Snap 1.2's judge: the longer rules for every request, and only the first [`SNAP_CANDIDATES`] candidates
+/// (retrieval order), with no question floor. Answers are read at [`snap_bars`]. Only this form passed for Snap:
+/// central's shorter rules lose it about a third of its merges (`eval/select/slice19/RESULTS.md`).
+pub fn match_request_snap(
+    p: &Prompts,
+    tech_name: &str,
+    inc: &Incoming,
+    breaking: bool,
+    cands: &[&CapabilityRecord],
+) -> (
+    Box<RawValue>,
+    Vec<(String, crate::inference::ChoiceQuestion)>,
+) {
+    request(p, tech_name, inc, breaking, cands, None, true)
+}
+
+/// How many candidates Snap is asked about.
+pub const SNAP_CANDIDATES: usize = 4;
+
+fn request(
+    p: &Prompts,
+    tech_name: &str,
+    inc: &Incoming,
+    breaking: bool,
+    cands: &[&CapabilityRecord],
+    scores: Option<&[f64]>,
+    snap: bool,
+) -> (
+    Box<RawValue>,
+    Vec<(String, crate::inference::ChoiceQuestion)>,
+) {
     let ik = kind_of(inc);
+    // Over every candidate retrieved, before Snap's cut: the rule text is the request's, as measured.
     let mixed = ik != "release_notes"
         || cands
             .iter()
             .any(|c| kinds_of(c).iter().any(|k| *k != "release_notes"));
+    let short = !snap && short_rules(inc, cands);
+    let cands = if snap {
+        &cands[..cands.len().min(SNAP_CANDIDATES)]
+    } else {
+        cands
+    };
     let names = |r: &CapabilityRecord| {
         let mut v: Vec<&str> = kinds_of(r).iter().map(|k| source_name(p, k)).collect();
         v.sort();
@@ -266,7 +307,6 @@ pub fn match_request(
         },
         candidates,
     };
-    let short = short_rules(inc, cands);
     let rules = if short {
         JudgeRules::Short { mixed }
     } else {
@@ -556,7 +596,30 @@ pub fn pick(
     cands: &[&CapabilityRecord],
     a: &Answers,
 ) -> (Option<(String, f64)>, Vec<Judged>) {
-    let b = bars(p, short_rules(inc, cands));
+    pick_at(p, inc, breaking, cands, a, bars(p, short_rules(inc, cands)))
+}
+
+/// SubQ Snap 1.2's bars for [`match_request_snap`], fitted on the judge's dev set (slice 5 objective): same 0.61,
+/// cross-source 0.93, quote guard below 0.95. Held-out: 0.3 false merges per 100, 86.3% of merges against gpt-6-luna's
+/// 80.2% (`eval/select/slice19/RESULTS.md`). The lineage bar is central's: Snap was not measured on lineage requests.
+pub fn snap_bars(p: &Prompts) -> Bars {
+    Bars {
+        same: 0.61,
+        cross: 0.93,
+        quote_below: 0.95,
+        lineage: p.thresholds.lineage_same_p,
+    }
+}
+
+/// [`pick`] at given bars.
+pub fn pick_at(
+    p: &Prompts,
+    inc: &Incoming,
+    breaking: bool,
+    cands: &[&CapabilityRecord],
+    a: &Answers,
+    b: Bars,
+) -> (Option<(String, f64)>, Vec<Judged>) {
     let mut judged: Vec<Judged> = cands
         .iter()
         .enumerate()

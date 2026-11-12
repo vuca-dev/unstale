@@ -135,6 +135,8 @@ pub struct Routes {
     pub main: Inference,
     /// Jev, for labels and matching, when the choice names it.
     pub labels: Option<Inference>,
+    /// SubQ Snap, for matching only, when the choice names it.
+    pub matching: Option<Inference>,
 }
 
 pub fn routes(choice: &crate::setup::Choice, root: Option<&Path>) -> Option<Routes> {
@@ -147,7 +149,7 @@ pub fn routes_with(
     root: Option<&Path>,
     env: impl Fn(&str) -> Option<String> + Send + Sync + Clone + 'static,
 ) -> Option<Routes> {
-    let (main, labels) = choice.providers()?;
+    let (main, labels, matching) = choice.providers()?;
     let consented: Vec<String> = choice.key_vars().into_iter().map(String::from).collect();
     let make = |mut c: ProviderConfig, base: &str| {
         // A route's address may be moved to this machine only (a local proxy, the test servers). Codex's route has no
@@ -170,6 +172,7 @@ pub fn routes_with(
     Some(Routes {
         main: make(main, "UNSTALE_INFERENCE_BASE_URL"),
         labels: labels.map(|l| make(l, "UNSTALE_LABELS_BASE_URL")),
+        matching: matching.map(|m| make(m, "UNSTALE_MATCHING_BASE_URL")),
     })
 }
 

@@ -65,13 +65,20 @@ pub fn run(
     let x = Extractor::new(&routes.main, &results);
     let classify = routes.labels.as_ref().unwrap_or(&routes.main);
     let ch = Chooser::new(classify, &results);
+    // Same-or-new on Snap when the choice names it (its own request form and bars), else on the labeller.
+    let judge = routes.matching.as_ref().unwrap_or(classify);
+    let snap = routes.matching.is_some();
+    let jch = Chooser::new(judge, &results);
     // With an Anthropic key only, matching is off: every record is new.
-    let matching_on = routes.labels.is_some() || routes.main.provider.kind != Kind::Anthropic;
+    let matching_on =
+        routes.labels.is_some() || snap || routes.main.provider.kind != Kind::Anthropic;
     let p = crate::prompts::prompts();
     let questions = p.labels.questions();
     let mut s = Summary::default();
     let todo = plan(cache, techs, purls, today);
-    let calls = |s: &mut Summary| s.calls = x.calls.get() + ch.calls.get();
+    let calls = |s: &mut Summary| {
+        s.calls = x.calls.get() + ch.calls.get() + if snap { jch.calls.get() } else { 0 }
+    };
     for t in &todo {
         let Ok(Some(td)) = crate::cache::load_catalog_tech(cache, &t.technology) else {
             continue;
@@ -173,23 +180,40 @@ pub fn run(
                     found.iter().map(|(c, _)| c.rec).collect();
                 let scores: Vec<f64> = found.iter().map(|(_, sc)| *sc).collect();
                 if !recs.is_empty() {
-                    let (jstate, qs) = matching::match_request(
-                        p,
-                        &name,
-                        inc,
-                        labels.breaking,
-                        &recs,
-                        Some(&scores),
-                    );
+                    let (jstate, qs) = if snap {
+                        matching::match_request_snap(p, &name, inc, labels.breaking, &recs)
+                    } else {
+                        matching::match_request(
+                            p,
+                            &name,
+                            inc,
+                            labels.breaking,
+                            &recs,
+                            Some(&scores),
+                        )
+                    };
                     if !qs.is_empty() {
-                        match ch.ask(STEP_JUDGE, &jstate, &qs) {
+                        let jc = if snap { &jch } else { &ch };
+                        match jc.ask(STEP_JUDGE, &jstate, &qs) {
                             Ok(Some(a)) => {
                                 judge_prov = Some(provenance_of(
-                                    classify,
+                                    judge,
                                     p.judge.version,
                                     Some(a.model.clone()),
                                 ));
-                                chosen = matching::pick(p, inc, labels.breaking, &recs, &a).0;
+                                chosen = if snap {
+                                    matching::pick_at(
+                                        p,
+                                        inc,
+                                        labels.breaking,
+                                        &recs,
+                                        &a,
+                                        matching::snap_bars(p),
+                                    )
+                                    .0
+                                } else {
+                                    matching::pick(p, inc, labels.breaking, &recs, &a).0
+                                };
                             }
                             // No readable verdict: the record is new.
                             Ok(None) => {}

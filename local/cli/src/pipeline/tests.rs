@@ -608,6 +608,7 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
         provider: "openai".into(),
         key_env: Some("OPENAI_API_KEY".into()),
         labels: None,
+        matching: None,
     };
     let mut r = super::routes_with(&choice, Some(dir.path()), shell).unwrap();
     assert!(r.labels.is_none(), "no labelling service in this choice");
@@ -636,6 +637,7 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
             provider: "openai".into(),
             key_env: Some(foreign.into()),
             labels: None,
+            matching: None,
         };
         assert!(
             super::routes_with(&c, Some(dir.path()), shell).is_none(),
@@ -649,6 +651,7 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
                 provider: "jev".into(),
                 key_env: foreign.into(),
             }),
+            matching: None,
         };
         assert_eq!(
             super::routes_with(&j, Some(dir.path()), shell).is_none(),
@@ -660,6 +663,7 @@ fn a_key_named_by_the_choice_is_read_from_this_repos_env_file_and_nothing_else_i
         provider: "openai".into(),
         key_env: Some("GITHUB_TOKEN".into()),
         labels: None,
+        matching: None,
     };
     assert_eq!(
         crate::setup::view::missing_key_lines(Some(&(bad, crate::setup::Origin::Repo)), &|_| true),

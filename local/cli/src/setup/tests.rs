@@ -202,6 +202,16 @@ pub(super) fn scenarios() -> Vec<(&'static str, Detected, usize, bool, Reader)> 
             Reader::Person,
         ),
         (
+            "snap-and-openai",
+            machine(
+                &[("SUBQ_API_KEY", Shell), ("OPENAI_API_KEY", Shell)],
+                CodexState::Absent,
+            ),
+            38,
+            false,
+            Reader::Person,
+        ),
+        (
             "everything-no-repo-yet",
             everything(),
             0,
@@ -432,6 +442,32 @@ fn options_follow_the_fixed_order_and_list_only_what_this_machine_can_use() {
         "Jev alone writes no records"
     );
     assert!(options(&machine(&[], CodexState::NotReady("x".into())), false).is_empty());
+    // Snap matches beside a key, ahead of the key alone; alone it writes no records.
+    assert_eq!(
+        options(
+            &machine(
+                &[
+                    ("SUBQ_API_KEY", Seen::Shell),
+                    ("OPENAI_API_KEY", Seen::Shell)
+                ],
+                CodexState::Absent
+            ),
+            false
+        ),
+        [
+            Pick::SnapKey(Route::OpenAi),
+            Pick::Key(Route::OpenAi),
+            Pick::None
+        ]
+    );
+    assert!(
+        options(
+            &machine(&[("SUBQ_API_KEY", Seen::Shell)], CodexState::Absent),
+            false
+        )
+        .is_empty(),
+        "Snap alone writes no records"
+    );
     assert_eq!(
         options(&machine(&[], CodexState::Absent), true),
         [Pick::None],
@@ -490,7 +526,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
             Pick::JevKey(_) => "the best option",
             Pick::JevCodex => "≈ 80% of its changes",
             Pick::Key(Route::Anthropic) => "≈ 90% of its changes",
-            Pick::Key(_) => "≈ 11 in 100 breaking flags wrong, not 8",
+            Pick::Key(_) | Pick::SnapKey(_) => "≈ 11 in 100 breaking flags wrong, not 8",
             Pick::Codex => "≈ 80% of its changes; rest not measured",
             Pick::None => unreachable!(),
         };
@@ -622,7 +658,7 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
         r#"{"provider":"openai","key_env":"OPENAI_API_KEY","labels":{"provider":"jev","key_env":"JEV_API_KEY"}}"#
     );
     assert_eq!(serde_json::from_str::<Choice>(&json).unwrap(), c);
-    let (main, labels) = c.providers().unwrap();
+    let (main, labels, _) = c.providers().unwrap();
     assert_eq!(
         (main.name.as_str(), main.key_env.as_deref()),
         ("openai", Some("OPENAI_API_KEY"))
@@ -637,6 +673,7 @@ fn a_choice_stores_the_variable_name_and_maps_to_provider_configs() {
         provider: "vercel".into(),
         key_env: Some("TEAM_GATEWAY_KEY".into()),
         labels: None,
+        matching: None,
     };
     // Only the route's own key variable is used: a repository's config cannot have another variable sent.
     assert!(
@@ -695,6 +732,10 @@ fn the_inference_flag_reads_a_provider_a_variable_codex_or_none() {
         r#"{"provider":"openai","key_env":"OPENAI_API_KEY","labels":{"provider":"jev","key_env":"JEV_API_KEY"}}"#
     );
     assert_eq!(
+        ok("subq+env:OPENAI_API_KEY"),
+        r#"{"provider":"openai","key_env":"OPENAI_API_KEY","matching":{"provider":"subq","key_env":"SUBQ_API_KEY"}}"#
+    );
+    assert_eq!(
         ok("jev+codex"),
         r#"{"provider":"codex","labels":{"provider":"jev","key_env":"JEV_API_KEY"}}"#
     );
@@ -708,6 +749,10 @@ fn the_inference_flag_reads_a_provider_a_variable_codex_or_none() {
         "gpt",
         "",
         "jev+jev",
+        "env:SUBQ_API_KEY",
+        "subq+codex",
+        "subq+anthropic",
+        "subq+subq",
     ] {
         let e = parse_flag(bad).unwrap_err();
         assert!(e.contains("expected a provider"), "{bad}: {e}");

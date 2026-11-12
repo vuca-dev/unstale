@@ -107,6 +107,7 @@ fn name(p: Pick, no_key: bool) -> String {
     match p {
         Pick::JevKey(r) => format!("Jev + {}", route_name(r)),
         Pick::JevCodex => "Jev + Codex plan".into(),
+        Pick::SnapKey(r) => format!("Snap + {}", route_name(r)),
         Pick::Key(r) => route_name(r).into(),
         Pick::Codex => "Codex plan".into(),
         Pick::None if no_key => "No key".into(),
@@ -127,6 +128,7 @@ fn keys(d: &Detected, p: Pick) -> String {
     match p {
         Pick::JevKey(r) => format!("{}, {}", var(Route::Jev), var(r)),
         Pick::JevCodex => var(Route::Jev),
+        Pick::SnapKey(r) => format!("{}, {}", var(Route::Subq), var(r)),
         Pick::Key(r) => var(r),
         Pick::Codex | Pick::None => String::new(),
     }
