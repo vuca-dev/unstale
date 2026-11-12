@@ -56,7 +56,8 @@ export function githubRateLimit(status: number, headers: Headers, body = ""): { 
   if (retryAfter !== undefined) return { retryAfterMs: retryAfter };
   if (headers.get("x-ratelimit-remaining")?.trim() === "0") {
     const reset = Number(headers.get("x-ratelimit-reset"));
-    return Number.isFinite(reset) && reset > 0 ? { retryAfterMs: Math.max(0, reset * 1000 - Date.now()) } : {};
+    const wait = Number.isFinite(reset) && reset > 0 ? serverWait(Math.max(0, reset * 1000 - Date.now())) : undefined;
+    return wait === undefined ? {} : { retryAfterMs: wait };
   }
   return GITHUB_RATE_MESSAGE.test(body) ? { retryAfterMs: GITHUB_SECONDARY_WAIT_MS } : undefined;
 }
@@ -102,6 +103,8 @@ export interface HttpOptions {
   allowHosts: readonly string[];
   /** Longest Retry-After honoured on 429/503, once per request; longer waits fail. */
   maxRetryAfterMs: number;
+  /** Hosts whose 403 may be a GitHub rate limit (`githubRateLimit`); default GitHub's API host alone. */
+  githubHosts?: readonly string[];
 }
 
 export const DEFAULT_HTTP: HttpOptions = {
@@ -166,7 +169,7 @@ export class HttpClient {
       if (res.status === 304 || (res.status >= 200 && res.status < 300)) {
         return { status: res.status, finalUrl: current.toString(), headers: res.headers, body: res.body };
       }
-      const github = current.hostname === GITHUB_API_HOST ? githubRateLimit(res.status, res.headers, Buffer.from(res.body).toString("utf8")) : undefined;
+      const github = (this.opts.githubHosts ?? [GITHUB_API_HOST]).includes(current.hostname) ? githubRateLimit(res.status, res.headers, Buffer.from(res.body).toString("utf8")) : undefined;
       if (github) throw new FetchFailure("http_status", `HTTP ${res.status} (rate limit)`, res.status, github.retryAfterMs, current.hostname, true);
       const retryAfter = res.status === 429 || res.status === 503 ? parseRetryAfter(res.headers.get("retry-after")) : undefined;
       throw new FetchFailure("http_status", `HTTP ${res.status}`, res.status, retryAfter, current.hostname);
@@ -228,9 +231,20 @@ export class HttpClient {
 /** Retry-After as delay-seconds or an HTTP date, in milliseconds. */
 export function parseRetryAfter(v: string | null): number | undefined {
   if (!v) return undefined;
-  if (/^\d+$/.test(v.trim())) return Number(v.trim()) * 1000;
-  const at = Date.parse(v);
-  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
+  const t = v.trim();
+  if (/^\d+$/.test(t)) return serverWait(Number(t) * 1000);
+  // An HTTP date names its weekday and month (`Wed, 21 Oct 2026 07:28:00 GMT`); `-5` or `1.5` is no wait at all.
+  if (!/[A-Za-z]/.test(t)) return undefined;
+  const at = Date.parse(t);
+  return Number.isNaN(at) ? undefined : serverWait(Math.max(0, at - Date.now()));
+}
+
+/** The longest wait a server may ask for: an hour, GitHub's longest (its primary limit resets hourly). */
+export const MAX_SERVER_WAIT_MS = 60 * 60_000;
+/** A wait a server asked for, as a number of milliseconds this process can act on: capped at MAX_SERVER_WAIT_MS;
+ * undefined when it is not a finite, non-negative number. */
+export function serverWait(ms: number | undefined): number | undefined {
+  return ms === undefined || !Number.isFinite(ms) || ms < 0 ? undefined : Math.min(ms, MAX_SERVER_WAIT_MS);
 }
 
 /** Headers for another origin: a token or cookie meant for the first host is never sent on to where it redirects. */

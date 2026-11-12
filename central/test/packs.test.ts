@@ -123,3 +123,19 @@ test("the classifier cache hits an answer saved as a file before packs, under th
   expect(cache.get(c, { a: 2 }, {} as never)).toEqual({ classifier: "jev", answers: { y: 2 } });
   expect(existsSync(join(dir, `${key.slice(0, 2)}`))).toBe(true);
 });
+
+test("putMany writes one append per pack and compacts a pack once, not once per name; bucketValues reads one pack", async () => {
+  const { vi } = await import("vitest");
+  const p = new Packs(tmp(), { width: 0, compress: true });
+  p.putMany(Array.from({ length: 50 }, (_, i): [string, string] => [`listings/n${i}`, `v${i}`]));
+  p.put("other", "x");
+  const compact = vi.spyOn(p, "compact");
+  p.putMany(Array.from({ length: 50 }, (_, i): [string, string] => [`listings/n${i}`, `w${i}`]));
+  expect(compact).toHaveBeenCalledTimes(1);
+  expect(p.get("listings/n7")?.toString()).toBe("w7");
+  expect(p.get("other")?.toString()).toBe("x");
+  const values = p.bucketValues(p.bucket("listings/n7"), (n) => n.startsWith("listings/"));
+  expect(values.size).toBe(50);
+  expect(values.get("listings/n49")?.toString()).toBe("w49");
+  expect(values.has("other")).toBe(false);
+});

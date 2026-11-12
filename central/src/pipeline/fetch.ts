@@ -107,8 +107,8 @@ async function rateRefusal(res: Response): Promise<{ retryAfterMs?: number } | u
   return res.status === 403 ? githubRateLimit(403, res.headers, await res.text().catch(() => "")) : undefined;
 }
 
-/** The error a GitHub reader throws when it gives up: a rate limit as one (the drain pauses every start, no failure is
- * counted), anything else as a failure. */
+/** The error a GitHub reader throws when it gives up: a rate limit as one, at its first answer (the drain pauses every
+ * start, no failure is counted), anything else as a failure. */
 function githubError(message: string, res: Response, limited: { retryAfterMs?: number } | undefined): Error {
   return limited ? new FetchFailure("http_status", message, res.status, limited.retryAfterMs, GITHUB_API_HOST, true) : new Error(message);
 }
@@ -122,12 +122,14 @@ async function listPage(repo: string, page: number, etag?: string): Promise<{ ro
     if (res.status === 304 && etag) return {};
     if (res.ok) return { rows: (await res.json()) as GhRelease[], ...(res.headers.get("etag") ? { etag: res.headers.get("etag")! } : {}) };
     const limited = await rateRefusal(res);
-    if (attempt >= 2 || (res.status < 500 && !limited)) throw githubError(`GitHub ${repo} page ${page}: ${res.status}`, res, limited);
+    // A rate limit is thrown at its first answer: asking again only spends more of the limit; the drain's pause waits.
+    if (limited || attempt >= 2 || res.status < 500) throw githubError(`GitHub ${repo} page ${page}: ${res.status}`, res, limited);
     await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
   }
 }
 
-async function releaseByTag(repo: string, tag: string): Promise<GhRelease | undefined> {
+/** One release by its tag; exported for tests. */
+export async function releaseByTag(repo: string, tag: string): Promise<GhRelease | undefined> {
   if (!isRepoSlug(repo)) throw new Error(`not a GitHub repository: ${repo}`);
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(`https://api.github.com/repos/${repo}/releases/tags/${encodeURIComponent(tag)}`, {
@@ -136,7 +138,8 @@ async function releaseByTag(repo: string, tag: string): Promise<GhRelease | unde
     if (res.ok) return (await res.json()) as GhRelease;
     if (res.status === 404) return undefined;
     const limited = await rateRefusal(res);
-    if (attempt >= 2 || (res.status < 500 && !limited)) throw githubError(`GitHub ${repo} tag ${tag}: ${res.status}`, res, limited);
+    // A rate limit is thrown at its first answer: asking again only spends more of the limit; the drain's pause waits.
+    if (limited || attempt >= 2 || res.status < 500) throw githubError(`GitHub ${repo} tag ${tag}: ${res.status}`, res, limited);
     await new Promise((r) => setTimeout(r, 2000 * 2 ** attempt));
   }
 }

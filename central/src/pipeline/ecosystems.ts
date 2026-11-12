@@ -194,29 +194,86 @@ async function getJson(url: string): Promise<unknown> {
 //
 // The sibling and repository-package lookups read the same public answers for every technology of one scope or one
 // maintainer: a scope's package list, each of its packages' latest manifests (11,435 for `@types`, 2,129 for
-// `@fontsource`), a maintainer's search pages. Each is kept for a day in the registry cache (packs.ts, saved with the
-// state, so later cycles and runs reuse it), keyed by the request URL, and one request serves every lookup in flight
-// in this process. Only the fields the lookups use are kept. A 404 is the registry's answer and is kept; a failed or
+// `@fontsource`), a maintainer's search pages. Each is kept in the registry cache (packs.ts, saved with the state, so
+// later cycles and runs reuse it), keyed by the request URL, and one request serves every lookup in flight in this
+// process. Only the fields the lookups use are kept. A 404 is the registry's answer and is kept; a failed or
 // rate-limited read throws as before and is never kept, nor is a search page past the first that came back empty (a
-// list that ended early). Past a day an entry is read again, never served.
+// list that ended early). An entry lives 24 to 30 hours, by its URL's hash, so a scope read in one scan comes due in
+// pieces rather than all at once; past its lifetime it is read again, never served.
+//
+// The cache holds hundreds of megabytes of other entries in 256 packs, and a lookup reads its whole pack: the first
+// lookup in a pack reads that pack's listings into memory for the life of the process, and new answers are written
+// in batches (one append, and at most one compaction, per pack: `flushListings`).
 
-/** How long a listing is reused. */
-export const LISTING_FRESH_MS = 24 * 3600_000;
-const listingKey = (url: string) => `listings/${sha256(url).slice(0, 32)}`;
+const LISTING_MIN_MS = 24 * 3600_000;
+const LISTING_SPREAD_MS = 6 * 3600_000;
+/** How long the listing at `url` is reused: 24 hours, plus up to 6 more by the URL's hash. */
+export const listingLifetimeMs = (url: string): number =>
+  LISTING_MIN_MS + Math.floor((parseInt(sha256(url).slice(0, 8), 16) / 0x1_0000_0000) * LISTING_SPREAD_MS);
+const LISTINGS = "listings/";
+const listingKey = (url: string) => `${LISTINGS}${sha256(url).slice(0, 32)}`;
+type KeptListing = { checked: string; url: string; value: unknown };
+/** This process's view of the kept listings, by pack file and entry name; the packs already read into it. */
+const listingMemo = new Map<string, KeptListing>();
+const listingPacks = new Set<string>();
+/** Answers read but not yet written (entry name → record), written by `flushListings`. */
+const listingWrites = new Map<string, string>();
+const LISTING_BATCH = 4096;
+/** Lets other work run during a long scan of kept listings (each hit resolves without giving up the thread). */
+const breathe = () => new Promise<void>((r) => setImmediate(r));
 const listingsInFlight = new Map<string, Promise<unknown>>();
+
+function keptListing(key: string): KeptListing | undefined {
+  const cache = registryCache();
+  const file = cache.bucket(key);
+  if (!listingPacks.has(file)) {
+    listingPacks.add(file);
+    for (const [name, v] of cache.bucketValues(file, (n) => n.startsWith(LISTINGS))) {
+      const memoKey = `${file}\0${name}`;
+      if (!listingMemo.has(memoKey)) listingMemo.set(memoKey, JSON.parse(v.toString("utf8")) as KeptListing);
+    }
+  }
+  return listingMemo.get(`${file}\0${key}`);
+}
+
+/** Writes the listings read since the last flush to the registry cache, one pack at a time, letting other work run
+ * between packs. */
+export async function flushListings(): Promise<void> {
+  if (!listingWrites.size) return;
+  const cache = registryCache();
+  const byPack = new Map<string, Array<[string, string]>>();
+  for (const [key, record] of listingWrites) {
+    const file = cache.bucket(key);
+    let list = byPack.get(file);
+    if (!list) byPack.set(file, (list = []));
+    list.push([key, record]);
+  }
+  listingWrites.clear();
+  for (const batch of byPack.values()) {
+    cache.putMany(batch);
+    await breathe();
+  }
+}
 
 async function listing<T>(url: string, keep: (doc: unknown) => T, whole: (value: T) => boolean = () => true): Promise<T | undefined> {
   const key = listingKey(url);
-  const kept = registryCache().get(key);
-  const hit = kept && (JSON.parse(kept.toString("utf8")) as { checked: string; url: string; value: T | null });
-  if (hit && hit.url === url && Date.now() - Date.parse(hit.checked) < LISTING_FRESH_MS) return hit.value ?? undefined;
+  // The first lookup in a pack reads it whole (about a megabyte): other work runs before the next one.
+  if (!listingPacks.has(registryCache().bucket(key))) {
+    keptListing(key);
+    await breathe();
+  }
+  const hit = keptListing(key);
+  if (hit && hit.url === url && Date.now() - Date.parse(hit.checked) < listingLifetimeMs(url)) return (hit.value as T | null) ?? undefined;
   let pending = listingsInFlight.get(url) as Promise<T | undefined> | undefined;
   if (!pending) {
     pending = (async () => {
       const doc = await getJson(url);
       const value = doc === undefined ? null : keep(doc);
       if (value !== null && !whole(value)) return value;
-      registryCache().put(key, JSON.stringify({ checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), url, value }) + "\n");
+      const entry: KeptListing = { checked: new Date().toISOString().replace(/\.\d+Z$/, "Z"), url, value };
+      listingMemo.set(`${registryCache().bucket(key)}\0${key}`, entry);
+      listingWrites.set(key, JSON.stringify(entry) + "\n");
+      if (listingWrites.size >= LISTING_BATCH) await flushListings();
       return value ?? undefined;
     })().finally(() => listingsInFlight.delete(url));
     listingsInFlight.set(url, pending);
@@ -269,8 +326,9 @@ async function npmSiblings(t: Technology): Promise<string[]> {
   for (const scope of scopes) {
     const names = (await scopePackages(scope)) ?? [];
     let failure: unknown;
-    await pool(names, 8, async (name) => {
+    await pool(names, 8, async (name, i) => {
       if (failure) return;
+      if (i % 256 === 255) await breathe();
       try {
         if ((await latestManifest(name))?.repo === repo) out.push(npmPurl(name));
       } catch (e) {
@@ -485,11 +543,12 @@ export const ECOSYSTEMS: Record<string, Ecosystem> = {
   npm: {
     osv: "npm",
     compare: npmSemverOrder,
-    siblings: npmSiblings,
+    // A lookup's answers are written when it ends, failed or not (what it read successfully is kept).
+    siblings: (t) => npmSiblings(t).finally(flushListings),
     dependencies: npmDependencies,
     registryPage: npmRegistryPage,
     publishTimes: npmPublishTimes,
-    repositoryPackages: npmRepositoryPackages,
+    repositoryPackages: (t) => npmRepositoryPackages(t).finally(flushListings),
     versionPage: (component, version) => `https://www.npmjs.com/package/${npmName(component)}/v/${encodeURIComponent(version)}`,
     versionDownloads: npmVersionDownloads,
   },

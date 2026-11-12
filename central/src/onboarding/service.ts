@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFileSync, readdirSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { HttpClient, DEFAULT_HTTP, FetchFailure } from "../collector/http.ts";
+import { HttpClient, DEFAULT_HTTP, FetchFailure, serverWait } from "../collector/http.ts";
 import { ExtractFailure } from "../collector/extract.ts";
 import { ClassifierError } from "../pipeline/classify/adapter.ts";
 import { HttpError } from "../pipeline/llm.ts";
@@ -158,8 +158,10 @@ const RATE_LIMITED = /(?:HTTP |: )429\b/;
 /** Whether a job's error is a rate limit, and the server's Retry-After when it sent one. It says nothing about the
  * package: it is the runner's own request rate. */
 export function rateLimit(error: unknown): { retryAfterMs?: number } | undefined {
-  if (error instanceof FetchFailure && error.httpStatus !== undefined)
-    return error.rateLimited ? (error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }) : undefined;
+  if (error instanceof FetchFailure && error.httpStatus !== undefined) {
+    const wait = serverWait(error.retryAfterMs);
+    return error.rateLimited ? (wait === undefined ? {} : { retryAfterMs: wait }) : undefined;
+  }
   return RATE_LIMITED.test(String(error instanceof Error ? error.message : error)) ? {} : undefined;
 }
 /** A hostname as logged: letters, digits, dots and hyphens, at most 253 characters (a DNS name's limit). */
@@ -790,6 +792,8 @@ export class CoverageService {
       // Kept as named so logs stay comparable across the interval's change: under a 12-hour interval a check between 6
       // and 12 hours old is on time, so this counts on-time technologies too; `_over_24h` and `_over_3d` are the tail.
       release_checks_over_6h: ages.filter((s) => s > 6 * 3600).length,
+      // Past the refresh interval.
+      release_checks_over_12h: ages.filter((s) => s > 12 * 3600).length,
       release_checks_over_24h: ages.filter((s) => s > 24 * 3600).length,
       release_checks_over_3d: ages.filter((s) => s > 3 * 86_400).length,
       unimprovable: { no_repository: jobs.filter(noRepository).length, failing_before_read_estimate: jobs.filter(failing).length },
@@ -873,6 +877,8 @@ export class CoverageService {
    * Retry-After); returns when the pause ends. `error` names the status on the pause's `rate_pause` line and, unless
    * `hidden` (a job `logName` does not name: its host would say what was requested), the host. */
   private ratePause(retryAfterMs = 0, error?: unknown, hidden = false): number {
+    // Whatever a server sent: at most an hour, and a value that is no wait (negative, not finite) counts as none.
+    retryAfterMs = serverWait(retryAfterMs) ?? 0;
     const t = Date.now();
     const begins = t >= this.pausedUntil;
     if (begins) this.endPause();
@@ -1426,9 +1432,11 @@ export class CoverageService {
         this.save(job, "partial", "Checking security advisories");
         const read = new Set(job.completed ?? []);
         const unread = new Set(releases.notes.filter((n) => !read.has(`${n.tag}:${n.snapshot}:audience-v1`)).map((n) => n.version));
+        // A new version the registry poll saw asks OSV again for the technology's packages (once: a query cached since
+        // the detection is fresh); the other caches keep their windows.
         const r = await advisoryStage(tech, store, index, (st, q) =>
           advisoryClassifier().classify(st, q),
-        { unread });
+        { unread, ...(job.change_detected ? { since: job.change_detected } : {}) });
         if (r) saveStore(store);
       }
       publishTechnology(store, releases.checked, catalogDir());

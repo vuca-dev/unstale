@@ -702,6 +702,29 @@ test("a due refresh under its cap is no release check: it extracts, judges advis
   expect(job.state).toBe("monitoring");
 });
 
+test("a refresh for a detected version asks OSV again since the detection; an ordinary refresh does not", async () => {
+  for (const detected of [true, false]) {
+    vi.restoreAllMocks();
+    const name = detected ? "detected" : "ordinary";
+    await mockWork({ [`pkg:npm/${name}`]: { repo: `ex/${name}`, tags: ["v1.0.1"], size: 10 } });
+    const fetching = await import("../src/pipeline/fetch.ts");
+    const advisories = await import("../src/pipeline/advisories.ts");
+    vi.spyOn(fetching, "advisoryReleases").mockResolvedValue([{}] as never);
+    const stage = vi.spyOn(advisories, "advisoryStage").mockResolvedValue(undefined as never);
+    const service = new CoverageService(1, { limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+    const day = new Date(Date.now() - 86_400_000).toISOString();
+    const job = service.submit(`pkg:npm/${name}`);
+    const at = new Date(Date.now() - 60_000).toISOString();
+    Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, ...(detected ? { change_detected: at } : {}) });
+    await service.drain(Date.now() + 2000, 0, 1);
+    expect(stage).toHaveBeenCalled();
+    const opts = stage.mock.calls[0]![4]!;
+    if (detected) expect(opts).toMatchObject({ since: at });
+    else expect(opts).not.toHaveProperty("since");
+    expect(opts).not.toHaveProperty("refresh");
+  }
+});
+
 test("under a spent budget every slot may take a release check past the cap, and nothing that can call a model starts", async () => {
   const service = new CoverageService(3, { limits: limits({ tokensPerPeriod: 0 }) }).hold();
   const day = new Date(Date.now() - 86_400_000).toISOString();
@@ -804,6 +827,16 @@ test("the day and three-day counts are strictly older than their bound", () => {
     Object.assign(job, { state: "monitoring", release_checked: new Date(at - s * 1000).toISOString() });
   }
   expect(service.freshness(at)).toMatchObject({ release_checks_over_24h: 4, release_checks_over_3d: 1 });
+});
+
+test("the 12-hour count is strictly older than the interval, next to the 6-hour count kept as it was", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  for (const [name, s] of [["h5", 5 * 3600], ["h7", 7 * 3600], ["h12", 12 * 3600], ["h12s", 12 * 3600 + 1], ["d2", 2 * 86_400]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", release_checked: new Date(at - s * 1000).toISOString() });
+  }
+  expect(service.freshness(at)).toMatchObject({ release_checks_over_6h: 4, release_checks_over_12h: 2, release_checks_over_24h: 1 });
 });
 
 type Internals = { running: Set<string>; dueRefreshes(at?: number): { due: number; overdue: number; oldest_overdue_age_s: number | null } };
