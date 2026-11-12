@@ -3,7 +3,8 @@
 
     score.py --harness <copy of the harness> [--json]
 
-Reads the harness's database (no model call): per repo, real finds (tier A or B, matched to the frozen pool v3),
+Reads the harness's database. No judging happens here; the harness may ask a small model once per repo whether two
+items its rules cannot settle are the same change, and caches the answer. Per repo, real finds (tier A or B, matched to the frozen pool v3),
 tier-A finds, client tokens and top-8 precision for both arms; pooled totals; 5th to 95th percentiles over 2,000
 resamples of the repos (seed 20261023, the same draw for both arms); the two gates; the reading-matter multiple from
 each repo's prepare.json; and how many of the new arm's real finds name a package that the no-key report lists in a
@@ -25,9 +26,9 @@ def main():
     sys.path.insert(0, os.path.join(root, 'bin'))
     import ab_common as ab
 
-    def no_model(*_a, **_k):
-        raise RuntimeError('scoring must not call a model')
-    ab.claude_json = ab.codex = no_model
+    def no_judge(*_a, **_k):
+        raise RuntimeError('scoring must not judge')
+    ab.codex = no_judge
     c = sqlite3.connect(os.path.join(root, 'state', 'scout.db'), timeout=120)
     c.row_factory = sqlite3.Row
     rep = ab.report(c, arms=(ALONE, ARM), attempts=ATTEMPTS, pool=POOL)
@@ -61,7 +62,8 @@ def main():
     def pct(i, q):
         v = sorted(b[i] for b in boots)
         return v[min(len(v) - 1, int(q * len(v)))] if v else None
-    prep = [r['prepare'] for r in rows if r['prepare']]
+    # A keyed report under 1 KB is the stub a run writes when it reaches its time limit: left out of the multiple.
+    prep = [r['prepare'] for r in rows if r['prepare'] and r['prepare']['keyed_report_bytes'] >= 1000]
     keyed = sum(x['keyed_report_bytes'] for x in prep)
     nokey = sum(x['nokey_report_bytes'] + x['events_file_bytes'] for x in prep)
     det = [sum(r['deterministic'][i] for r in rows) for i in (0, 1)]
