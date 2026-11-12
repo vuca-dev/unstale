@@ -334,7 +334,7 @@ test("cold jobs publish early, interleave history with the docs module's pass an
     logUsage({ api: "test", call: "docs" });
     for (let i = 1; i <= 130; i++) o.progress?.(i, 130);
     writeAtomic(join(dir, "central", "docs", t.id, "state.json"), JSON.stringify({ at: new Date().toISOString() }));
-    return { technology: t.id, sites: [{ site: t.homepage, prefix: "", method: "sitemap", pages: 130, copyRule: "html", dropped: {} as never, namespaces: [] }], checked: 130, outcomes: { first_seen: 130 }, events: {}, sections: { publishable: 0, held: {} }, baseline: true };
+    return { technology: t.id, sites: [{ site: t.homepage, prefix: "", method: "sitemap", pages: 130, copyRule: "html", dropped: {} as never, namespaces: [] }], checked: 130, at: new Date().toISOString(), left: 0, outcomes: { first_seen: 130 }, events: {}, sections: { publishable: 0, held: {} }, baseline: true };
   });
   const plan = vi.spyOn(docs, "extract");
   // The advisories stage asks OSV; answered here with no advisories, so the test does not wait on the network.
