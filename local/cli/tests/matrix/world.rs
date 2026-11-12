@@ -704,7 +704,7 @@ pub(crate) fn choice_json(value: &str) -> serde_json::Value {
     }
 }
 
-/// `3 min ago` → `0 min ago`: a scenario's own age, not its content.
+/// `3 min ago` → `just now`: a scenario's own age, not its content.
 pub(crate) fn regex_lite_minutes(t: &str) -> String {
     let mut out = String::new();
     let mut rest = t;
@@ -712,8 +712,7 @@ pub(crate) fn regex_lite_minutes(t: &str) -> String {
         let head = &rest[..i];
         let digits = head.len() - head.trim_end_matches(|c: char| c.is_ascii_digit()).len();
         out.push_str(&head[..head.len() - digits]);
-        out.push_str(if digits > 0 { "0" } else { "" });
-        out.push_str(" min ago");
+        out.push_str(if digits > 0 { "just now" } else { " min ago" });
         rest = &rest[i + " min ago".len()..];
     }
     out + rest

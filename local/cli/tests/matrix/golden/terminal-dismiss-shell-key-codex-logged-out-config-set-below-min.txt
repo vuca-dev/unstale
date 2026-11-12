@@ -119,6 +119,7 @@ $ unstale init --wait 0 --no-animation
 warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -147,7 +148,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 

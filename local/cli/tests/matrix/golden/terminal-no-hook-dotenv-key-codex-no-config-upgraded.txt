@@ -91,6 +91,8 @@ react: 1 upstream change on file, nothing new
 # the repository commits its own agent settings, so no session-start hook of unstale's is installed
 
 $ unstale status --wait 0 --no-animation
+warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -117,8 +119,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
@@ -130,6 +130,7 @@ Syncing the catalog, then reading new release notes with your provider. Ctrl-C s
 New release notes read: 2 new changes, 0 added to known ones, for 2 technologies.
 
 $ unstale status --wait 0 --no-animation
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -156,7 +157,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

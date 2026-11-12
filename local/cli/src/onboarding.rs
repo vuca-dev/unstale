@@ -1929,6 +1929,7 @@ fn coverage_footer(pending: &Pending) -> Option<String> {
     let next = if growing > 0 || jobs.is_empty() { "unstale status later adds to this brief" } else { "details in the report" };
     Some(format!("Coverage · {}. {next}.", parts.join("; ")))
 }
+#[allow(clippy::too_many_arguments)]
 fn finish(
     ctx: &Ctx,
     pending: &Pending,
@@ -1937,8 +1938,9 @@ fn finish(
     issue: Option<&str>,
     _linger: bool,
     leave: &AtomicBool,
+    lead: &dyn Fn() -> Vec<String>,
 ) {
-    ui.present(summary(ctx, pending, brief, issue), false, leave);
+    ui.present(&lead(), summary(ctx, pending, brief, issue), false, leave);
 }
 /// Where the summary says versions came from: the lockfiles, and, said once, the workspaces that install with none.
 fn mapped_from(brief: &Brief) -> String {
@@ -4026,6 +4028,12 @@ pub fn lead_ids(ctx: &Ctx, w: &World) -> BTreeMap<String, String> {
 }
 
 pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
+    run_led(ctx, wait, animate, linger, &Vec::new)
+}
+
+/// [`run`], with `lead` asked at the end for lines that go above the summary: what is wrong comes before the result
+/// (`unstale status` puts its warnings there).
+pub fn run_led(ctx: &Ctx, wait: u64, animate: bool, linger: bool, lead: &dyn Fn() -> Vec<String>) -> Result<u8> {
     // `--wait` counts from here: every phase below shares it, and the report is what is left at the end.
     let start = Instant::now();
     let bound = Bound::new(start, wait);
@@ -4140,7 +4148,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             let mut text = std::fs::read_to_string(&path)?;
             text += "\n## Availability\n\nThis catalog has no coverage service, so technologies it does not cover yet are not requested. The catalog itself was refreshed.\n";
             util::write_atomic(&path, text.as_bytes())?;
-            finish(ctx, &pending, &brief, ui, None, linger, &leave);
+            finish(ctx, &pending, &brief, ui, None, linger, &leave, lead);
             return Ok(0);
         }
         timings.push("Coverage service unavailable; using cached intelligence".into());
@@ -4160,6 +4168,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
             ),
             linger,
             &leave,
+            lead,
         );
         return Ok(0);
     }
@@ -4386,7 +4395,7 @@ pub fn run(ctx: &Ctx, wait: u64, animate: bool, linger: bool) -> Result<u8> {
         util::write_atomic(&path, text.as_bytes())?;
     }
     finished.store(true, Ordering::Release);
-    finish(ctx, &pending, &brief, ui, issue.as_deref(), false, &leave);
+    finish(ctx, &pending, &brief, ui, issue.as_deref(), false, &leave, lead);
     Ok(if interrupt::pressed() { 130 } else { 0 })
 }
 

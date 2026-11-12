@@ -495,9 +495,7 @@ fn session_start_is_quick_at_most_one_line_and_exits_0_whatever_fails() {
         .find(|l| l.starts_with("warning: the sync at session start failed "))
         .unwrap_or_else(|| panic!("{status}"));
     assert!(
-        line.ends_with(
-            " ago: the catalog did not answer in time. The next session start tries again."
-        ),
+        line.ends_with(": the catalog did not answer in time. The next session start tries again."),
         "{line}"
     );
 
@@ -1356,7 +1354,7 @@ fn the_last_failure_shows_once_in_status_with_its_age() {
     session_start(&env, env.repo.path(), "catalog hanging");
     srv.set(Mode::Serve);
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(status.contains("warning: the sync at session start failed 0 min ago: the catalog did not answer in time. The next session start tries again."), "{status}");
+    assert!(status.contains("warning: the sync at session start failed just now: the catalog did not answer in time. The next session start tries again."), "{status}");
     let again = env.ok(&["status", "--wait", "0", "--no-animation"]);
     assert!(!again.contains("the sync at session start"), "{again}");
 }

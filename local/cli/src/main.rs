@@ -97,7 +97,8 @@ enum Cmd {
     #[command(hide = true)]
     Setup {
         /// Record a choice without asking: vercel, openai, openrouter, anthropic, env:NAME (a key variable), codex or
-        /// none; jev+ before a key or codex adds Jev for labels (for example jev+env:OPENAI_API_KEY).
+        /// none; jev+ before a key or codex adds Jev for labels (for example jev+env:OPENAI_API_KEY); subq+ before a key
+        /// adds Snap for matching (for example subq+env:OPENAI_API_KEY).
         #[arg(long, value_name = "CHOICE")]
         inference: Option<String>,
         /// Save in your user config instead of this repository's.
@@ -427,31 +428,20 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
             if let Some(line) = pipeline::unrun_line(&ctx, &ours) { println!("{line}"); }
             Ok(0)
         },
-        Cmd::Status { wait, no_animation } => onboarding::run(&ctx, wait, !no_animation, false).inspect(|_| {
-            notice::print(&ctx.cache, &ctx.tool);
-            // What is wrong first, then the state: `status` always shows both, whatever was already said elsewhere.
-            let (mut warnings, mut state) = if inference::enabled() { setup::status_lines(&ctx) } else { (vec![], vec![]) };
-            // A refusal stays until a sync verifies the release notes. Only this repository's technologies are named.
-            let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(&ctx, &st)).unwrap_or_default();
-            warnings.extend(status_events_failed_line(&ctx, &ours));
-            warnings.extend(pipeline::unrun_line(&ctx, &ours));
-            // The session-start sync's last failure and how fresh this machine is (switch on only).
-            let (wrong, fresh) = session::status_lines(&ctx);
-            // A catalog that no longer serves this client comes first, said once: not again as the session-start sync's
-            // failure, which is the same refusal.
-            let refused = sync::refused();
-            warnings.splice(0..0, refused_line());
-            warnings.extend(wrong.into_iter().filter(|w| !refused.as_ref().is_some_and(|(_, m)| w.contains(m.as_str()))));
-            state.extend(fresh);
-            // The cache's size (state); a warning and its detail line when it is over its limit or was not cleaned up.
-            for line in cache_gc::status_lines(&ctx.cache) {
-                if line.starts_with("warning") || line.starts_with("  ") { warnings.push(line) } else { state.push(line) }
-            }
-            // Each warning once: setup's and the session state's name the same stopped work in the same words.
-            let mut seen = std::collections::BTreeSet::new();
-            warnings.retain(|w| !w.starts_with("warning") || seen.insert(w.clone()));
-            for line in warnings.iter().chain(&state) { println!("{line}"); }
-        }),
+        Cmd::Status { wait, no_animation } => {
+            // What is wrong first, above the summary; the state after it. `status` always shows both, whatever was
+            // already said elsewhere. Gathered when the run ends, so they describe what it left.
+            let state = std::cell::RefCell::new(vec![]);
+            let lead = || {
+                let (warnings, s) = status_lines(&ctx);
+                *state.borrow_mut() = s;
+                warnings
+            };
+            onboarding::run_led(&ctx, wait, !no_animation, false, &lead).inspect(|_| {
+                notice::print(&ctx.cache, &ctx.tool);
+                for line in state.borrow().iter() { println!("{line}"); }
+            })
+        }
         Cmd::SessionSync => cmd_session_sync(&ctx),
         Cmd::Sync => cmd_sync(&ctx),
         Cmd::Digest => cmd_digest(&ctx),
@@ -488,6 +478,31 @@ fn tech_labels<'a>(pending: &onboarding::Pending, techs: impl IntoIterator<Item 
 }
 
 /// The warning `status` gives for this repository's technologies whose change events the last sync refused.
+/// `unstale status`'s warnings (what is wrong, each once) and state lines (the provider, tokens, freshness, cache).
+fn status_lines(ctx: &Ctx) -> (Vec<String>, Vec<String>) {
+    let (mut warnings, mut state) = if inference::enabled() { setup::status_lines(ctx) } else { (vec![], vec![]) };
+    // A refusal stays until a sync verifies the release notes. Only this repository's technologies are named.
+    let ours = stack::detect(&ctx.root).map(|st| onboarding::candidates(ctx, &st)).unwrap_or_default();
+    warnings.extend(status_events_failed_line(ctx, &ours));
+    warnings.extend(pipeline::unrun_line(ctx, &ours));
+    // The session-start sync's last failure and how fresh this machine is (switch on only).
+    let (wrong, fresh) = session::status_lines(ctx);
+    // A catalog that no longer serves this client comes first, said once: not again as the session-start sync's
+    // failure, which is the same refusal.
+    let refused = sync::refused();
+    warnings.splice(0..0, refused_line());
+    warnings.extend(wrong.into_iter().filter(|w| !refused.as_ref().is_some_and(|(_, m)| w.contains(m.as_str()))));
+    state.extend(fresh);
+    // The cache's size (state); a warning and its detail line when it is over its limit or was not cleaned up.
+    for line in cache_gc::status_lines(&ctx.cache) {
+        if line.starts_with("warning") || line.starts_with("  ") { warnings.push(line) } else { state.push(line) }
+    }
+    // Each warning once: setup's and the session state's name the same stopped work in the same words.
+    let mut seen = std::collections::BTreeSet::new();
+    warnings.retain(|w| !w.starts_with("warning") || seen.insert(w.clone()));
+    (warnings, state)
+}
+
 fn status_events_failed_line(ctx: &Ctx, ours: &std::collections::BTreeSet<String>) -> Option<String> {
     let failed: Vec<(String, String)> = cache::events_failed(&ctx.cache).into_iter().filter(|(t, _)| ours.contains(t)).collect();
     let labels = tech_labels(&onboarding::read(ctx), failed.iter().map(|(t, _)| t));
