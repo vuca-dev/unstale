@@ -9,7 +9,7 @@
 
 - **Shape:** INDEPENDENT PRs to `main`. Every chunk is additive and behind one switch (README, "One switch").
 - **Ground truth:** GitHub PR state. Repo `vuca-dev/unstale`.
-- **Base:** `origin/main` @ `3642f49` (#244 merge)
+- **Base:** `origin/main` @ `5b7c36b` (#246 merge; #245 Snap matcher merged by the CEO in between)
 - **Base health:** PR checks are `rust`, `central`, `gateway`; re-query before every merge.
 - **Open PRs:** #231 (no-key eval draft, blocked on the ingest decision), #240 (docs and site, DRAFT at `48b9c6d`, CI green; HELD for the CEO, never merged by agents; conflicts expected with the CEO's `smooth-wordmark` branch in `README.md` and `gateway/site/build.ts`)
 - **Live worktrees (sprint):** `/Users/jason/unstale-edge-sprint` (tracker), `/Users/jason/unstale-ws6b` (#238), `/Users/jason/unstale-ws9-no-key` + `/Users/jason/unstale-ws9-scout` (#231), `/Users/jason/unstale-parity` (paid answer caches; keep)
@@ -373,3 +373,8 @@ OpenRouter parity, repeat eval runs.
 - #244 (ingest freshness logging; no scheduling change) merged at `3642f49` by the PM after APPROVE AFTER FIXES at `03b22c9` and APPROVE at `62c480f`. New fields: `release_checks_over_24h`, `release_checks_over_3d`, `unimprovable`, `release_check_age_s_checkable`, `metrics.kept_slot` (`due_*`, `overdue_*`, `oldest_overdue_age_s_*`), events `slice_yielded` and `rate_pause`, stage `advisory_apis`. First ingest run on `3642f49` or later will carry them.
 - Waiting on the CEO: remedy for the slow tail (PM recommends `REFRESH_MS` 24 h plus caching npm listings) and the `INGEST_GITHUB_TOKEN` secret.
 - CEO (12 November): "C &  12 hours", and will set the `INGEST_GITHUB_TOKEN` secret himself. He rejected 24 hours: "part of the value premise of Unstale is that it gives very fresh context". Dispatched one PR (Opus, worktree `/Users/jason/unstale-ingest-throughput`): refresh interval 6 → 12 hours, day-long cache for npm organisation, maintainer and sibling listings, GitHub 403 rate limits treated as rate limits. Second fixed run 43108470126: checks over 6 h 2,069 → 1,574, median 18.4 h → 6.4 h, p95 11.3 → 9.8 days, max still about 17 days. Run 43127192061 is the first with the new logging (watch `blfj1982y`).
+- #246 (refresh interval 12 h; day-long npm listing cache with 24–30 h staggered expiry; GitHub 403 rate limits; all server waits capped at 60 min; advisory re-read on a registry-detected refresh; `release_checks_over_12h`) merged at `5b7c36b` by the PM after APPROVE AFTER FIXES at `39378fe` and APPROVE at `a7d9e02`. Capacity is at best break-even: if `release_checks_over_24h` rises day over day, next step is more oldest-first slots.
+- `INGEST_GITHUB_TOKEN` set by the CEO at 01:49 UTC 12 November (fine-grained, public read-only by his account; permissions cannot be checked from here). First run to use it: 43130458934 (pending, sha `3642f49`; watch `b9eipsvvt`): confirm the workflow-token warning is gone and no wave of 401/403.
+- Runs to verify, in order: 43127192061 (first with #244 logging), 43130458934 (first with the token), then the first on `5b7c36b` (throughput).
+- Docs draft #240 at `53fee97`: README trimmed 202 → 143 lines, figures audited, new `docs/reading-release-notes.md` and `docs/privacy.md`; awaiting the CEO's re-review. No measured "naive costs N times more" ratio exists for reading release notes; the arm that would measure it has never run.
+- Left for the CEO: about 1 GB of synthetic benchmark data in the session scratch folder `ingest-throughput/bench/` (an agent's delete was blocked; PM did not delete it for the agent).
