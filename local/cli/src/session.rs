@@ -1,5 +1,5 @@
 //! Agent session start: the catalog sync moves to the agent's session-start hook, so changes reach the agent without
-//! it having to ask. All of it is behind the edge-inference switch (`util::edge_inference`) until the release.
+//! it having to ask. All of it is behind the edge-inference switch (`util::edge_inference`), on unless `UNSTALE_EDGE_INFERENCE=0`.
 //!
 //! The hook (`unstale notify`, [`hook`]) never slows or breaks a session, switch on or off: everything it does runs on a
 //! worker thread under one deadline counted from the process's start ([`DEADLINE`]), and whatever has not finished by
@@ -576,6 +576,10 @@ pub fn background(ctx: &Ctx) -> Result<u8> {
     Ok(0)
 }
 
+/// How long the stage keeps trying for its lock. The hook's probe ([`running`]) holds it for an instant to test it,
+/// as often as every 5 ms while it waits for the stage to start; a stage that tried once, in that instant, did nothing.
+const LOCK_RETRY: Duration = Duration::from_millis(50);
+
 /// The background stage's lock for this repository: `None` when another holds it (or it cannot be taken).
 fn repo_lock(tool: &Path) -> Option<std::fs::File> {
     if !state_dir(tool) {
@@ -587,8 +591,16 @@ fn repo_lock(tool: &Path) -> Option<std::fs::File> {
         .write(true)
         .open(lock_path(tool))
         .ok()?;
-    f.try_lock().ok()?;
-    Some(f)
+    let until = Instant::now() + LOCK_RETRY;
+    loop {
+        match f.try_lock() {
+            Ok(()) => return Some(f),
+            Err(std::fs::TryLockError::WouldBlock) if Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(_) => return None,
+        }
+    }
 }
 
 /// This repository's technologies the cache already holds an index for.
@@ -881,6 +893,16 @@ fn codex_inline_hooks(root: &Path) -> bool {
         .is_some_and(|t| t.contains_key("hooks"))
 }
 
+/// Whether the repository's `.codex/hooks.json` holds our hook.
+pub fn codex_hook_present(root: &Path) -> bool {
+    crate::hooks::present(root, CODEX_HOOKS_PATH, CODEX_HOOK_ARGS)
+}
+
+/// Whether `unstale init` would add Codex's hook here: none of ours yet, and nothing that stops it being added.
+pub fn codex_hook_missing(root: &Path) -> bool {
+    !codex_hook_present(root) && !codex_inline_hooks(root) && codex_skipped(root).is_none()
+}
+
 /// Why Codex's hook is not installed here, or `None` when it is (or may be).
 fn codex_skipped(root: &Path) -> Option<&'static str> {
     if codex_inline_hooks(root) {
@@ -899,12 +921,14 @@ fn codex_skipped(root: &Path) -> Option<&'static str> {
         Some(Symlink) => Some(".codex/hooks.json is a link to another file"),
         Some(Unreadable) => Some(".codex/hooks.json cannot be read"),
         Some(NotAnObject) => Some(CODEX_NOT_JSON),
-        // Writable, and still without our hook: the installer could not read it as the JSON object Codex expects
-        // (comments, a syntax error, another shape), so it left the user's bytes alone.
-        None => root
-            .join(CODEX_HOOKS_PATH)
-            .is_file()
-            .then_some(CODEX_NOT_JSON),
+        // Writable, and still without our hook: when the installer could not read it as the JSON object Codex
+        // expects (comments, a syntax error, another shape), it left the user's bytes alone. A file it could add to
+        // is only not added to yet (`unstale init` adds it).
+        None => std::fs::read_to_string(root.join(CODEX_HOOKS_PATH)).ok().and_then(|t| {
+            crate::hooks::insert(&t, &crate::hooks::group("unstale notify", 5), CODEX_HOOK_ARGS)
+                .is_none()
+                .then_some(CODEX_NOT_JSON)
+        }),
     }
 }
 
@@ -923,7 +947,7 @@ fn codex_skipped_line(root: &Path) -> Option<String> {
 /// after it changes. Not when the repository's `.codex/config.toml` defines hooks inline, nor in a file Git tracks, a
 /// read-only file, or one that does not parse.
 pub fn install_codex_hook(ctx: &Ctx) -> Result<()> {
-    if codex_inline_hooks(&ctx.root) {
+    if codex_inline_hooks(&ctx.root) || !(onboarding::adding() || codex_hook_present(&ctx.root)) {
         return Ok(());
     }
     let command = format!("{} {CODEX_HOOK_ARGS}", crate::hooks::invocation_word());
@@ -1023,7 +1047,7 @@ pub fn install_opencode_plugin(ctx: &Ctx) -> Result<Option<String>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Ok(None),
     };
-    if old.as_deref().is_some_and(|t| !t.contains(MARKER)) {
+    if old.as_deref().is_some_and(|t| !t.contains(MARKER)) || (old.is_none() && !onboarding::adding()) {
         return Ok(None);
     }
     let text = opencode_plugin(&onboarding::invocation_argv());
@@ -1063,6 +1087,9 @@ pub fn install_opencode_command(ctx: &Ctx) -> Result<Option<String>> {
     let old = std::fs::read_to_string(&path).ok();
     if linked || (path.exists() && !old.as_deref().is_some_and(|t| t.contains(MARKER))) {
         return Ok(Some(OPENCODE_COMMAND_PATH.to_string()));
+    }
+    if !path.exists() && !onboarding::adding() {
+        return Ok(None);
     }
     let text = opencode_command();
     if old.as_deref() != Some(text.as_str())
@@ -1129,6 +1156,29 @@ pub fn uninstall_hooks(root: &Path, backup: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The hook's probe takes the lock for an instant to test it, as often as every 5 ms while it waits for the stage
+    /// to start. A stage starting in that instant must still get the lock, not take the probe for another stage.
+    #[test]
+    fn the_hooks_probe_never_turns_the_stage_away() {
+        let d = tempfile::tempdir().unwrap();
+        let tool = d.path().to_path_buf();
+        std::fs::write(tool.join("config.json"), "{}").unwrap();
+        assert!(repo_lock(&tool).is_some());
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let probe = {
+            let (tool, stop) = (tool.clone(), stop.clone());
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = running(&tool);
+                }
+            })
+        };
+        let turned_away = (0..2000).filter(|_| repo_lock(&tool).is_none()).count();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        probe.join().unwrap();
+        assert_eq!(turned_away, 0, "the stage found the probe's lock and would have done nothing");
+    }
 
     #[test]
     fn the_session_start_line_says_what_is_new_and_the_command() {

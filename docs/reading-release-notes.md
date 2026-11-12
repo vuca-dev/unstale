@@ -6,7 +6,8 @@ Codex plan there is nothing extra to pay. The cost stays small because each rele
 packages you use, and every answer is kept.
 
 `unstale init` asks once which option to use. `unstale setup` asks again, and `unstale setup --details` prints the
-figures for your repository.
+figures for your repository. To turn this off, set `UNSTALE_EDGE_INFERENCE=0`: unstale then asks nothing, calls no
+model and uses the shared catalog only.
 
 ## The options
 

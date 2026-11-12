@@ -309,9 +309,9 @@ pub fn fenced(value: &str) -> String {
     format!("{fence}text\n{value}\n{fence}\n")
 }
 
-/// The edge-inference switch when `UNSTALE_EDGE_INFERENCE` is unset or not one of its spellings. The release that turns
-/// the switch on by default changes this to `true`.
-pub const EDGE_INFERENCE_DEFAULT: bool = false;
+/// The edge-inference switch when `UNSTALE_EDGE_INFERENCE` is unset or not one of its spellings: on.
+/// `UNSTALE_EDGE_INFERENCE=0` (or `false`, `off`, `no`) turns it off.
+pub const EDGE_INFERENCE_DEFAULT: bool = true;
 
 /// The edge-inference switch, read here and nowhere else: `UNSTALE_EDGE_INFERENCE=1` (or `true`, `on`, `yes`) is on,
 /// `0` (or `false`, `off`, `no`) is off, any case; anything else is `EDGE_INFERENCE_DEFAULT`. Off, the client behaves as before it existed; on, a sync

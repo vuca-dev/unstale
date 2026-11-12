@@ -32,8 +32,9 @@ last.
 
 ## One switch
 
-Everything the sprint adds to the client's behaviour sits behind one switch, **off by default until WS7**: with it
-off, the client behaves exactly as it does today (catalog records, no model calls, no picker). With it on:
+Everything the sprint adds to the client's behaviour sits behind one switch, `UNSTALE_EDGE_INFERENCE`, **on by
+default since the release switch-on**. `UNSTALE_EDGE_INFERENCE=0` (or `false`, `off`, `no`) turns it off, and the
+client then behaves as it did before (catalog records, no model calls, no picker). With it on:
 
 - **Catalog records win where they exist.** For a release whose records are in the catalog, the client uses them
   and makes no model call. It runs its own steps only for releases that have change events and no catalog records.
@@ -41,7 +42,7 @@ off, the client behaves exactly as it does today (catalog records, no model call
   re-derived on the user's tokens.
 - The picker, the session-start sync and no-key mode are active.
 
-Tests and the environment matrix turn the switch on. WS7 flips the default.
+Tests and the environment matrix state the switch explicitly; the scenarios that mean it off set `0`.
 
 ## Resolved decisions (10 November 2026)
 

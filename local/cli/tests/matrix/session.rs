@@ -25,7 +25,14 @@ pub(crate) struct Session {
     pub(crate) ran: Vec<Ran>,
     /// The provider the session chose, as recorded in the config, when the model step ran.
     pub(crate) chosen: Option<serde_json::Value>,
+    /// Upgraded only: each command other than `init` that added a session-start integration the earlier setup did not
+    /// have, with what it added.
+    pub(crate) added: Vec<String>,
 }
+
+/// The session-start integrations the release that turned the switch on by default adds: `init` writes them, no
+/// other command does.
+pub(crate) const NEW_INTEGRATIONS: [&str; 2] = [".codex/hooks.json", ".opencode/plugins/unstale-session.js"];
 
 /// What every question opens with: the picker's prompt, its one-option form, and the prompt with nothing usable.
 /// After the details (`d`) the same question stays open at `Your choice (Enter for <n>): `, which is not another
@@ -541,6 +548,7 @@ pub(crate) fn run_session(s: &Scenario) -> Session {
     let world = World::new(s);
     let mut ran: Vec<Ran> = vec![];
     let mut chosen_at_model = None;
+    let mut added = vec![];
     // An earlier client set the repository up; then the catalog moves as it does at a release.
     if s.client.id != "fresh" {
         for args in [
@@ -564,6 +572,12 @@ pub(crate) fn run_session(s: &Scenario) -> Session {
                 "notice": {"id": "matrix", "until": "2026-11-30", "text": NOTICE}})
         };
         world._catalog.root(&root.to_string());
+        if s.client.id == "upgraded" {
+            // The previous release, with the switch off by default, wrote neither.
+            for rel in NEW_INTEGRATIONS {
+                let _ = std::fs::remove_file(world.repo().join(rel));
+            }
+        }
         ran.push(Ran {
             step: Step::Injected,
             shown: String::new(),
@@ -583,9 +597,17 @@ pub(crate) fn run_session(s: &Scenario) -> Session {
         if matches!(step, Step::SessionSync | Step::SessionStart) && chosen_at_model.is_none() {
             chosen_at_model = chosen(&world);
         }
+        let had: Vec<bool> = NEW_INTEGRATIONS.iter().map(|rel| world.repo().join(rel).exists()).collect();
         let Some(mut r) = run_step(&world, s, step, &ran) else {
             continue;
         };
+        if s.client.id == "upgraded" && !matches!(step, Step::Init | Step::InitYes | Step::InitFlag(_)) {
+            for (rel, had) in NEW_INTEGRATIONS.iter().zip(had) {
+                if !had && world.repo().join(rel).exists() {
+                    added.push(format!("`{}` added {rel}", r.shown));
+                }
+            }
+        }
         r.step = step;
         if s.fault == Some(Fault::CodexLoggedOutExits) && step == Step::SessionSync {
             r.code = 1;
@@ -632,5 +654,6 @@ pub(crate) fn run_session(s: &Scenario) -> Session {
         world,
         ran,
         chosen: chosen_at_model,
+        added,
     }
 }

@@ -340,6 +340,11 @@ fn through_symlink(root: &Path, p: &Path) -> bool {
         .any(|a| std::fs::symlink_metadata(a).is_ok_and(|m| m.file_type().is_symlink()))
 }
 
+/// Whether `rel` under `root` holds one of our groups for `args`.
+pub fn present(root: &Path, rel: &str, args: &str) -> bool {
+    std::fs::read_to_string(root.join(rel)).is_ok_and(|t| remove(&t, args).is_some())
+}
+
 /// Why `rel` under `root` may not be written, if it may not. A missing file may be.
 pub fn unwritable(root: &Path, rel: &str) -> Option<Skipped> {
     let path = root.join(rel);

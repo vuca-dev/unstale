@@ -19,10 +19,20 @@ impl Env {
         self.run_with(args, &[])
     }
     fn run_with(&self, args: &[&str], vars: &[(&str, &std::ffi::OsStr)]) -> (i32, String, String) {
-        let out = Command::new(env!("CARGO_BIN_EXE_unstale"))
+        // The edge-inference switch off unless a test sets it, whatever the default or the developer's shell says.
+        let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
+        c.env("UNSTALE_EDGE_INFERENCE", "0");
+        self.output(c, args, vars)
+    }
+    /// [`Env::run_with`] with the edge-inference variable unset: the release's default.
+    fn run_default(&self, args: &[&str], vars: &[(&str, &std::ffi::OsStr)]) -> (i32, String, String) {
+        let mut c = Command::new(env!("CARGO_BIN_EXE_unstale"));
+        c.env_remove("UNSTALE_EDGE_INFERENCE");
+        self.output(c, args, vars)
+    }
+    fn output(&self, mut c: Command, args: &[&str], vars: &[(&str, &std::ffi::OsStr)]) -> (i32, String, String) {
+        let out = c
             .args(args)
-            // The edge-inference switch off unless a test sets it, whatever the default or the developer's shell says.
-            .env("UNSTALE_EDGE_INFERENCE", "0")
             .envs(vars.iter().copied())
             .current_dir(self.repo.path())
             .env("UNSTALE_CACHE_DIR", self.cache.path())
@@ -487,6 +497,43 @@ fn an_unwritable_opencode_directory_is_a_conflict_not_a_failure() {
     }
 }
 
+/// The release's default: with the variable unset the switch is on. An installation the previous release made (switch
+/// off: no Codex or opencode session start) gets them only from `init`. `status`, `sync`, `notify` and `run` write no
+/// new integration file, and the first of them says once, to the agent, what `init` adds.
+#[test]
+fn unset_the_switch_is_on_and_only_init_adds_new_integrations() {
+    let cat = FixtureCatalog::new(); publish(&cat);
+    let env = Env { repo: fixture_repo(), cache: tempfile::tempdir().unwrap() };
+    Command::new("git").args(["init", "-q"]).current_dir(env.repo.path()).status().unwrap();
+    let config = tempfile::tempdir().unwrap();
+    let vars: [(&str, &std::ffi::OsStr); 2] = [("UNSTALE_CONFIG_DIR", config.path().as_os_str()), ("CLAUDECODE", "1".as_ref())];
+    let init = ["init", "--service", cat.loc(), "--mode", "local", "--yes", "--wait", "0", "--no-animation"];
+    let new = [".codex/hooks.json", ".opencode/plugins/unstale-session.js"];
+    let present = |rel: &str| env.repo.path().join(rel).exists();
+    let (code, out, err) = env.run_with(&init, &vars);
+    assert_eq!(code, 0, "stdout:\n{out}\nstderr:\n{err}");
+    assert!(present(".agents/skills/unstale-review/SKILL.md") && present(".claude/settings.local.json"));
+    assert!(new.iter().all(|rel| !present(rel)), "the previous release wrote no Codex or opencode session start");
+    let line = "New in this version: session-start updates for Codex and opencode. Run `unstale init` to add them.";
+    let mut said = 0;
+    for args in [&["status", "--wait", "0", "--no-animation"][..], &["sync"], &["notify"], &["run"]] {
+        let (code, out, err) = env.run_default(args, &vars);
+        assert_eq!(code, 0, "{args:?}\nstdout:\n{out}\nstderr:\n{err}");
+        said += out.matches(line).count();
+        for rel in new {
+            assert!(!present(rel), "{args:?} wrote {rel}");
+        }
+        if args == ["sync"] {
+            assert!(out.contains("next: 6 upstream changes on file, "), "the switch is on by default:\n{out}");
+        }
+    }
+    assert_eq!(said, 1, "the line once");
+    let (code, out, err) = env.run_default(&init, &vars);
+    assert_eq!(code, 0, "stdout:\n{out}\nstderr:\n{err}");
+    assert!(new.iter().all(|rel| present(rel)), "init adds them");
+    assert!(!out.contains(line), "{out}");
+}
+
 /// opencode 2.x offers command files, not skills, as slash commands: `/unstale-review` is a command file that points
 /// at the review skill, kept out of Git in personal mode like the skills, committed in shared mode, gone on uninstall.
 #[test]
@@ -530,6 +577,8 @@ fn uninstall_preserves_symlinked_agent_directories_and_stops_at_nested_git_roots
     env.ok(&["init", "--catalog", cat.loc(), "--mode", "local", "--yes"]);
     let external = tempfile::tempdir().unwrap();
     write(external.path(), "skills/unstale-review/SKILL.md", "<!-- Managed by unstale; regenerated from .unstale. -->");
+    // `init` wrote its own `.agents`; the user's link takes its place.
+    std::fs::remove_dir_all(env.repo.path().join(".agents")).unwrap();
     std::os::unix::fs::symlink(external.path(), env.repo.path().join(".agents")).unwrap();
     std::fs::create_dir_all(env.repo.path().join("nested/.git")).unwrap();
     let out = env.ok(&["-C", env.repo.path().join("nested").to_str().unwrap(), "uninstall"]);
