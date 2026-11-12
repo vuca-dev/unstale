@@ -42,7 +42,7 @@
 [1.48,"o","  1 Jev + Vercel AI Gateway key   ≈ $0.11 a year   the best option\r\n"]
 [1.54,"o","  2 Vercel AI Gateway key         ≈ $0.16 a year   ≈ 3% less precise labels\r\n"]
 [1.6,"o","  3 Anthropic key                 ≈ $0.23 a year   ≈ 90% of the best option's changes\r\n"]
-[1.66,"o","  4 Not now                       free             ≈ 27% of changes in new releases\r\n"]
+[1.66,"o","  4 Not now                       free             ≈ 27% of a full report's findings\r\n"]
 [1.72,"o","    Jev: a labelling service, used beside the provider that reads the notes.\r\n"]
 [1.78,"o","\r\n"]
 [1.84,"o","This repo's config suggests Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), which is not one of the options here.\r\n"]

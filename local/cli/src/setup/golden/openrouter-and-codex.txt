@@ -2,6 +2,6 @@ How should unstale read new release notes?
 
   ● OpenRouter key   ≈ $0.052 a year   ≈ 3% less precise labels
   ○ Codex plan       no extra cost     your Codex plan, up to the limit you set
-  ○ Not now          free              ≈ 27% of changes in new releases
+  ○ Not now          free              ≈ 27% of a full report's findings
 
 ↑↓ to move · Enter to choose · d for details

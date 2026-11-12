@@ -164,7 +164,7 @@
 [9.38,"o","\r\n"]
 [9.44,"o","     Read with   Key                 Cost a year, this repo   Compared with the best option\r\n"]
 [9.5,"o","  1  Anthropic   ANTHROPIC_API_KEY   ≈ $0.23                  ≈ 90% of its changes\r\n"]
-[9.56,"o","  2  Not now                         free                     ≈ 27% of its changes in new releases\r\n"]
+[9.56,"o","  2  Not now                         free                     ≈ 27% of a full report's findings\r\n"]
 [9.62,"o","\r\n"]
 [9.68,"o","Record their answer with the matching command:\r\n"]
 [9.74,"o","  1  unstale setup --inference env:ANTHROPIC_API_KEY\r\n"]

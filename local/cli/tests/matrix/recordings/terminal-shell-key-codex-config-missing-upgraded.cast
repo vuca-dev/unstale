@@ -139,7 +139,7 @@
 [9.39,"o","\r\n"]
 [9.45,"o","  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels\r\n"]
 [9.51,"o","  ○ Codex plan   no extra cost    your Codex plan, up to the limit you set\r\n"]
-[9.57,"o","  ○ Not now      free             ≈ 27% of changes in new releases\r\n"]
+[9.57,"o","  ○ Not now      free             ≈ 27% of a full report's findings\r\n"]
 [9.63,"o","\r\n"]
 [9.69,"o","This repo's config suggests OpenRouter (OPENROUTER_API_KEY), which is not one of the options here.\r\n"]
 [9.75,"o","\r\n"]

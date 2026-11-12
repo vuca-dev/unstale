@@ -5,7 +5,7 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
   1 OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
-  2 Not now      free             ≈ 27% of changes in new releases
+  2 Not now      free             ≈ 27% of a full report's findings
 
 This repo's config suggests Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), which is not one of the options here.
 

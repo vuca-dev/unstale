@@ -260,8 +260,8 @@ pub const NO_KEY_MODE: bool = false;
 
 /// What a user still gets with no provider, as a share (percent) of a full report's real findings: the sections built
 /// with no model at all (publisher deprecations, unmaintained packages, lockfile advisories) hold 42 of 154 real
-/// findings on the evaluation pool, 27% (28% of the ones to act on now). Source: `eval/no-key/PREREGISTRATION.md` on
-/// branch `ws9/no-key-mode`. `None` prints the trade in words, with no figure.
+/// findings of a full report on the evaluation pool, 27% (28% of the ones to act on now). Source:
+/// `eval/no-key/RESULTS.md`. `None` prints the trade in words, with no figure.
 pub const NO_PROVIDER_SHARE: Option<u32> = Some(27);
 
 /// One option of the picker.

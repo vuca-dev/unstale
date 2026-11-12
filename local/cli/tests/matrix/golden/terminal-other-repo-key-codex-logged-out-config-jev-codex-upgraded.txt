@@ -50,8 +50,10 @@ $ unstale init --wait 0 --no-animation
 unstale reads new release notes with a model, on your own key or your Codex plan.
 None is set up here (Codex is not logged in).
 
-  1 Set one up   shows the one line to add
-  2 Not now      free · advisories and deprecations only, ≈ 27% of changes in new releases
+  1 Set one up
+    shows the one line to add
+  2 Not now
+    free · deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings
 
 This repo's config suggests Jev + Codex plan: set JEV_API_KEY, install Codex and run `codex login`, then run `unstale setup`.
 

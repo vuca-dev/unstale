@@ -92,13 +92,13 @@ fn cost(q: &Quote, years: f64) -> String {
     parts.join(" + ")
 }
 
-/// What is left without a provider, in the reader's words. Only new releases go without: what the catalog already
-/// holds is reviewed in full either way, so every statement of the trade is scoped to new releases.
-pub const WITHOUT: &str = "advisories and deprecations only";
+/// What is left without a provider, in the reader's words: the report sections built with no model (publisher
+/// deprecations, unmaintained packages, security advisories), short enough that a line stating it fits 100 columns.
+pub const WITHOUT: &str = "deprecations, unmaintained packages and advisories";
 
-/// `≈ 27% of the changes in new releases`, when the share is measured.
-fn without_share() -> Option<String> {
-    NO_PROVIDER_SHARE.map(|n| format!("≈ {n}% of the changes in new releases"))
+/// The measured share: `≈ 27% of a full report's findings`.
+fn without_cell(n: u32) -> String {
+    format!("≈ {n}% of a full report's findings")
 }
 
 // ----------------------------------------------------------------------------------------------------------- cells
@@ -148,10 +148,9 @@ fn cost_cell(q: &Quote, techs: usize) -> String {
 /// The one quality figure, against the best option.
 fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
     if p == Pick::None && !no_key {
-        // Against the best option, as the other rows are ("≈ 80% of its changes"), scoped to new releases.
         return match NO_PROVIDER_SHARE {
-            Some(n) => format!("≈ {n}% of its changes in new releases"),
-            None => format!("in new releases, {WITHOUT}"),
+            Some(n) => without_cell(n),
+            None => WITHOUT.into(),
         };
     }
     let figure = match q.quality {
@@ -498,8 +497,8 @@ fn menu_trade(p: Pick, q: &Quote, no_key: bool) -> String {
     }
     if p == Pick::None && !no_key {
         return match NO_PROVIDER_SHARE {
-            Some(n) => format!("≈ {n}% of changes in new releases"),
-            None => format!("in new releases, {WITHOUT}"),
+            Some(n) => without_cell(n),
+            None => WITHOUT.into(),
         };
     }
     let figure = match q.quality {
@@ -603,7 +602,7 @@ fn nothing_menu(d: &Detected, width: usize) -> Menu {
     let mut head: Vec<String> = lines[..blank].to_vec();
     head.push(String::new());
     let left = match NO_PROVIDER_SHARE {
-        Some(n) => format!("free · {WITHOUT}, ≈ {n}% of changes in new releases"),
+        Some(n) => format!("free · {WITHOUT}: {}", without_cell(n)),
         None => format!("free · {WITHOUT}"),
     };
     let cells = vec![
@@ -796,8 +795,8 @@ fn choices(rows: &[(&str, String)], width: usize) -> Vec<String> {
 
 /// With no key and no Codex: a choice between setting one up and going without, with what going without leaves.
 pub fn nothing_lines(d: &Detected, reader: Reader, width: usize) -> Vec<String> {
-    let left = match without_share() {
-        Some(share) => format!("free · {WITHOUT}, {share}"),
+    let left = match NO_PROVIDER_SHARE {
+        Some(n) => format!("free · {WITHOUT}: {}", without_cell(n)),
         None => format!("free · {WITHOUT}"),
     };
     let aside = codex_aside(d);
@@ -974,8 +973,8 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
     if p == Pick::None && !no_key {
         return vec![(
             "results",
-            match without_share() {
-                Some(share) => format!("{WITHOUT}: {share}"),
+            match NO_PROVIDER_SHARE {
+                Some(n) => format!("{WITHOUT}: {}", without_cell(n)),
                 None => WITHOUT.into(),
             },
         )];
@@ -1064,7 +1063,7 @@ pub fn saved_lines(c: &Choice, place: Origin, repo_choice: Option<&Choice>) -> V
         Origin::User => "Saved for you",
     };
     let mut out = vec![if c.is_none() {
-        format!("{whom}: release notes not read, so new releases get {WITHOUT}.")
+        format!("{whom}: no release notes read; {WITHOUT} only.")
     } else {
         format!("{whom}: {} reads release notes.", short(c))
     }];
@@ -1083,7 +1082,7 @@ pub fn saved_lines(c: &Choice, place: Origin, repo_choice: Option<&Choice>) -> V
 
 /// The line after the picker is dismissed without a choice.
 pub fn dismissed_line() -> String {
-    format!("Nothing chosen: new releases get {WITHOUT}. `unstale setup` asks again.")
+    format!("Nothing chosen: {WITHOUT} only. `unstale setup` asks again.")
 }
 
 /// The line after a reopened picker is dismissed: the choice made before stays.

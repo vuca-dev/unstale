@@ -49,8 +49,8 @@ react: 1 upstream change on file, nothing new
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels           suggested by this repo
-  ○ Not now      free             ≈ 27% of changes in new releases
+  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels            suggested by this repo
+  ○ Not now      free             ≈ 27% of a full report's findings
 
 ↑↓ to move · Enter to choose · d for details
 [interrupted]
