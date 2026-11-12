@@ -331,7 +331,7 @@ fn an_unchanged_catalog_costs_one_request_and_a_changed_one_syncs_in_the_backgro
     let line = session_start(&env, env.repo.path(), "new record");
     assert!(
         line.starts_with(
-            "unstale: 1 new upstream change for next. Run `unstale status --wait 0` to see them."
+            "unstale: 1 new upstream change for next. Run `unstale status --wait 0` to see it."
         ),
         "{line}"
     );
