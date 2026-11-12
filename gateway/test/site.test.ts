@@ -57,8 +57,11 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   expect(home).toContain("npx @unstale/cli init");
   // The first run's question, and the trade stated on the page and in its Markdown twin.
   expect(home).toContain("How should unstale read new release notes?");
-  expect(home).toContain("  1  OpenAI      ≈ $1.98                  ≈ 3% less precise labels");
-  expect(home).toContain("  2  Not now     free                     ≈ 27% of its changes in new releases");
+  expect(home).toContain("  ● OpenAI key   ≈ $1.98 a year   ≈ 3% less precise labels");
+  expect(home).toContain("  ○ Not now      free             ≈ 27% of changes in new releases");
+  expect(home).toContain("↑↓ to move · Enter to choose · d for details");
+  expect(home).toContain("Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.");
+  expect(home).not.toContain("Enter for 1");
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8"), readFileSync(join(site, "llms.txt"), "utf8")]) {
     expect(page).toContain("about $0.05 a year per package (measured November 2026)");
     expect(page).toContain("On your Codex plan there is nothing extra to pay");
