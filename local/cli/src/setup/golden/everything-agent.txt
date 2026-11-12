@@ -4,7 +4,7 @@ Never choose for them.
      Read with                 Cost a year, this repo        Compared with the best option
   1  Jev + Vercel AI Gateway   ≈ $1.36                       the best option
   2  Jev + Codex plan          ≈ $0.68 + 6.3M Codex tokens   ≈ 80% of its changes
-  3  Vercel AI Gateway         ≈ $2.43                       same finds, ≈ 3% more false alarms
+  3  Vercel AI Gateway         ≈ $2.43                       ≈ 3% less precise labels
   4  Codex plan                ≈ 25M Codex tokens            ≈ 80% of its changes; rest not measured
   5  Anthropic                 ≈ $2.86                       ≈ 90% of its changes
   6  Not now                   free                          ≈ 27% of its changes in new releases

@@ -158,12 +158,15 @@ fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
         Quality::Same => "about the same".into(),
         Quality::Unmeasured => "not measured yet".into(),
         Quality::Share { pct, of, .. } => format!("≈ {pct}% of its {of}"),
+        // Scoped in the row to "labels" though only breaking-change flags are less precise (change type is level or
+        // better, benefits about level, `eval/provider-matrix/RESULTS.md`): true enough for the choice, and it fits.
+        // The details name the flags.
         Quality::MoreWrong {
-            wrong,
-            best_wrong,
-            found,
-            ..
-        } => format!("same finds, ≈ {}% more false alarms", wrong.saturating_sub(best_wrong)),
+            wrong, best_wrong, ..
+        } => format!(
+            "≈ {}% less precise labels",
+            wrong.saturating_sub(best_wrong)
+        ),
     };
     if q.labels_and_matching_measured {
         figure
@@ -711,11 +714,18 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
         } => {
             out.push((
                 "results",
-                format!("the same {found} as the best option, more false alarms"),
+                format!(
+                    "as many {found} found as the best option; ≈ {}% less precise",
+                    wrong.saturating_sub(best_wrong)
+                ),
             ));
             out.push((
                 "",
-                format!("≈ {wrong}% of {of} false alarms, against {best_wrong}%"),
+                format!(
+                    "≈ {}% of {of} right, against {}%",
+                    100 - wrong,
+                    100 - best_wrong
+                ),
             ));
             out.extend(detail.iter().map(|l| ("", l.to_string())));
         }

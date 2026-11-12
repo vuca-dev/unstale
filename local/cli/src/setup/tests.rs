@@ -526,7 +526,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
             Pick::JevKey(_) => "the best option",
             Pick::JevCodex => "≈ 80% of its changes",
             Pick::Key(Route::Anthropic) => "≈ 90% of its changes",
-            Pick::Key(_) | Pick::SnapKey(_) => "same finds, ≈ 3% more false alarms",
+            Pick::Key(_) | Pick::SnapKey(_) => "≈ 3% less precise labels",
             Pick::Codex => "≈ 80% of its changes; rest not measured",
             Pick::None => unreachable!(),
         };

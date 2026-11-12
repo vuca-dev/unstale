@@ -253,7 +253,7 @@
 [16.81,"o","Never choose for them.\r\n"]
 [16.87,"o","\r\n"]
 [16.93,"o","     Read with  Key                    Cost a year, this repo  Compared with the best option\r\n"]
-[16.99,"o","  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.19                 same finds, ≈ 3% more false alarms\r\n"]
+[16.99,"o","  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.19                 ≈ 3% less precise labels\r\n"]
 [17.05,"o","  2  Not now                           free                    ≈ 27% of its changes in new releases\r\n"]
 [17.11,"o","\r\n"]
 [17.17,"o","Record their answer with the matching command:\r\n"]
