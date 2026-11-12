@@ -1,8 +1,7 @@
 How should unstale read new release notes?
 
-     Read with   Key                 Cost a year, this repo  Compared with the best option
-  1  OpenRouter  OPENROUTER_API_KEY  ≈ $0.052                ≈ 3% less precise labels
-  2  Codex plan                      ≈ 650k Codex tokens     ≈ 80% of its changes; rest not measured
-  3  Not now                         free                    ≈ 27% of its changes in new releases
+  ● OpenRouter key   ≈ $0.052 a year   ≈ 3% less precise labels
+  ○ Codex plan       no extra cost     your Codex plan, up to the limit you set
+  ○ Not now          free              ≈ 27% of changes in new releases
 
-Enter for 1, a number to choose, or d for details: 
+↑↓ to move · Enter to choose · d for details

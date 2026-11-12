@@ -329,8 +329,8 @@ fn keys_line(d: &Detected, opts: &[Pick]) -> Option<String> {
 
 pub const QUESTION: &str = "How should unstale read new release notes?";
 
-/// The picker as printed, up to its prompt: the question, the table, and for an agent the command that records each
-/// answer. Without a usable provider, the prompt that says so ([`nothing_lines`]).
+/// The picker as printed, up to its prompt: for an agent the question, the table and the command that records each
+/// answer, or without a usable provider the prompt that says so ([`nothing_lines`]); for a person the [`menu`].
 pub fn picker_lines(
     d: &Detected,
     techs: usize,
@@ -338,6 +338,10 @@ pub fn picker_lines(
     reader: Reader,
     width: usize,
 ) -> Vec<String> {
+    // A person gets the menu ([`menu`]), marked at the first option.
+    if reader == Reader::Person {
+        return menu(d, techs, no_key, width, None).lines(0);
+    }
     let opts = options(d, no_key);
     if opts.is_empty() {
         return nothing_lines(d, reader, width);
@@ -382,6 +386,221 @@ pub fn prompt_default(n: usize, default: usize) -> String {
             "Enter for {}, a number to choose, or d for details: ",
             default + 1
         ),
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------ menu
+
+/// A choice as a person sees it at a terminal: the question, one row an option with the marked one shown `●`, notes
+/// under the rows, and the line that says how to answer. The agent's listing ([`picker_lines`] for
+/// [`Reader::Agent`]) stays a numbered table with the command for each answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Menu {
+    /// The question and the blank line after it.
+    pub head: Vec<String>,
+    /// Each option's lines; the first starts with `  ○ `, where the mark goes.
+    pub rows: Vec<Vec<String>>,
+    /// Under the rows: what Jev is, a suggestion this machine cannot take.
+    pub notes: Vec<String>,
+    /// The option marked first, which Enter accepts.
+    pub default: usize,
+    /// Whether `d` prints the full figures.
+    pub details: bool,
+}
+
+/// How to answer a menu, where the keys can be read one at a time.
+pub const HINT: &str = "↑↓ to move · Enter to choose · d for details";
+/// [`HINT`] with no details to show.
+pub const HINT_SHORT: &str = "↑↓ to move · Enter to choose";
+
+impl Menu {
+    /// Everything above the line that says how to answer, with the option at `sel` marked.
+    pub fn lines(&self, sel: usize) -> Vec<String> {
+        let mut out = self.head.clone();
+        for (i, r) in self.rows.iter().enumerate() {
+            for (j, l) in r.iter().enumerate() {
+                if j == 0 && i == sel {
+                    out.push(l.replacen('○', "●", 1));
+                } else {
+                    out.push(l.clone());
+                }
+            }
+        }
+        out.extend(self.notes.iter().cloned());
+        out.push(String::new());
+        out
+    }
+
+    pub fn hint(&self) -> &'static str {
+        match (self.rows.len(), self.details) {
+            (1, true) => "Enter to choose · d for details",
+            (1, false) => "Enter to choose",
+            (_, true) => HINT,
+            (_, false) => HINT_SHORT,
+        }
+    }
+
+    /// The typed answer's prompt, where keys cannot be read one at a time (as before the menu).
+    pub fn typed_prompt(&self) -> String {
+        if self.details {
+            prompt_default(self.rows.len(), self.default)
+        } else {
+            nothing_prompt()
+        }
+    }
+}
+
+/// An option's name for a person: `OpenAI key`, `Jev + OpenAI key`, `Codex plan`, `Not now`.
+fn menu_name(p: Pick, no_key: bool) -> String {
+    match p {
+        Pick::JevKey(r) => format!("Jev + {} key", route_name(r)),
+        Pick::SnapKey(r) => format!("Snap + {} key", route_name(r)),
+        Pick::Key(r) => format!("{} key", route_name(r)),
+        other => name(other, no_key),
+    }
+}
+
+/// The one cost, with its unit: `≈ $2.43 a year`. Codex use is the user's plan, not a bill: no extra cost, its
+/// tokens in the details and in `unstale status`.
+fn menu_cost(q: &Quote, techs: usize) -> String {
+    let per = if techs > 0 { "a year" } else { "a year per package" };
+    let years = techs.max(1) as f64;
+    if q.usd > 0.0 {
+        format!("≈ {} {per}", usd(q.usd * years))
+    } else if q.codex_tokens > 0 {
+        "no extra cost".into()
+    } else if q.agent_tokens > 0 {
+        format!("≈ {} {per}", cost(q, years))
+    } else {
+        "free".into()
+    }
+}
+
+/// What the option trades, in words that stand without a column heading.
+fn menu_trade(p: Pick, q: &Quote, no_key: bool) -> String {
+    if matches!(p, Pick::Codex | Pick::JevCodex) {
+        return "your Codex plan, up to the limit you set".into();
+    }
+    if p == Pick::None && !no_key {
+        return match NO_PROVIDER_SHARE {
+            Some(n) => format!("≈ {n}% of changes in new releases"),
+            None => format!("in new releases, {WITHOUT}"),
+        };
+    }
+    let figure = match q.quality {
+        Quality::Best => "the best option".into(),
+        Quality::Same => "about the same as the best option".into(),
+        Quality::Unmeasured => "not measured yet".into(),
+        Quality::Share { pct, of, .. } => format!("≈ {pct}% of the best option's {of}"),
+        Quality::MoreWrong {
+            wrong, best_wrong, ..
+        } => format!(
+            "≈ {}% less precise labels",
+            wrong.saturating_sub(best_wrong)
+        ),
+    };
+    if q.labels_and_matching_measured {
+        figure
+    } else {
+        format!("{figure}; {REST_UNMEASURED}")
+    }
+}
+
+/// Rows of cells after a mark, as aligned columns that fit `width`; too narrow, each row's first cell on its line
+/// and the rest under it, wrapped.
+fn menu_rows(cells: &[Vec<String>], width: usize) -> Vec<Vec<String>> {
+    let rows: Vec<(String, Vec<String>)> = cells
+        .iter()
+        .map(|c| ("  ○".to_string(), c.clone()))
+        .collect();
+    for gutter in [3, 2] {
+        // `columns` sets the first cell two blanks after the mark: one is enough.
+        let lines: Vec<String> = columns(&rows, gutter)
+            .into_iter()
+            .map(|l| l.replacen("○  ", "○ ", 1))
+            .collect();
+        if lines.iter().all(|l| len(l) <= width) {
+            return lines.into_iter().map(|l| vec![l]).collect();
+        }
+    }
+    cells
+        .iter()
+        .map(|c| {
+            let mut out = vec![format!("  ○ {}", c[0])];
+            let rest: Vec<&str> = c[1..]
+                .iter()
+                .map(String::as_str)
+                .filter(|s| !s.is_empty())
+                .collect();
+            out.extend(wrap(&rest.join(" · "), width, 4));
+            out
+        })
+        .collect()
+}
+
+/// The picker for a person: one row an option, `suggested` (this repository's suggestion, where this machine offers
+/// it) marked first and tagged. With nothing usable, the choice between setting one up and going without.
+pub fn menu(d: &Detected, techs: usize, no_key: bool, width: usize, suggested: Option<usize>) -> Menu {
+    let opts = options(d, no_key);
+    if opts.is_empty() {
+        return nothing_menu(d, width);
+    }
+    let cells: Vec<Vec<String>> = opts
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let q = quote(*p, no_key);
+            vec![
+                menu_name(*p, no_key),
+                menu_cost(&q, techs),
+                menu_trade(*p, &q, no_key),
+                if suggested == Some(i) {
+                    "suggested by this repo".into()
+                } else {
+                    String::new()
+                },
+            ]
+        })
+        .collect();
+    let rows = menu_rows(&cells, width);
+    let mut notes: Vec<String> = notes(&opts)
+        .iter()
+        .flat_map(|n| wrap(n.trim_start(), width, 4))
+        .collect();
+    // Under options of two lines each, a note set apart, so it is not read as the last option's.
+    if !notes.is_empty() && rows.iter().any(|r| r.len() > 1) {
+        notes.insert(0, String::new());
+    }
+    Menu {
+        head: vec![QUESTION.to_string(), String::new()],
+        rows,
+        notes,
+        default: suggested.unwrap_or(0),
+        details: true,
+    }
+}
+
+/// With no key and no Codex: the choice [`nothing_lines`] gives, as a menu.
+fn nothing_menu(d: &Detected, width: usize) -> Menu {
+    let lines = nothing_lines(d, Reader::Person, width);
+    // The lead, up to the blank line before the options.
+    let blank = lines.iter().position(|l| l.is_empty()).unwrap_or(0);
+    let mut head: Vec<String> = lines[..blank].to_vec();
+    head.push(String::new());
+    let left = match NO_PROVIDER_SHARE {
+        Some(n) => format!("free · {WITHOUT}, ≈ {n}% of changes in new releases"),
+        None => format!("free · {WITHOUT}"),
+    };
+    let cells = vec![
+        vec!["Set one up".to_string(), "shows the one line to add".into()],
+        vec!["Not now".to_string(), left],
+    ];
+    Menu {
+        head,
+        rows: menu_rows(&cells, width),
+        notes: vec![],
+        default: 0,
+        details: false,
     }
 }
 

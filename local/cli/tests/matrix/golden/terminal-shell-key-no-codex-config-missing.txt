@@ -4,13 +4,12 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with   Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI      OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels
-  2  Not now                      free                     ≈ 27% of its changes in new releases
+  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
+  ○ Not now      free             ≈ 27% of changes in new releases
 
 This repo's config suggests OpenRouter (OPENROUTER_API_KEY), which is not one of the options here.
 
-Enter for 1, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.

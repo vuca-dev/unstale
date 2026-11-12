@@ -1372,20 +1372,16 @@ pub fn run(
     };
     let opts = options(&d, NO_KEY_MODE);
     let width = view::width();
-    for l in view::picker_lines(&d, techs, NO_KEY_MODE, Reader::Person, width) {
-        println!("{l}");
-    }
-    // The team's suggestion, where this machine can use it: the option Enter accepts.
-    let default = suggested
+    // The team's suggestion, where this machine can use it: marked first and tagged.
+    let at = suggested
         .as_ref()
-        .and_then(|t| opts.iter().position(|p| Choice::of(&d, *p) == *t))
-        .unwrap_or(0);
-    if let Some(t) = &suggested {
-        let at = opts.iter().position(|p| Choice::of(&d, *p) == *t);
-        println!(
-            "{}\n",
-            view::suggested_line(t, at, !opts.is_empty(), Reader::Person)
-        );
+        .and_then(|t| opts.iter().position(|p| Choice::of(&d, *p) == *t));
+    let mut menu = view::menu(&d, techs, NO_KEY_MODE, width, at);
+    // A suggestion this machine cannot take: said under the options.
+    if let Some(t) = suggested.as_ref().filter(|_| at.is_none()) {
+        menu.notes.push(String::new());
+        menu.notes
+            .push(view::suggested_line(t, None, !opts.is_empty(), Reader::Person));
     }
     // Dismissed, or "not now" with nothing to use: no config is written, so a team's shared choice is never set by a
     // slip or by one machine's lack of a key. With a choice already made (`unstale setup` reopened), it stays, and
@@ -1400,9 +1396,8 @@ pub fn run(
         println!("{}", view::dismissed_line());
         Ok(())
     };
-    let (mut input, mut out) = (std::io::stdin().lock(), std::io::stdout());
     if opts.is_empty() {
-        return match view::ask(2, &view::nothing_prompt(), &[], &mut input, &mut out) {
+        return match select::ask(&menu, &[]) {
             view::Answered::Option(0) => {
                 println!();
                 for l in view::set_up_lines(&d, Reader::Person, width) {
@@ -1418,14 +1413,7 @@ pub fn run(
         };
     }
     let details = view::details_lines(&d, techs, NO_KEY_MODE);
-    let pick = match view::ask_default(
-        opts.len(),
-        default,
-        &view::prompt_default(opts.len(), default),
-        &details,
-        &mut input,
-        &mut out,
-    ) {
+    let pick = match select::ask(&menu, &details) {
         view::Answered::Option(i) => opts[i],
         view::Answered::Nothing => return dismiss(ctx),
     };
@@ -1449,6 +1437,7 @@ pub fn run(
     Ok(())
 }
 
+pub mod select;
 pub mod view;
 
 #[cfg(test)]

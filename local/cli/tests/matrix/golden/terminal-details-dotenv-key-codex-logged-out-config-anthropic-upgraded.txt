@@ -47,16 +47,6 @@ react: 1 upstream change on file, nothing new
 # the user upgrades the client; the catalog now names this version the newest and the oldest it serves
 
 $ unstale init --wait 0 --no-animation
-How should unstale read new release notes?
-
-     Read with  Key                    Cost a year, this repo  Compared with the best option
-  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.16                 ≈ 3% less precise labels
-  2  Not now                           free                    ≈ 27% of its changes in new releases
-
-This repo's config suggests Anthropic (ANTHROPIC_API_KEY), which is not one of the options here.
-
-Enter for 1, a number to choose, or d for details: d
-
 Costs are estimates from evaluation runs, billed by the provider to your key or plan.
 This repo has 3 packages unstale follows.
 The best option, which the others are compared with: Jev, a labelling service (JEV_API_KEY),
@@ -76,7 +66,14 @@ beside an OpenAI-compatible key.
    cost     free: no model is called
    results  advisories and deprecations only: ≈ 27% of the changes in new releases
 
-Your choice (Enter for 1):
+How should unstale read new release notes?
+
+  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
+  ○ Not now      free             ≈ 27% of changes in new releases
+
+This repo's config suggests Anthropic (ANTHROPIC_API_KEY), which is not one of the options here.
+
+↑↓ to move · Enter to choose · d for details
 Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.

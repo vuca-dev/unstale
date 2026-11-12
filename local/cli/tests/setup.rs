@@ -302,7 +302,7 @@ const SWITCH_ON_LINES: [&str; 7] = [
 ];
 
 /// The start of every question setup asks.
-const QUESTION: &str = "Enter for 1,";
+const QUESTION: &str = "Enter to choose";
 
 impl World {
     /// Runs at a terminal (a pseudo-terminal from `script`), typing `input`.
@@ -337,9 +337,10 @@ impl World {
         for (k, v) in extra {
             c.env(k, v);
         }
-        let prompt = "Enter for 1|Enter to use it";
+        let prompt = "Enter for 1|Enter to use it|Enter to choose";
         let (_, out) = support::at_terminal(&c, &[(prompt, input)], Duration::from_secs(60));
-        out.replace('\r', "")
+        // As the terminal shows it: a menu redrawn as the mark moves leaves its last state.
+        support::screen(&out)
     }
 }
 
@@ -378,14 +379,11 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     assert!((w.chosen().is_null() && w.config().get("inference").is_none()), "{quiet}");
     let first = w.at_terminal(&init, "\n");
     assert_eq!(first.matches(QUESTION).count(), 1, "one question:\n{first}");
-    // The question on its own line, a blank line, the table.
+    // The question on its own line, a blank line, the options with the first marked, a blank line, how to answer.
     assert!(
-        first.contains("How should unstale read new release notes?\n\n     Read with"),
-        "{first}"
-    );
-    assert!(
-        first.contains("\n  1  Jev + OpenAI       ≈ $0.036 ")
-            && first.contains("\n     Keys: JEV_API_KEY, OPENAI_API_KEY (.env)\n"),
+        first.contains("How should unstale read new release notes?\n\n  ● Jev + OpenAI key   ≈ $0.036 a year ")
+            && first.contains("\n  ○ Not now  ")
+            && first.contains("\n\n↑↓ to move · Enter to choose · d for details\n"),
         "{first}"
     );
     assert!(
@@ -418,8 +416,8 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
             .contains("of 48M this month (the default limit; `unstale setup --limit` changes it)"),
         "{changed}"
     );
-    // Reopened and dismissed (Ctrl-D, or three answers that are not choices): the choice stays, and the line says so.
-    for typed in ["\u{4}", "x\nx\nx\n"] {
+    // Reopened and dismissed (Ctrl-D, or `q`): the choice stays, and the line says so.
+    for typed in ["\u{4}", "q"] {
         let kept = w.at_terminal(&["setup"], typed);
         assert!(
             kept.contains("Nothing changed: still reading with Codex plan."),
@@ -657,6 +655,93 @@ fn a_dismissed_picker_writes_no_config_and_is_not_asked_again_on_this_machine() 
         w.chosen(),
         serde_json::json!({"provider": "none"})
     );
+}
+
+/// [`World::command`] for a shell script at a terminal, run in the repository with the same environment; the script
+/// gets the client's path as `$1`.
+fn shell_at_terminal(w: &World, script: &str, answers: &[(&str, &str)]) -> (i32, String) {
+    let mut c = Command::new("/bin/sh");
+    c.args(["-c", script, "sh", env!("CARGO_BIN_EXE_unstale")]).current_dir(w.path("repo")).env_clear();
+    for (k, v) in w.command(&[], true).get_envs() {
+        if let Some(v) = v {
+            c.env(k, v);
+        }
+    }
+    let (code, out) = support::at_terminal(&c, answers, Duration::from_secs(60));
+    (code, support::screen(&out))
+}
+
+#[test]
+fn what_was_typed_before_the_menu_drew_is_not_an_answer() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    w.init(true, &[]);
+    w.wait_idle();
+    // Typed at once, before the menu is drawn (an empty prompt matches at the start), then Ctrl-D at the menu.
+    let mut c = w.command(&["setup"], true);
+    c.stdin(Stdio::null());
+    let (_, out) = support::at_terminal(
+        &c,
+        &[("", "git status\n"), ("Enter to choose", "\u{4}")],
+        Duration::from_secs(60),
+    );
+    let out = support::screen(&out);
+    assert!(!out.contains("Saved for"), "{out}");
+    assert!(out.contains("Nothing chosen"), "{out}");
+    assert!(w.chosen().is_null(), "{out}");
+}
+
+#[test]
+fn a_signal_at_the_menu_restores_the_terminal() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    w.init(true, &[]);
+    w.wait_idle();
+    // Once the menu has the terminal in key-at-a-time mode, the signal; then the terminal's mode as the shell sees it.
+    let script = r#"P=$$
+for sig in TERM HUP INT; do
+  ( until stty -a </dev/tty 2>/dev/null | grep -q -- '-icanon'; do sleep 0.05; done; pkill -$sig -P $P unstale ) &
+  "$1" setup
+  echo "after $sig: exit $? $(stty -a | grep -o -- '-*icanon' | head -1) $(stty -a | grep -o -- '-*echo ' | head -1)"
+done"#;
+    let (_, out) = shell_at_terminal(&w, script, &[]);
+    for (sig, code) in [("TERM", 143), ("HUP", 129), ("INT", 130)] {
+        assert!(out.contains(&format!("after {sig}: exit {code} icanon echo")), "{out}");
+    }
+    assert!(w.chosen().is_null(), "{out}");
+}
+
+#[test]
+fn a_terminal_that_cannot_switch_mode_is_put_back_and_asked_by_typing() {
+    let w = World::new(Some(true));
+    std::fs::write(w.path("repo/.env"), "OPENAI_API_KEY=x\n").unwrap();
+    w.init(true, &[]);
+    w.wait_idle();
+    // An `stty` that saves the settings but refuses to change them.
+    let log = w.path("stty.log");
+    std::fs::create_dir_all(w.path("bin")).unwrap();
+    let fake = w.path("bin/stty");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\necho \"$*\" >> '{}'\ncase \"$1\" in -icanon) exit 1;; esac\nexec /bin/stty \"$@\"\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let out = w.at_terminal(&["setup"], "\n");
+    let calls = std::fs::read_to_string(&log).unwrap();
+    let lines: Vec<&str> = calls.lines().collect();
+    let at = lines.iter().position(|l| l.starts_with("-icanon")).unwrap_or_else(|| panic!("{calls}"));
+    let saved = lines[..at].iter().rev().find(|l| **l == "-g").map(|_| ()).is_some();
+    assert!(saved, "{calls}");
+    // The call after the refused one puts back what `-g` printed: a single word of settings, not a change.
+    let restore = lines.get(at + 1).unwrap_or_else(|| panic!("{calls}"));
+    assert!(!restore.starts_with('-') && !restore.contains(' '), "{calls}");
+    assert!(out.contains("Enter for 1, a number to choose, or d for details:"), "{out}");
+    assert!(out.contains("Saved for you: Jev + OpenAI"), "{out}");
 }
 
 #[test]
