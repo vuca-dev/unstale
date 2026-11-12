@@ -364,7 +364,7 @@ fn with_model_steps_off_infer_makes_no_call() {
         .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
         .env("UNSTALE_DEV_INFER", "1")
         .env("CANARY_KEY", CANARY)
-        .env_remove("UNSTALE_EDGE_INFERENCE")
+        .env("UNSTALE_EDGE_INFERENCE", "0")
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0));
@@ -546,8 +546,9 @@ fn chrono_month() -> String {
 }
 
 #[test]
-fn both_spellings_of_the_switch_turn_model_steps_on() {
-    for (value, calls) in [("1", 1), ("true", 1), ("0", 0), ("yes", 0)] {
+fn both_spellings_of_the_switch_turn_model_steps_on_and_off() {
+    // Other values are the default, as unset is (`util::edge_inference_from`'s test).
+    for (value, calls) in [("1", 1), ("true", 1), ("0", 0), ("false", 0)] {
         let (url, seen) = mock(200, OPENAI_OK, Duration::ZERO);
         let cache = tempfile::tempdir().unwrap();
         let out = Command::new(env!("CARGO_BIN_EXE_unstale"))

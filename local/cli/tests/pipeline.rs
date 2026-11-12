@@ -99,10 +99,7 @@ fn run_step_of(
         .env("UNSTALE_CONFIG_DIR", cache.join("user-config"))
         .env("UNSTALE_TEST_STEP_KEY", "k")
         .env("UNSTALE_DEV_INFER", "1")
-        .env_remove("UNSTALE_EDGE_INFERENCE");
-    if switch {
-        c.env("UNSTALE_EDGE_INFERENCE", "1");
-    }
+        .env("UNSTALE_EDGE_INFERENCE", if switch { "1" } else { "0" });
     let out = c.output().unwrap();
     assert!(
         out.status.success(),
@@ -381,11 +378,8 @@ impl Repo {
             .env("UNSTALE_INFERENCE_BASE_URL", &self.main)
             .env("UNSTALE_LABELS_BASE_URL", &self.jev)
             .env_remove("UNSTALE_CATALOG")
-            .env_remove("UNSTALE_EDGE_INFERENCE")
+            .env("UNSTALE_EDGE_INFERENCE", if switch { "1" } else { "0" })
             .stdin(std::process::Stdio::null());
-        if switch {
-            c.env("UNSTALE_EDGE_INFERENCE", "1");
-        }
         for (k, v) in env {
             c.env(k, v);
         }

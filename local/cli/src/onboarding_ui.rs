@@ -158,7 +158,7 @@ fn plain_lines(last: &mut (String, String, String), title: &str, detail: &str) -
 /// agent, CI, a pipe), a line per step is noise the reader does nothing with, so with the edge-inference switch on the
 /// run is silent until its result. With the switch off the stage lines print as before.
 fn quiet_progress() -> bool {
-    std::env::var("UNSTALE_EDGE_INFERENCE").is_ok_and(|v| matches!(v.trim(), "1" | "true"))
+    crate::util::edge_inference()
 }
 
 pub struct Display {

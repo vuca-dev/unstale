@@ -87,9 +87,7 @@ impl World {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if switch {
-            c.env("UNSTALE_EDGE_INFERENCE", "1");
-        }
+        c.env("UNSTALE_EDGE_INFERENCE", if switch { "1" } else { "0" });
         c
     }
 

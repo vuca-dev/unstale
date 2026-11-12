@@ -309,10 +309,24 @@ pub fn fenced(value: &str) -> String {
     format!("{fence}text\n{value}\n{fence}\n")
 }
 
-/// The edge-inference switch, off by default: `UNSTALE_EDGE_INFERENCE=1` (or `true`). Off, the client behaves as
-/// before it existed; on, a sync also fetches each synced technology's change events for the client's own model steps.
+/// The edge-inference switch when `UNSTALE_EDGE_INFERENCE` is unset or not one of its spellings. The release that turns
+/// the switch on by default changes this to `true`.
+pub const EDGE_INFERENCE_DEFAULT: bool = false;
+
+/// The edge-inference switch, read here and nowhere else: `UNSTALE_EDGE_INFERENCE=1` (or `true`) is on, `0` (or
+/// `false`) is off, anything else is `EDGE_INFERENCE_DEFAULT`. Off, the client behaves as before it existed; on, a sync
+/// also fetches each synced technology's change events for the client's own model steps.
 pub fn edge_inference() -> bool {
-    std::env::var("UNSTALE_EDGE_INFERENCE").is_ok_and(|v| matches!(v.trim(), "1" | "true"))
+    edge_inference_from(std::env::var("UNSTALE_EDGE_INFERENCE").ok().as_deref())
+}
+
+/// `edge_inference` for a given value of the variable (`None`: unset).
+pub fn edge_inference_from(value: Option<&str>) -> bool {
+    match value.map(str::trim) {
+        Some("1" | "true") => true,
+        Some("0" | "false") => false,
+        _ => EDGE_INFERENCE_DEFAULT,
+    }
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {
@@ -357,6 +371,19 @@ pub fn concurrent<T: Sync, R: Send>(items: &[T], width: usize, work: impl Fn(&T)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_switch_reads_its_spellings_and_falls_back_to_the_default() {
+        for on in ["1", "true", " 1 "] {
+            assert!(edge_inference_from(Some(on)), "{on:?}");
+        }
+        for off in ["0", "false", " false\n"] {
+            assert!(!edge_inference_from(Some(off)), "{off:?}");
+        }
+        for other in [None, Some(""), Some("yes"), Some("TRUE")] {
+            assert_eq!(edge_inference_from(other), EDGE_INFERENCE_DEFAULT, "{other:?}");
+        }
+    }
 
     #[test]
     fn concurrent_reports_every_result_and_stops_when_asked() {
