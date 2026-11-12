@@ -1431,7 +1431,7 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
             if names.contains(&"Claude Code") {
                 install_session_hook(ctx)?;
             }
-            // Codex's and opencode's session start: with the edge-inference switch on only, until the release.
+            // Codex's and opencode's session start: with the edge-inference switch on only.
             if names.contains(&"Codex") && util::edge_inference() {
                 crate::session::install_codex_hook(ctx)?;
             }

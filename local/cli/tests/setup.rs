@@ -285,7 +285,7 @@ fn with_the_switch_off_setup_is_inert() {
     assert!(out.contains(" · step 1/5 · "), "{out}");
     assert_eq!(
         w.ok(&["setup"], false).trim(),
-        "Model steps are off in this version; there is nothing to set up."
+        "Reading new release notes is turned off by UNSTALE_EDGE_INFERENCE=0; unset it to turn it on, then run `unstale setup`."
     );
     let status = w.ok(&["status", "--wait", "0", "--no-animation"], false);
     for line in SWITCH_ON_LINES {

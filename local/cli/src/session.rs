@@ -1,5 +1,5 @@
 //! Agent session start: the catalog sync moves to the agent's session-start hook, so changes reach the agent without
-//! it having to ask. All of it is behind the edge-inference switch (`util::edge_inference`) until the release.
+//! it having to ask. All of it is behind the edge-inference switch (`util::edge_inference`), on unless `UNSTALE_EDGE_INFERENCE=0`.
 //!
 //! The hook (`unstale notify`, [`hook`]) never slows or breaks a session, switch on or off: everything it does runs on a
 //! worker thread under one deadline counted from the process's start ([`DEADLINE`]), and whatever has not finished by

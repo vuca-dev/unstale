@@ -89,12 +89,11 @@ enum Cmd {
         #[arg(long)]
         no_animation: bool,
         /// Where model steps run, without asking (CI): see `unstale setup --help`.
-        #[arg(long, value_name = "CHOICE", hide = true)]
+        #[arg(long, value_name = "CHOICE")]
         inference: Option<String>,
     },
     /// Choose how new release notes are read: your own key or your Codex plan. Asks once at a terminal; without one,
     /// prints the options and the command that records each.
-    #[command(hide = true)]
     Setup {
         /// Record a choice without asking: vercel, openai, openrouter, anthropic, env:NAME (a key variable), codex or
         /// none; jev+ before a key or codex adds Jev for labels (for example jev+env:OPENAI_API_KEY); subq+ before a key
@@ -198,8 +197,7 @@ enum Cmd {
         backoff_ms: Option<u64>,
         prompt: String,
     },
-    /// The per-user cache (hidden until the edge-inference release).
-    #[command(hide = true)]
+    /// The per-user cache.
     Cache {
         #[command(subcommand)]
         cmd: CacheCmd,
@@ -410,7 +408,7 @@ fn dispatch(cli: Cli, started: std::time::Instant) -> Result<u8> {
         Cmd::Init { .. } | Cmd::CountTerms { .. } | Cmd::Uninstall | Cmd::Infer { .. } | Cmd::Notify | Cmd::Internal { .. } | Cmd::Cache { .. } => unreachable!(),
         Cmd::Setup { inference, user, details, limit } => {
             if !inference::enabled() {
-                println!("Model steps are off in this version; there is nothing to set up.");
+                println!("Reading new release notes is turned off by UNSTALE_EDGE_INFERENCE=0; unset it to turn it on, then run `unstale setup`.");
                 return Ok(0);
             }
             // Read before anything is written, so a mistyped value changes nothing.
