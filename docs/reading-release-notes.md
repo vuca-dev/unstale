@@ -66,7 +66,9 @@ The session-start hook checks whether the catalog changed and starts the backgro
 
 ## Limits
 
-- **Tokens.** Model work stops for the month at 48M tokens. `unstale setup --limit 10M` changes the limit,
+- **Tokens.** Model work stops for the month at 48M tokens, or a tenth of that while a choice an agent or a script
+  recorded has not been shown to you at a terminal (running any unstale command there shows it).
+  `unstale setup --limit 10M` changes the limit,
   `--limit none` removes it and `--limit default` restores it. The limit is yours: a repository's config can lower it,
   never raise it.
 - **Disk.** The cache holds up to 100 MB. `UNSTALE_CACHE_MAX_MB` changes that, and `0` removes it. Answers you paid for

@@ -99,6 +99,7 @@ $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 
 $ unstale status --wait 0 --no-animation
+unstale reads release notes on your Jev and Vercel AI Gateway keys (≈ $0.11 a year), chosen through your agent on 10 November. Undo: `unstale setup --inference none`
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -127,7 +128,7 @@ $ unstale status --wait 0 --no-animation
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), your user config
-Tokens                81 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Tokens                81 of 4.8M this month (a tenth of the limit until you run unstale at a terminal)
 Cache                 under 1 MB of 100 MB
 
 # contacted

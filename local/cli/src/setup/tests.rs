@@ -1352,3 +1352,219 @@ fn a_menu_too_big_for_the_terminal_is_asked_by_typing_instead() {
     }
     assert!(m.typed_prompt().contains("a number to choose"));
 }
+
+// ------------------------------------------------------------------------------------------- a choice no one saw
+
+fn env_of(vars: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
+    move |k: &str| vars.iter().find(|(n, _)| *n == k).map(|(_, v)| v.to_string())
+}
+
+#[test]
+fn who_chose_is_read_from_the_agent_variables_ci_and_the_terminal() {
+    // An agent, at a terminal or not, in CI or not: its choice is marked.
+    for agent in [&[("CLAUDECODE", "1")][..], &[("CODEX_SANDBOX", "seatbelt"), ("CI", "true")]] {
+        let vars: &'static [(&str, &str)] = Box::leak(agent.to_vec().into_boxed_slice());
+        for terminal in [true, false] {
+            assert_eq!(chooser(&env_of(vars), terminal), Chooser::Agent, "{agent:?}");
+        }
+    }
+    // CI, before the terminal (some services run commands in a pseudo-terminal): the pipeline author's flag.
+    for ci in [&[("CI", "true")][..], &[("CI", "1")], &[("TF_BUILD", "True")]] {
+        let vars: &'static [(&str, &str)] = Box::leak(ci.to_vec().into_boxed_slice());
+        for terminal in [true, false] {
+            assert_eq!(chooser(&env_of(vars), terminal), Chooser::Ci, "{ci:?}");
+        }
+    }
+    // `CI=false` is not CI; a blank agent variable is not an agent.
+    assert_eq!(chooser(&env_of(&[("CI", "false"), ("CLAUDECODE", " ")]), true), Chooser::Person);
+    assert_eq!(chooser(&env_of(&[]), false), Chooser::Script);
+}
+
+#[test]
+fn only_a_choice_that_spends_made_by_an_agent_or_a_script_is_marked() {
+    let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
+    for who in [Chooser::Agent, Chooser::Script] {
+        let m = Mark::of(who, &key).expect("marked");
+        assert_eq!((m.by.as_str(), m.agent()), if who == Chooser::Agent { ("agent", true) } else { ("script", false) });
+        assert_eq!(m.on.len(), 10);
+        // "none" spends nothing: never marked, whoever chose it.
+        assert_eq!(Mark::of(who, &Choice::none()), None);
+    }
+    // A person at a terminal, and CI, are not marked.
+    for who in [Chooser::Person, Chooser::Ci] {
+        assert_eq!(Mark::of(who, &key), None);
+        assert_eq!(Mark::of(who, &Choice::codex()), None);
+    }
+}
+
+#[test]
+fn an_install_script_or_a_git_hook_cannot_record_a_choice_that_spends() {
+    let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
+    let refused = |vars: &'static [(&'static str, &'static str)]| {
+        refuse_from_hooks(Some(&key), &env_of(vars)).err().map(|e| e.to_string())
+    };
+    // Every lifecycle event that runs at install, from any package manager (they all set `npm_lifecycle_event`).
+    for event in INSTALL_EVENTS {
+        let vars: &'static [(&str, &str)] = Box::leak(vec![("npm_lifecycle_event", *event)].into_boxed_slice());
+        assert_eq!(
+            refused(vars).as_deref(),
+            Some("not saved: a choice that spends is not taken from a package install script. Run `unstale setup` yourself."),
+            "{event}"
+        );
+    }
+    // What Git 2.51 sets for its hooks: the commit hooks, the others, a bare repository's.
+    for hook in [
+        &[("GIT_EXEC_PATH", "/usr/libexec/git-core"), ("GIT_INDEX_FILE", ".git/index"), ("GIT_PREFIX", "")][..],
+        &[("GIT_EXEC_PATH", "/usr/libexec/git-core"), ("GIT_PREFIX", "")],
+        &[("GIT_EXEC_PATH", "/usr/libexec/git-core"), ("GIT_DIR", ".")],
+    ] {
+        let vars: &'static [(&str, &str)] = Box::leak(hook.to_vec().into_boxed_slice());
+        assert_eq!(
+            refused(vars).as_deref(),
+            Some("not saved: a choice that spends is not taken from a Git hook. Run `unstale setup` yourself."),
+            "{hook:?}"
+        );
+    }
+    // Ordinary agent and CI use, `npm run`, `npx`, and a stray Git variable are not refused.
+    for fine in [
+        &[("CLAUDECODE", "1")][..],
+        &[("CI", "true"), ("GITHUB_ACTIONS", "true")],
+        &[("npm_lifecycle_event", "setup")],
+        &[("npm_lifecycle_event", "npx")],
+        &[("GIT_DIR", "/repo/.git")],
+        &[("GIT_EXEC_PATH", "/usr/libexec/git-core")],
+    ] {
+        let vars: &'static [(&str, &str)] = Box::leak(fine.to_vec().into_boxed_slice());
+        assert_eq!(refused(vars), None, "{fine:?}");
+    }
+    // "none" spends nothing: taken from anywhere.
+    let hook = env_of(&[("npm_lifecycle_event", "postinstall")]);
+    assert!(refuse_from_hooks(Some(&Choice::none()), &hook).is_ok());
+    assert!(refuse_from_hooks(None, &hook).is_ok());
+}
+
+#[test]
+fn an_unseen_choice_is_marked_beside_it_and_seen_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("unstale/config.json");
+    let root = dir.path().join("shop");
+    let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
+    let mark = Mark { by: "agent".into(), on: "2026-11-12".into() };
+    // A config with no mark (every one written before marks) counts as seen.
+    write_user_repo(&path, &root, Some(&key)).unwrap();
+    assert_eq!(unseen(&path, Some(&root)), None);
+    write_user_repo_marked(&path, &root, Some(&key), Some(&mark)).unwrap();
+    let doc: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(
+        doc["repositories"][root.to_string_lossy().as_ref()],
+        serde_json::json!({"inference": {"provider": "openai", "key_env": "OPENAI_API_KEY"}, "chosen_by": "agent", "chosen_on": "2026-11-12"})
+    );
+    let u = unseen(&path, Some(&root)).unwrap();
+    assert_eq!((u.choice.clone(), u.mark.clone(), u.every_repo), (key.clone(), mark.clone(), false));
+    // The choice itself reads as before.
+    assert_eq!(stored(None, &root, &path).choice, Some((key.clone(), Origin::User)));
+    // Only where it is in effect: another repository has no choice here.
+    assert_eq!(unseen(&path, Some(&dir.path().join("other"))), None);
+    mark_seen(&path, Some(&root)).unwrap();
+    assert_eq!(unseen(&path, Some(&root)), None);
+    assert_eq!(stored(None, &root, &path).choice, Some((key.clone(), Origin::User)), "the choice is kept");
+
+    // A choice for every repository, marked at the top beside it.
+    write_user_keys(
+        &path,
+        vec![
+            ("inference", Some(serde_json::to_value(Choice::codex()).unwrap())),
+            ("chosen_by", Some("script".into())),
+            ("chosen_on", Some("2026-11-12".into())),
+        ],
+    )
+    .unwrap();
+    let other = dir.path().join("other");
+    assert!(unseen(&path, Some(&other)).is_some_and(|u| u.every_repo && !u.mark.agent()));
+    assert!(unseen(&path, None).is_some());
+    // This repository's own seen choice is the one in effect here.
+    assert_eq!(unseen(&path, Some(&root)), None);
+    mark_seen(&path, Some(&other)).unwrap();
+    assert_eq!(unseen(&path, Some(&other)), None);
+    assert_eq!(read_user(&path), Some(Choice::codex()));
+    // A marked "none" is not unseen: it spends nothing.
+    write_user_repo_marked(&path, &root, Some(&Choice::none()), Some(&mark)).unwrap();
+    assert_eq!(unseen(&path, Some(&root)), None);
+}
+
+#[test]
+fn an_unseen_choice_gets_a_tenth_of_the_limit_that_would_apply() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("unstale/config.json");
+    let root = dir.path().join("shop");
+    let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
+    let default = crate::inference::ledger::DEFAULT_MONTHLY_TOKENS;
+    write_user_repo_marked(&path, &root, Some(&key), Some(&Mark { by: "agent".into(), on: "2026-11-12".into() }))
+        .unwrap();
+    let agent = LimitOrigin::Unseen { agent: true };
+    assert_eq!(limit_here(None, &path, Some(&root)), (Limit::Tokens(default / 10), agent));
+    // The user's own, and a repository's lower one, are cut the same way; no limit is a tenth of the default.
+    for (user, repo, tenth) in [
+        (Some(serde_json::json!(1_000_000)), None, 100_000),
+        (Some(serde_json::json!(1_000_000)), Some(Limit::Tokens(50_000)), 5_000),
+        (Some(serde_json::json!("none")), None, default / 10),
+        (Some(serde_json::json!(5)), None, 1),
+        (Some(serde_json::json!(0)), None, 0),
+    ] {
+        write_user_key(&path, "monthly_token_limit", user.clone()).unwrap();
+        assert_eq!(limit_here(repo, &path, Some(&root)), (Limit::Tokens(tenth), agent), "{user:?} {repo:?}");
+    }
+    // Seen: the whole limit again.
+    mark_seen(&path, Some(&root)).unwrap();
+    assert_eq!(limit_here(None, &path, Some(&root)), (Limit::Tokens(0), LimitOrigin::User));
+    // The warning says why, and how to lift it; the status line says it is a tenth.
+    assert_eq!(
+        view::limit_reached_line(agent),
+        "warning: release notes wait: your agent's choice gets a tenth of the token limit until you run unstale at a terminal."
+    );
+    assert_eq!(
+        crate::inference::Deferred::BudgetUnseen { agent: false }.line(),
+        "warning: release notes wait: a scripted choice gets a tenth of the token limit until you run unstale at a terminal."
+    );
+    assert_eq!(
+        view::tokens_line(Ok(1_500), Limit::Tokens(4_800_000), agent),
+        "Tokens                1.5k of 4.8M this month (a tenth of the limit until you run unstale at a terminal)"
+    );
+}
+
+#[test]
+fn the_unseen_line_names_what_spends_this_repos_cost_who_and_when_and_the_undo() {
+    let u = |c: Choice, by: &str, every_repo: bool| Unseen {
+        choice: c,
+        mark: Mark { by: by.into(), on: "2026-11-12".into() },
+        every_repo,
+    };
+    let key = Choice::key(Route::OpenAi, "OPENAI_API_KEY");
+    let cost = |c: &Choice, techs: f64| format!("{:.2}", quote(view_pick(c), false).usd * techs);
+    assert_eq!(
+        view::unseen_line(&u(key.clone(), "agent", false), 38, "2026-11-12"),
+        format!(
+            "unstale reads release notes on your OpenAI key (≈ ${} a year), chosen through your agent on 12 November. Undo: `unstale setup --inference none`",
+            cost(&key, 38.0)
+        )
+    );
+    assert_eq!(
+        view::unseen_line(&u(Choice::codex(), "script", true), 38, "2026-11-12"),
+        "unstale reads release notes on your Codex plan (no extra cost), chosen through a script on 12 November. Undo: `unstale setup --user --inference none`"
+    );
+    let jev = Choice::codex().with_jev("JEV_API_KEY");
+    assert!(view::unseen_line(&u(jev, "agent", false), 38, "2026-11-12").starts_with("unstale reads release notes on your Jev key and Codex plan (≈ $"));
+    let snap = Choice::key(Route::OpenAi, "OPENAI_API_KEY").with_snap("SUBQ_API_KEY");
+    assert!(view::unseen_line(&u(snap, "agent", false), 38, "2026-11-12").starts_with("unstale reads release notes on your SubQ Snap and OpenAI keys (≈ $"));
+    // Another year's date carries its year.
+    let mut old = u(key, "agent", false);
+    old.mark.on = "2025-01-03".into();
+    assert!(view::unseen_line(&old, 1, "2026-11-12").contains("chosen through your agent on 3 January 2025."));
+}
+
+fn view_pick(c: &Choice) -> Pick {
+    match c.provider.as_str() {
+        "codex" => Pick::Codex,
+        p => Pick::Key(route_by_id(p).unwrap()),
+    }
+}

@@ -138,6 +138,7 @@ $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 $ "unstale" -C "$CLAUDE_PROJECT_DIR" notify  (no terminal)
 
 $ unstale status --wait 0 --no-animation
+unstale reads release notes on your OpenAI key (≈ $0.16 a year), chosen through your agent on 10 November. Undo: `unstale setup --inference none`
 warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
@@ -167,7 +168,7 @@ warning: `session_sync` is off in .unstale/config.json, so 2 new release notes a
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Release notes         OpenAI (OPENAI_API_KEY), your user config
-Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Tokens                0 of 4.8M this month (a tenth of the limit until you run unstale at a terminal)
 Cache                 under 1 MB of 100 MB
 
 # contacted

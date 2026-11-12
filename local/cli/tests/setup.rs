@@ -105,6 +105,16 @@ impl World {
         text
     }
 
+    /// Runs with the switch on and extra environment variables: the exit code and the output.
+    fn run_with(&self, args: &[&str], extra: &[(&str, &str)]) -> (i32, String) {
+        let mut c = self.command(args, true);
+        for (k, v) in extra {
+            c.env(k, v);
+        }
+        let (code, out, err) = support::run_within(&mut c, Duration::from_secs(60));
+        (code, out + &err)
+    }
+
     fn init(&self, switch: bool, extra: &[&str]) -> String {
         let mut args = vec![
             "init",
@@ -512,7 +522,9 @@ fn status_shows_the_provider_this_months_tokens_and_the_users_limit() {
     let ledger = w.path("cache/inference/usage-2026-11.jsonl");
     std::fs::create_dir_all(ledger.parent().unwrap()).unwrap();
     std::fs::write(&ledger, "{\"day\":\"2026-11-09\",\"provider\":\"vercel\",\"model\":\"m\",\"input\":1200000,\"cached\":0,\"output\":300000}\n").unwrap();
-    w.ok(&["setup", "--inference", "env:AI_GATEWAY_API_KEY"], true);
+    // As a pipeline records it: CI's choice is not marked, so the whole limit applies.
+    let (code, _) = w.run_with(&["setup", "--inference", "env:AI_GATEWAY_API_KEY"], &[("CI", "true")]);
+    assert_eq!(code, 0);
     let after = status(&w);
     // What is wrong comes first, as a warning; then the state.
     let warning =
@@ -830,4 +842,74 @@ fn files_detection_must_never_open_stay_unopened() {
     assert!(listed.contains("OPENAI_API_KEY (.env)"), "{listed}");
     w.ok(&["setup", "--inference", "openai"], true);
     w.ok(&["status", "--wait", "0", "--no-animation"], true);
+}
+
+#[test]
+fn a_choice_an_agent_records_is_said_to_the_next_person_at_a_terminal_and_has_a_tenth_of_the_limit() {
+    let w = World::new(None);
+    w.init(true, &[]);
+    let agent = [("CLAUDECODE", "1")];
+    let (code, out) = w.run_with(&["setup", "--inference", "openai"], &agent);
+    assert_eq!(code, 0, "{out}");
+    let user = w.user_config();
+    let entry = &user["repositories"][w.path("repo").canonicalize().unwrap().to_string_lossy().as_ref()];
+    assert_eq!((entry["chosen_by"].as_str(), entry["chosen_on"].as_str()), (Some("agent"), Some("2026-11-10")), "{user}");
+    // Until a person sees it, `unstale status` says it first, to every reader; and the limit is a tenth.
+    let line = "unstale reads release notes on your OpenAI key (≈ $0.052 a year), chosen through your agent on 10 November. Undo: `unstale setup --inference none`";
+    for extra in [&agent[..], &[("CI", "true")], &[]] {
+        let (_, status) = w.run_with(&["status", "--wait", "0", "--no-animation"], extra);
+        assert!(status.contains(line), "{extra:?}: {status}");
+        assert!(status.contains("Tokens                0 of 4.8M this month (a tenth of the limit until you run unstale at a terminal)"), "{status}");
+    }
+    // At the limit, the warning says why and how to lift it.
+    let ledger = w.path("cache/inference/usage-2026-11.jsonl");
+    std::fs::create_dir_all(ledger.parent().unwrap()).unwrap();
+    std::fs::write(&ledger, "{\"day\":\"2026-11-09\",\"provider\":\"openai\",\"model\":\"m\",\"input\":4000000,\"cached\":0,\"output\":900000}\n").unwrap();
+    let (_, reached) = w.run_with(&["status", "--wait", "0", "--no-animation"], &agent);
+    assert!(reached.contains("warning: release notes wait: your agent's choice gets a tenth of the token limit until you run unstale at a terminal."), "{reached}");
+    // Any command a person runs at a terminal says it once, at the top, and lifts the tenth.
+    let first = w.at_terminal(&["report"], "");
+    assert!(first.lines().any(|l| l.trim_end() == line), "{first}");
+    let entry = &w.user_config()["repositories"][w.path("repo").canonicalize().unwrap().to_string_lossy().as_ref()];
+    assert!(entry.get("chosen_by").is_none() && entry["inference"]["provider"] == "openai", "{entry}");
+    let again = w.at_terminal(&["status", "--wait", "0", "--no-animation"], "");
+    assert!(!again.contains("chosen through your agent") && again.contains("4.9M of 48M this month"), "{again}");
+}
+
+#[test]
+fn a_choice_from_ci_or_of_none_is_not_marked_and_hooks_cannot_record_one_that_spends() {
+    let w = World::new(None);
+    w.init(true, &[]);
+    let marked = |w: &World| w.user_config().to_string().contains("chosen_by");
+    // CI: the pipeline author's choice, said nowhere and not cut.
+    let (code, _) = w.run_with(&["setup", "--inference", "openai"], &[("CI", "true")]);
+    assert_eq!(code, 0);
+    assert!(!marked(&w));
+    let (_, status) = w.run_with(&["status", "--wait", "0", "--no-animation"], &[("CI", "true")]);
+    assert!(status.contains("0 of 48M this month") && !status.contains("chosen through"), "{status}");
+    // "none" spends nothing: never marked, by an agent or a script.
+    for extra in [&[("CLAUDECODE", "1")][..], &[]] {
+        let (code, _) = w.run_with(&["setup", "--inference", "none"], extra);
+        assert_eq!(code, 0);
+        assert!(!marked(&w), "{extra:?}");
+    }
+    // An install script or a Git hook: refused in one line, a non-zero exit, nothing written.
+    let before = std::fs::read(w.path("config/config.json")).unwrap();
+    for (hook, why) in [
+        (&[("npm_lifecycle_event", "postinstall"), ("CLAUDECODE", "1")][..], "a package install script"),
+        (&[("GIT_EXEC_PATH", "/usr/libexec/git-core"), ("GIT_INDEX_FILE", ".git/index"), ("GIT_PREFIX", "")], "a Git hook"),
+    ] {
+        for args in [&["setup", "--inference", "openai"][..], &["init", "--yes", "--inference", "codex"]] {
+            let (code, out) = w.run_with(args, hook);
+            assert_ne!(code, 0, "{args:?}: {out}");
+            assert_eq!(
+                out.trim(),
+                format!("error: not saved: a choice that spends is not taken from {why}. Run `unstale setup` yourself."),
+                "{args:?}"
+            );
+            assert_eq!(std::fs::read(w.path("config/config.json")).unwrap(), before, "{args:?}");
+        }
+        let (code, _) = w.run_with(&["setup", "--inference", "none"], hook);
+        assert_eq!(code, 0, "none is taken from anywhere");
+    }
 }
