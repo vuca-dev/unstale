@@ -1397,11 +1397,13 @@ pub(crate) fn integrate(ctx: &Ctx) -> Result<Vec<String>> {
         }
     }
     if !installed.is_empty() { retire_legacy_skills(ctx, ".cursor/skills")?; }
-    if !installed.is_empty() && !crate::session::install_opencode_command(ctx)? {
-        conflicts.push(crate::session::OPENCODE_COMMAND_PATH.to_string());
+    if !installed.is_empty() && let Some(entry) = crate::session::install_opencode_command(ctx)? {
+        conflicts.push(entry);
     }
     // opencode reads the skills from either directory; its session start runs through a plugin.
-    if !installed.is_empty() && util::edge_inference() { crate::session::install_opencode_plugin(ctx)?; }
+    if !installed.is_empty() && util::edge_inference() && let Some(entry) = crate::session::install_opencode_plugin(ctx)? {
+        conflicts.push(entry);
+    }
     util::write_atomic(
         &ctx.tool.join("state/integration-conflicts.json"),
         &serde_json::to_vec(&conflicts)?,
@@ -2023,8 +2025,11 @@ fn summary(ctx: &Ctx, pending: &Pending, brief: &Brief, issue: Option<&str>) -> 
         lines.push(Line::new("These are review candidates, not confirmed benefits or safe-to-apply changes.", Tone::Muted));
     }
     if let Some(footer) = coverage_footer(pending) { lines.push(Line::new(footer, Tone::Muted)); }
-    if !brief.conflicts.is_empty() {
+    if brief.conflicts.iter().any(|c| !c.contains(crate::session::NOT_WRITTEN)) {
         lines.push(Line::new("Existing agent integrations preserved; details in the report. The prompt below uses the local skill directly.", Tone::Amber));
+    }
+    if brief.conflicts.iter().any(|c| c.contains(crate::session::NOT_WRITTEN)) {
+        lines.push(Line::new("Some agent integrations could not be written; details in the report. The prompt below uses the local skill directly.", Tone::Amber));
     }
     lines.push(Line::new("", Tone::Body));
     lines.push(Line::new("", Tone::Body));
@@ -3987,8 +3992,14 @@ fn report_from(ctx: &Ctx, pending: &Pending, w: &World, write: bool) -> Result<B
             .ok()
             .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok())
             .unwrap_or_default();
+        let (failed, kept): (Vec<_>, Vec<_>) = conflicts.iter().cloned().partition(|c| c.contains(crate::session::NOT_WRITTEN));
+        if !kept.is_empty() {
+            text += &format!("\n## Existing integrations preserved\n\n{}", evidence_block(&kept.join("\n")));
+        }
+        if !failed.is_empty() {
+            text += &format!("\n## Integrations not written\n\n{}", evidence_block(&failed.join("\n")));
+        }
         if !conflicts.is_empty() {
-            text += &format!("\n## Existing integrations preserved\n\n{}", evidence_block(&conflicts.join("\n")));
             util::write_atomic(&brief, text.as_bytes())?;
         }
     }
