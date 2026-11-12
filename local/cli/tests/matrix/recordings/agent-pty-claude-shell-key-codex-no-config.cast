@@ -155,7 +155,7 @@
 [8.84,"o","\r\n"]
 [8.9,"o","     Read with    Key              Cost a year, this repo   Compared with the best option\r\n"]
 [8.96,"o","  1  OpenAI       OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels\r\n"]
-[9.02,"o","  2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured\r\n"]
+[9.02,"o","  2  Codex plan                    ≈ 2.3M Codex tokens      ≈ 80% of its changes; rest not measured\r\n"]
 [9.08,"o","  3  Not now                       free                     ≈ 27% of its changes in new releases\r\n"]
 [9.14,"o","\r\n"]
 [9.2,"o","Record their answer with the matching command:\r\n"]

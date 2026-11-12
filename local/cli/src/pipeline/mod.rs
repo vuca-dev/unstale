@@ -205,7 +205,7 @@ pub fn watch(f: Watch) {
     }
 }
 
-fn progress(line: &str) {
+pub(crate) fn progress(line: &str) {
     if let Ok(w) = WATCH.lock()
         && let Some(f) = w.as_ref()
     {

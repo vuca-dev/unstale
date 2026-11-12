@@ -10,11 +10,12 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::PathBuf;
 
-/// The default monthly token budget, across every provider: twice the estimated first sync of a 40-technology repo.
+/// The default monthly token budget, across every provider: about one and a half times the first sync of a
+/// 40-technology repo on the costliest supported route.
 ///
-/// Estimate (until the client's own first-sync measurement replaces it): one mean technology-year per technology on
-/// the costliest supported route, Codex with the lean flags at 8 items per call, about 0.6M tokens (0.14M harness
-/// overhead, 0.39M payload in, 61k out; `eval/edge-cli/RESULTS.md`). 40 × 0.6M = 24M; twice that is 48M.
+/// First sync: one mean technology-year per technology. On Codex alone that measures about 0.75M tokens
+/// (`eval/edge-port/RESULTS.md`, addendum 4), 30M for 40 technologies. It was set at twice an estimate of 0.6M; the
+/// measurement puts it 20% under twice the measured figure (60M), within the 25% that would change it.
 pub const DEFAULT_MONTHLY_TOKENS: u64 = 48_000_000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

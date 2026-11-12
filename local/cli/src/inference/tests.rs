@@ -328,7 +328,8 @@ fn jev_sends_choice_questions_and_checks_each_answer() {
 }
 
 /// A fake `codex` script in `dir`: `--version` and `login status` answer as given, `exec` records its arguments,
-/// environment and working directory, then prints `exec_out` and exits with `exec_code`.
+/// environment and working directory, then prints `exec_out` and exits with `exec_code`. An `exec` with an argument containing the text in `{dir}/refuse`
+/// prints a start-up error and fails, as Codex does for an option it rejects.
 #[cfg(unix)]
 pub fn fake_codex(
     dir: &std::path::Path,
@@ -350,6 +351,9 @@ for a in "$@"; do printf '%s\n' "$a"; done > "{log}/$n.args"
 env > "{log}/$n.env"
 pwd > "{log}/$n.pwd"
 ls -A . > "{log}/$n.ls"
+if [ -f "{dir}/refuse" ] && grep -qF "$(cat "{dir}/refuse")" "{log}/$n.args"; then
+  echo 'Error loading config.toml: data did not match any variant' >&2; exit 1
+fi
 cat "{dir}/exec-out.jsonl"
 exit {exec_code}
 "#,
@@ -431,6 +435,9 @@ fn codex_runs_the_lean_flag_set_in_an_empty_directory_and_reads_turn_usage() {
     for d in codex::tests_disabled() {
         assert!(has(&["--disable", d]), "{d}");
     }
+    for c in codex::tests_hints() {
+        assert!(has(&["-c", c]), "{c}");
+    }
     assert_eq!(args[args.len() - 2..], ["--", "Reply."]);
     // The working directory is the empty temporary one named by -C, and it is gone afterwards.
     let work = &args[args.iter().position(|a| a == "-C").unwrap() + 1];
@@ -444,6 +451,52 @@ fn codex_runs_the_lean_flag_set_in_an_empty_directory_and_reads_turn_usage() {
         ""
     );
     assert!(!std::path::Path::new(work).exists());
+}
+
+fn exec_args(f: &Fixture) -> Vec<Vec<String>> {
+    let mut calls: Vec<(u32, std::path::PathBuf)> =
+        std::fs::read_dir(f.dir.path().join("codex-calls"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "args"))
+            .map(|p| (p.file_stem().unwrap().to_string_lossy().parse().unwrap(), p))
+            .collect();
+    calls.sort();
+    calls
+        .iter()
+        .map(|(_, p)| {
+            std::fs::read_to_string(p)
+                .unwrap()
+                .lines()
+                .map(String::from)
+                .collect()
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_that_refuses_the_hint_options_at_start_up_gets_calls_without_them() {
+    let f = Fixture::new();
+    std::fs::write(f.dir.path().join("refuse"), "multi_agent_v2").unwrap();
+    let bin = fake_codex(f.dir.path(), "0.166.0", true, CODEX_OK, 0);
+    let inf = f.inference(ProviderConfig::codex(), &bin.to_string_lossy());
+    // The refused call is asked again at once without them; it costs no retry and the call answers.
+    assert_eq!(
+        inf.complete(&Prompt::new("a")).unwrap().value,
+        json!({"ok": true})
+    );
+    inf.complete(&Prompt::new("b")).unwrap();
+    let calls = exec_args(&f);
+    assert_eq!(calls.len(), 3, "one refused, then one each");
+    assert!(calls[0].iter().any(|a| a.contains("multi_agent_v2")));
+    for args in &calls[1..] {
+        assert!(
+            !args.iter().any(|a| a.contains("multi_agent_v2")),
+            "{args:?}"
+        );
+        assert!(args.iter().any(|a| a == "--ephemeral"));
+    }
 }
 
 #[test]
@@ -686,7 +739,8 @@ fn codex_problems_are_typed_deferrals() {
         ),
         ("0.166.0", true, lapsed, 1, Deferred::CodexLoggedOut, 1),
         ("0.166.0", true, limited, 1, Deferred::RateLimited, 3),
-        ("0.166.0", true, "", 1, Deferred::Unavailable, 3),
+        // No event at all reads as an option refused at start-up: one call without the hint options, then three.
+        ("0.166.0", true, "", 1, Deferred::Unavailable, 4),
         (
             "0.166.0",
             true,

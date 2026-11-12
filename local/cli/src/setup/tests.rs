@@ -1207,7 +1207,6 @@ fn through_codex_only_what_was_measured_is_claimed() {
         let q = quote(*p, false);
         // Labels and matching are unmeasured only where Codex runs them; extraction through Codex is measured.
         assert_eq!(!q.labels_and_matching_measured, *p == Pick::Codex, "{p:?}");
-        assert_eq!(q.codex_tokens_estimated > 0, *p == Pick::Codex, "{p:?}");
         if !matches!(p, Pick::JevCodex | Pick::Codex) {
             continue;
         }
@@ -1233,15 +1232,15 @@ fn through_codex_only_what_was_measured_is_claimed() {
             assert!(!block.iter().any(|l| l.contains("estimate")), "{block:?}");
             continue;
         }
-        // Codex alone: the row says the rest is not measured; the details claim no figure for it, and set the
-        // estimated tokens apart from the measured ones.
+        // Codex alone: the row says the rest is not measured, and the details claim no figure for it. Its tokens are
+        // measured, so nothing is called an estimate.
+        assert!(!block.iter().any(|l| l.contains("estimate")), "{block:?}");
         assert!(
             row.ends_with("   ≈ 80% of its changes; rest not measured"),
             "{row}"
         );
         assert!(
             says("breaking-change flags and repeats through Codex: not measured yet")
-                && says("170k measured, for reading the notes; 480k for the rest, an estimate")
                 && !block
                     .iter()
                     .any(|l| l.contains("listed twice") || l.contains(" wrong")),

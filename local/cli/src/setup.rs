@@ -318,8 +318,6 @@ pub struct Quote {
     /// Codex plan tokens, and what they would cost at API prices.
     pub codex_tokens: u64,
     pub codex_usd: f64,
-    /// The part of `codex_tokens` that is an estimate made before the client ran, not a measurement of it.
-    pub codex_tokens_estimated: u64,
     /// Tokens more for the user's agent to read (no-key mode).
     pub agent_tokens: u64,
     pub quality: Quality,
@@ -339,7 +337,6 @@ const NO_QUOTE: Quote = Quote {
     usd: 0.0,
     codex_tokens: 0,
     codex_usd: 0.0,
-    codex_tokens_estimated: 0,
     agent_tokens: 0,
     quality: Quality::Best,
     more_duplicates: 0,
@@ -403,8 +400,8 @@ const CODEX_EXTRACTION: Quality = Quality::Share {
 /// - matching: Jev $0.0077; gpt-6-luna read on its choices $0.020 (`eval/edge-port/RESULTS.md`); Anthropic does not
 ///   match (never merge, $0);
 /// - Codex: extraction 167k plan tokens (≈ $0.015 at API prices), measured with batching by length
-///   (`eval/edge-port/RESULTS.md`, addendum 1); every step ≈ 649k ($0.071), of which labels and matching are still
-///   the estimate of 482k ($0.0556) from Codex at 8 items per call with the lean flags, not a measurement;
+///   (`eval/edge-port/RESULTS.md`, addendum 1); every step ≈ 750k ($0.057), measured on a sync of three axios
+///   releases with the hint options off (163k tokens for 25 records, × 114.6; addendum 4);
 /// - quality: Haiku finds 79.6% of required changes against 88.7% (upgrade guides 68.4% against 81.9%); never merge
 ///   leaves 22.7 duplicates per 100 records against Jev's 2.54.
 pub fn quote(p: Pick, no_key: bool) -> Quote {
@@ -445,9 +442,8 @@ pub fn quote(p: Pick, no_key: bool) -> Quote {
             ..NO_QUOTE
         },
         Pick::Codex => Quote {
-            codex_tokens: 167_000 + 482_000,
-            codex_usd: 0.015 + 0.0556,
-            codex_tokens_estimated: 482_000,
+            codex_tokens: 750_000,
+            codex_usd: 0.057,
             quality: CODEX_EXTRACTION,
             // The API route's figure; labels and matching through `codex exec` are not measured yet.
             more_duplicates: MATCHING_BELOW,
