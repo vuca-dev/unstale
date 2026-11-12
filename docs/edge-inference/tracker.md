@@ -448,3 +448,10 @@ OpenRouter parity, repeat eval runs.
 - At the CEO's instruction the PM bumped the version (#267 `0eec841`) and tagged `v0.3.0`. The first release run failed: the Windows build could not link (`tcsetattr`/`tcgetattr` from the arrow-key picker, #256); nothing was published. Fixed in #268 `2569c38` (menu compiled on Unix only; Windows uses the typed prompt). With the CEO's approval the tag was moved to `2569c38`; release run 43321364369 succeeded: five builds, five native smoke runs (Windows included), npm publish of seven packages with provenance, Homebrew tap commit.
 - Lesson: pull-request CI never builds Windows; the release is the first place it is built. Follow-up: add a Windows link check to CI.
 - Left: day-0 notice and telling current users (CEO); day-20 cutover (CEO); `unstale` wrapper on npm (CEO's one-time code; republish at 0.3.0); #231 evaluation; ingest re-check after 15:00 UTC 13 November; merge this branch and final report.
+
+## After the release, 12 November 2026 (23:30 UTC)
+
+- No-key evaluation finished: FAIL against its pre-registered rule (51 real finds against the agent alone's 40, within noise; 628K against 432K tokens per act-now find). #231 closed unmerged; results merged as #269 `adfd029`.
+- The quoted no-provider share is 25%, not 27%: 39 of 154 real findings of a full report have a line in a section that needs no model (22 publisher deprecations, 9 unmaintained, 8 lockfile advisories; `eval/no-key/deterministic_share.py`). It is not a share of changes in new releases. Released 0.3.0 says "≈ 27% of changes in new releases" in the picker. Draft #270 (head `ff2df85`) corrects client, README, npm README, site and docs; held for the CEO; the picker changes only with the next client release.
+- npm refuses the unscoped name `unstale` as too similar to `install`; not claimable without npm support. Nobody else can claim it either.
+- Open: CEO review of #270 and whether to cut 0.3.1; Windows link check in CI (awaiting CEO); day-0 notice (CEO); ingest re-check after 15:00 UTC 13 November; merge this branch and final report.
