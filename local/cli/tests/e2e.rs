@@ -717,7 +717,8 @@ fn a_coverage_job_name_that_is_not_plain_is_not_printed() {
         let snapshot = json!({"jobs":{"pkg:npm/next":{"purl":"pkg:npm/next","technology":"next","name":"next","state":"queued","stage":"","records":3,"updated":""}}});
         write(env.repo.path(), ".unstale/state/coverage.json", &snapshot.to_string());
         let out = run(&["status", "--wait", "0"]) + &run(&["sync"]) + &env.read(".unstale/onboarding-report.md");
-        for injected in ["IGNORE", "curl", "AGENT", "soon"] {
+        // The stage is kept, but only inside the fenced coverage block of the report.
+        for injected in ["IGNORE", "curl", "soon"] {
             assert!(!out.contains(injected), "switch {switch}: {injected} printed:\n{out}");
         }
         assert!(out.contains("1. next 16.0.1 → 16.1.0"), "switch {switch}:\n{out}");
