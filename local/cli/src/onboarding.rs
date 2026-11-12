@@ -823,6 +823,11 @@ static HOLDS: Mutex<BTreeMap<String, Instant>> = Mutex::new(BTreeMap::new());
 fn holds() -> std::sync::MutexGuard<'static, BTreeMap<String, Instant>> {
     HOLDS.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
+/// Responses each host has given this process, whatever their status: a host that gives none is not there to wait for.
+static ANSWERS: Mutex<BTreeMap<String, u64>> = Mutex::new(BTreeMap::new());
+fn answers(url: &str) -> u64 {
+    ANSWERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(origin(url)).copied().unwrap_or(0)
+}
 /// The host and port of a URL: what a hold is kept under.
 fn origin(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
@@ -848,6 +853,7 @@ pub fn registry_call(url: &str, call: impl FnOnce() -> std::result::Result<ureq:
         return None;
     }
     let r = call().ok()?;
+    *ANSWERS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).entry(origin(url).to_string()).or_insert(0) += 1;
     let asked = r.headers().get("retry-after").and_then(|v| v.to_str().ok());
     if let Some(secs) = hold_asked(r.status().as_u16(), asked) {
         let until = Instant::now() + Duration::from_secs(secs);
@@ -4455,12 +4461,20 @@ fn wait_fits(wait: Duration, left: Duration) -> bool {
 }
 /// The registry that answers for a package's public identity (`public_package`).
 fn identity_host(purl: &str) -> &'static str {
-    if purl.starts_with("pkg:pypi/") { "https://pypi.org/" } else { "https://registry.npmjs.org/" }
+    if purl.starts_with("pkg:pypi/") {
+        "https://pypi.org/"
+    } else if purl.starts_with("pkg:cargo/") {
+        "https://crates.io/"
+    } else {
+        "https://registry.npmjs.org/"
+    }
 }
 /// Asks `ask` about each item, then again about those it could not answer (a burst limit, the network), fewer at a time.
 /// A registry that named a time is waited out when that fits the bound (`wait_fits`); those on a host whose hold does not
 /// fit stay unanswered, and the others go on without them. With no hold the wait is a short pause. A wait that does not
-/// fit ends the rounds, and an Enter (`leave`) ends the wait. Returns those still unanswered;
+/// fit ends the rounds, and an Enter (`leave`) ends the wait. A round in which no host gave any response (the
+/// connection refused, no route, no reply in time) ends them too: the pauses are for a registry that is there and
+/// limiting, and such a run would only wait them out to hear nothing again. Returns those still unanswered;
 /// `public` gets each item found public, `show` the title, detail and hint of the progress line.
 fn ask_rounds<T: Sync>(
     mut unasked: Vec<T>,
@@ -4497,6 +4511,7 @@ fn ask_rounds<T: Sync>(
         if !wait.is_zero() && leave.load(Ordering::Acquire) {
             break;
         }
+        let heard: BTreeMap<String, u64> = unasked.iter().map(&host).map(|h| (h.clone(), answers(&h))).collect();
         let retry_total = unasked.len();
         let mut retry_done = 0;
         let mut answered = vec![false; retry_total];
@@ -4516,6 +4531,10 @@ fn ask_rounds<T: Sync>(
         });
         // Unanswered, or never asked because the bound passed.
         unasked = unasked.into_iter().zip(answered).filter(|(_, a)| !a).map(|(u, _)| u).collect();
+        // Nothing came back from any host asked, and none is holding the run off: nobody to wait for.
+        if !bound.passed() && heard.iter().all(|(h, n)| answers(h) == *n) && unasked.iter().all(|u| hold_left(&host(u)).is_zero()) {
+            break;
+        }
     }
     held_past.extend(unasked);
     held_past
@@ -5550,6 +5569,23 @@ mod tests {
         let left = ask_rounds(vec![npm.clone(), other], &bound, &AtomicBool::new(false), |u: &String| u.clone(), ask, |_| {}, |_, _, _| {});
         assert_eq!(left, [npm]);
         assert_eq!(hits.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn a_registry_that_gives_no_response_is_not_waited_for() {
+        // A port nothing listens on: every connection is refused, as on a network that blocks the public registries.
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let urls: Vec<String> = (0..40).map(|i| format!("http://127.0.0.1:{port}/p{i}")).collect();
+        let started = Instant::now();
+        let retried = std::cell::Cell::new(false);
+        let left = ask_rounds(urls, &Bound::new(started, 300), &AtomicBool::new(false), |u: &String| u.clone(), ask, |_| {}, |title, _, _| {
+            if title.starts_with("Retrying") {
+                retried.set(true);
+            }
+        });
+        assert_eq!(left.len(), 40);
+        // Before: a 5 s and a 20 s pause, each followed by the same refusals.
+        assert!(!retried.get() && started.elapsed() < Duration::from_secs(4), "{:?}", started.elapsed());
     }
 
     #[test]
