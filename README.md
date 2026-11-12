@@ -12,11 +12,12 @@
 
 **You don't know what you don't know. Neither does your agent.**
 
-unstale monitors release notes, migration guides and security advisories for the packages you use. It tells Claude
-Code, Codex, Cursor and opencode which changes apply to your code. Your agent does not have to ask.
+unstale (`@unstale/cli`, [unstale.sh](https://unstale.sh)) monitors release notes, migration guides and security
+advisories for the packages you use. It tells Claude Code, Codex, Cursor and opencode which changes apply to your
+code. Your agent does not have to ask.
 
-That covers new APIs worth adopting, breaking changes in your next major upgrade, deprecations, and the security and
-performance fixes in each version bump.
+That covers new APIs worth adopting, the breaking changes that affect your code, what a dependency upgrade means for
+it, deprecations, and the security and performance fixes in each version bump.
 
 **Does it work?** It finds 4x as many upstream changes that apply to your code as Claude Code alone, and your agent
 uses 1/16 of the tokens ([how we measured](eval/beat-naive/RESULTS.md)).
@@ -121,19 +122,18 @@ Every option, what it costs and what it gives up: [docs/reading-release-notes.md
 
 ## Trust and privacy
 
-- The unstale service receives public package names only (`pkg:npm/next`). Never your code, file paths or versions.
-No account, no client ID, no client telemetry.
-- OSV receives the package names and versions in your lockfiles for advisory checks, as `npm audit` would.
-- Private packages are never named to anyone. `UNSTALE_NO_REGISTRY=1` turns off every third-party lookup.
-- Release-note text goes to the model provider you chose. Your code and file paths never do.
+- **No install scripts.** The npm package is a launcher for a prebuilt binary. Each release is published from the
+project's GitHub release workflow with npm provenance: `npm view @unstale/cli dist.attestations`.
+- **What `init` writes.** `.unstale/`, the review skill in `.claude/skills` and `.agents/skills`, and session-start
+hooks for Claude Code, Codex and opencode. `unstale uninstall` removes all of it and backs up your decisions.
+- **What leaves your machine.** Public package names, to the unstale service. Package names and versions, to OSV, as
+`npm audit` would. Release-note text, to the model provider you chose. Never your code or file paths.
+- Private packages are never named to anyone. No account, no client ID, no client telemetry.
 - The catalog is signed, and the client discards anything that does not verify. A catalog directory is the exception,
 read only after your own `unstale init --catalog <dir>`.
 - Upstream text reaches your agent as quoted data, and nothing in your code changes without your go-ahead.
 
-`unstale uninstall` removes everything `init` wrote and backs up your decisions. What `init` writes, what leaves your
-machine and how private registries are recognised: [docs/privacy.md](docs/privacy.md).
-
-Report vulnerabilities privately: [SECURITY.md](SECURITY.md).
+Every file and request: [docs/privacy.md](docs/privacy.md). Report vulnerabilities privately: [SECURITY.md](SECURITY.md).
 
 ## Contributing
 
