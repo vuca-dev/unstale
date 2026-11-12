@@ -4,13 +4,10 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with    Cost a year, this repo   Compared with the best option
-  1  Codex plan   ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
-  2  Not now      free                     ≈ 27% of its changes in new releases
+  ● Codex plan   no extra cost   your Codex plan, up to the limit you set   suggested by this repo
+  ○ Not now      free            ≈ 27% of changes in new releases
 
-This repo's config suggests option 1. Nothing is spent until you choose.
-
-Enter for 1, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 Saved for you: Codex plan reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.

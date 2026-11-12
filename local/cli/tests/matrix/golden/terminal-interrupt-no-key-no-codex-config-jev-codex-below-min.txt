@@ -49,8 +49,8 @@ $ unstale init --wait 0 --no-animation
 unstale reads new release notes with a model, on your own key or your Codex plan.
 None is set up here.
 
-  1  Set one up   shows the one line to add
-  2  Not now      free · advisories and deprecations only, ≈ 27% of the changes in new releases
+  ● Set one up   shows the one line to add
+  ○ Not now      free · advisories and deprecations only, ≈ 27% of changes in new releases
 
 This repo's config suggests Jev + Codex plan: set JEV_API_KEY, install Codex and run `codex login`, then run `unstale setup`.
 
@@ -58,6 +58,7 @@ Enter for 1, or 2:
 [interrupted]
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -86,7 +87,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         not read: you have not chosen · `unstale setup` shows this repo's suggestion
 Cache                 under 1 MB of 100 MB
 

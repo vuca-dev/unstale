@@ -31,7 +31,7 @@ pub(crate) struct Session {
 /// After the details (`d`) the same question stays open at `Your choice (Enter for <n>): `, which is not another
 /// question.
 /// A question: `Enter for <n>,` (the first option, or the one this repository's committed config suggests) or
-/// `Enter to use it`.
+/// `Enter to use it`, where the answer is typed; `Enter to choose` where it is a menu.
 pub(crate) fn questions(text: &str) -> usize {
     let numbered = text
         .match_indices("Enter for ")
@@ -41,7 +41,8 @@ pub(crate) fn questions(text: &str) -> usize {
             digits > 0 && rest[digits..].starts_with(',')
         })
         .count();
-    numbered + text.matches("Enter to use it").count()
+    // The menu's line that says how to answer; redrawn in place as the mark moves, so once on the screen.
+    numbered + text.matches("Enter to use it").count() + text.matches("Enter to choose").count()
 }
 
 pub(crate) fn run_step(w: &World, s: &Scenario, step: Step, ran: &[Ran]) -> Option<Ran> {
@@ -160,8 +161,9 @@ pub(crate) fn agent_answer(w: &World, s: &Scenario, listed: &Ran) -> Option<Ran>
 /// waiting for an answer that never comes.
 pub(crate) fn terminal_answers(answer: &str) -> Vec<(&'static str, &str)> {
     // Enter accepts the first option, or the one this repository's committed config suggests.
-    const PROMPT: &str = "Enter for |Enter to use it";
+    const PROMPT: &str = "Enter for |Enter to use it|Enter to choose";
     let mut a = vec![(PROMPT, answer)];
+    // Where the answer is typed. At a menu, `d` draws it again under the details and the Enter after it chooses.
     if answer.starts_with('d') {
         a.push(("Your choice (Enter for ", "\n"));
     }

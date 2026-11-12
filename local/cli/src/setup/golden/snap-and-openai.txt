@@ -1,9 +1,8 @@
 How should unstale read new release notes?
 
-     Read with       Cost a year, this repo   Compared with the best option
-  1  Snap + OpenAI   ≈ $1.44                  ≈ 3% less precise labels
-  2  OpenAI          ≈ $1.98                  ≈ 3% less precise labels
-  3  Not now         free                     ≈ 27% of its changes in new releases
-     Keys: SUBQ_API_KEY, OPENAI_API_KEY
+  ● Snap + OpenAI key   ≈ $1.44 a year   ≈ 3% less precise labels
+  ○ OpenAI key          ≈ $1.98 a year   ≈ 3% less precise labels
+  ○ Not now             free             ≈ 27% of changes in new releases
+    Snap: a matching service, used beside the provider; fewer changes listed twice.
 
-Enter for 1, a number to choose, or d for details: 
+↑↓ to move · Enter to choose · d for details

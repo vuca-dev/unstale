@@ -48,13 +48,10 @@ react: 1 upstream change on file, nothing new
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with  Key                    Cost a year, this repo  Compared with the best option
-  1  OpenAI     OPENAI_API_KEY (.env)  ≈ $0.16                 ≈ 3% less precise labels
-  2  Not now                           free                    ≈ 27% of its changes in new releases
+  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels           suggested by this repo
+  ○ Not now      free             ≈ 27% of changes in new releases
 
-This repo's config suggests option 1. Nothing is spent until you choose.
-
-Enter for 1, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
@@ -96,6 +93,7 @@ warning: unstale <this version> is too old for the catalog; nothing new arrives.
 No release notes were read: 2 wait until the catalog serves this unstale.
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -124,7 +122,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
 Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

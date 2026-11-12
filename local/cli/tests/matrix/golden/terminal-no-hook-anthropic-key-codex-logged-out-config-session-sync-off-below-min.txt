@@ -49,13 +49,12 @@ react: 1 upstream change on file, nothing new
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with   Key                 Cost a year, this repo   Compared with the best option
-  1  Anthropic   ANTHROPIC_API_KEY   ≈ $0.23                  ≈ 90% of its changes
-  2  Not now                         free                     ≈ 27% of its changes in new releases
+  ● Anthropic key   ≈ $0.23 a year   ≈ 90% of the best option's changes
+  ○ Not now         free             ≈ 27% of changes in new releases
 
 This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here.
 
-Enter for 1, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 Saved for you: Anthropic (ANTHROPIC_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
@@ -94,6 +93,9 @@ sync refused: the catalog needs unstale <newer version> or newer and this is <th
 # the repository commits its own agent settings, so no session-start hook of unstale's is installed
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
+warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -122,9 +124,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
-warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         Anthropic (ANTHROPIC_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
@@ -133,6 +132,9 @@ $ unstale session-sync
 Session-start sync is off here, so nothing ran.
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
+warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -161,9 +163,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
-warning: `session_sync` is off in .unstale/config.json, so 2 new release notes are unread. Remove it.
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         Anthropic (ANTHROPIC_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

@@ -49,17 +49,15 @@ react: 1 upstream change on file, nothing new
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with                 Cost a year, this repo   Compared with the best option
-  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option
-  2  Vercel AI Gateway         ≈ $0.16                  ≈ 3% less precise labels
-  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
-  4  Not now                   free                     ≈ 27% of its changes in new releases
-     Jev: a labelling service, used beside the provider that reads the notes.
-     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+  ● Jev + Vercel AI Gateway key   ≈ $0.11 a year   the best option
+  ○ Vercel AI Gateway key         ≈ $0.16 a year   ≈ 3% less precise labels
+  ○ Anthropic key                 ≈ $0.23 a year   ≈ 90% of the best option's changes
+  ○ Not now                       free             ≈ 27% of changes in new releases
+    Jev: a labelling service, used beside the provider that reads the notes.
 
 This repo's config suggests Jev + Codex plan (JEV_API_KEY), which is not one of the options here.
 
-Enter for 1, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 Saved for you: Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
@@ -98,6 +96,9 @@ sync refused: the catalog needs unstale <newer version> or newer and this is <th
 # the repository commits its own agent settings, so no session-start hook of unstale's is installed
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
+warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -126,9 +127,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
-warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB
@@ -139,6 +137,9 @@ warning: unstale <this version> is too old for the catalog; nothing new arrives.
 No release notes were read: 2 wait until the catalog serves this unstale.
 
 $ unstale status --wait 0 --no-animation
+warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
+warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
+Codex session start not installed: .codex/hooks.json is tracked by Git
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -167,9 +168,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: unstale <this version> is too old for the catalog; nothing new arrives. `npm install -g @unstale/cli@latest`
-warning: no session-start hook here, so 2 new release notes are unread. Run `unstale session-sync`.
-Codex session start not installed: .codex/hooks.json is tracked by Git
 Release notes         Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY), your user config
 Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
 Cache                 under 1 MB of 100 MB

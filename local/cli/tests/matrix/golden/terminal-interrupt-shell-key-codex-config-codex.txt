@@ -4,14 +4,11 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with    Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI       OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels
-  2  Codex plan                    ≈ 1.9M Codex tokens      ≈ 80% of its changes; rest not measured
-  3  Not now                       free                     ≈ 27% of its changes in new releases
+  ○ OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
+  ● Codex plan   no extra cost    your Codex plan, up to the limit you set   suggested by this repo
+  ○ Not now      free             ≈ 27% of changes in new releases
 
-This repo's config suggests option 2. Nothing is spent until you choose.
-
-Enter for 2, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 [interrupted]
 
 $ unstale status --wait 0 --no-animation

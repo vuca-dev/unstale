@@ -1430,8 +1430,7 @@ fn a_committed_choice_spends_nothing_until_the_user_makes_it_theirs() {
     let init = &se.ran[0].output;
     assert_eq!(se.ran.iter().map(|r| questions(&r.output)).sum::<usize>(), 1, "{init}");
     assert!(
-        init.contains("This repo's config suggests option 2. Nothing is spent until you choose.")
-            && init.contains("Enter for 2, a number to choose, or d for details:")
+        init.lines().any(|l| l.starts_with("  ● ") && l.ends_with("suggested by this repo"))
             && init.contains("Saved for you: Codex plan reads release notes."),
         "{init}"
     );

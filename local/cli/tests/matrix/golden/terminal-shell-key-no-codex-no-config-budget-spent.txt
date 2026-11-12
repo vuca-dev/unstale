@@ -4,11 +4,10 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-     Read with   Key              Cost a year, this repo   Compared with the best option
-  1  OpenAI      OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels
-  2  Not now                      free                     ≈ 27% of its changes in new releases
+  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
+  ○ Not now      free             ≈ 27% of changes in new releases
 
-Enter for 1, a number to choose, or d for details:
+↑↓ to move · Enter to choose · d for details
 Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
@@ -48,6 +47,7 @@ Syncing the catalog, then reading new release notes with your provider. Ctrl-C s
 warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
 
 $ unstale status --wait 0 --no-animation
+warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.
@@ -74,7 +74,6 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`.
 Release notes         OpenAI (OPENAI_API_KEY), your user config
 Tokens                48M of 48M this month (the default limit, reached)
 Cache                 under 1 MB of 100 MB
