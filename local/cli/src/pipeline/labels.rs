@@ -276,8 +276,8 @@ impl<'a> Chooser<'a> {
         )
     }
 
-    /// A standing entry for this request (asked alone, or through Codex in a batch); a failure stands until its retry
-    /// date.
+    /// A standing entry for this request (asked alone, or in a batch on a route that writes text); a failure stands
+    /// until its retry date.
     fn cached(
         &self,
         step: &str,
@@ -290,7 +290,7 @@ impl<'a> Chooser<'a> {
             .get(&self.key(step, state, qs))
             .filter(|e| e.stands(today));
         alone.or_else(|| {
-            (self.inf.provider.kind == Kind::Codex)
+            (self.inf.provider.kind != Kind::Jev)
                 .then(|| {
                     self.results
                         .get(&self.batch_key(step, state, qs))
@@ -415,15 +415,22 @@ impl<'a> Chooser<'a> {
         Ok(got)
     }
 
-    /// Through Codex: these records' label requests not yet answered, eight to a call, answered by record id and
-    /// cached apart from requests asked alone. A record the batch leaves out is asked alone by [`Chooser::ask`].
+    /// On a route that writes text (a key or Codex; never the labelling service, which takes one record a request):
+    /// these records' label requests not yet answered, up to eight to a call, answered by record id and cached apart
+    /// from requests asked alone. Nearly all of a label request is the questions' text (about 1,550 of 1,630 input
+    /// tokens), so eight records share it (`eval/edge-port/RESULTS.md`, "Labels, several records to a call").
+    ///
+    /// Whatever a batch does not answer is asked alone by [`Chooser::ask`]: a record it left out or answered
+    /// unreadably, every record of a batch that came back unreadable, cut off or refused, and a record with no
+    /// companion (a batch of one would save nothing). Each call is counted once in the token ledger, by the provider
+    /// layer; a deferral of the route (the monthly limit, a key problem) stops here with the answers so far cached.
     pub fn prefetch(
         &self,
         step: &str,
         states: &[Box<RawValue>],
         qs: &[(String, ChoiceQuestion)],
     ) -> Result<(), Deferred> {
-        if self.inf.provider.kind != Kind::Codex {
+        if self.inf.provider.kind == Kind::Jev {
             return Ok(());
         }
         let today = crate::util::today();
@@ -432,6 +439,9 @@ impl<'a> Chooser<'a> {
             .filter(|s| self.cached(step, s, qs, &today).is_none())
             .collect();
         for group in todo.chunks(crate::inference::BATCH) {
+            if group.len() < 2 {
+                continue;
+            }
             let ids: Vec<(String, &RawValue)> = group
                 .iter()
                 .enumerate()

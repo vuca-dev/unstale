@@ -758,6 +758,14 @@ fn with_an_anthropic_key_only_matching_is_off_and_every_record_is_new() {
         !sent.iter().any(|p| p.contains("same_c1")),
         "no same-or-new question is asked"
     );
+    // The pass asks for the four records' labels in one call first (this mock answers it as it answers one record's,
+    // so each record is then asked alone: nothing is lost).
+    assert_eq!(
+        sent.iter()
+            .filter(|p| p.contains("Questions (the same for every record):"))
+            .count(),
+        1
+    );
     let store = LocalStore::load(f.cache.path(), "example");
     let r = store.records.values().next().unwrap();
     assert_eq!(
@@ -1225,4 +1233,273 @@ fn snap_asks_four_candidates_with_the_longer_rules_and_reads_its_own_bars() {
     // A fifth candidate is never asked, so never merged.
     let (m, j) = matching::pick_at(p, &inc, false, &refs, &ans(&[0.1, 0.1, 0.1, 0.1]), snap);
     assert!(m.is_none() && j[4].outcome == "unasked");
+}
+
+// ---- Labels, several records to a call
+
+/// What the chat mock does with a batched label request.
+#[derive(Clone, Copy, PartialEq)]
+enum Batched {
+    /// Every record answered.
+    Answers,
+    /// `r2` left out and `r3` answered with an option that does not exist.
+    Partly,
+    /// Text that is not JSON.
+    Unreadable,
+    /// The answer runs out of room (`finish_reason: length`).
+    CutOff,
+    /// HTTP 400.
+    Refused,
+}
+
+/// Calls the chat mock saw: batched label requests and label requests for one record.
+#[derive(Default)]
+struct Seen {
+    batches: Vec<usize>,
+    alone: usize,
+}
+
+/// An OpenAI-compatible mock for label requests: a request for one record is answered with every question's last
+/// option; a batched one as `how` says. Every answered call reports 100 input and 10 output tokens.
+fn chat_label_mock(how: Batched) -> (String, Arc<Mutex<Seen>>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let seen = Arc::new(Mutex::new(Seen::default()));
+    let log = seen.clone();
+    let qs = crate::prompts::prompts().labels.questions();
+    let pick: serde_json::Map<String, Value> = qs
+        .iter()
+        .map(|(id, q)| (id.clone(), json!(q.options.last().unwrap().0)))
+        .collect();
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let prompt = v["messages"][0]["content"].as_str().unwrap_or("").to_string();
+            let records = prompt
+                .split("Records:\n")
+                .nth(1)
+                .map(|t| t.lines().take_while(|l| !l.is_empty()).count());
+            let (status, content, finish) = match records {
+                None => {
+                    log.lock().unwrap().alone += 1;
+                    (200, Value::Object(pick.clone()).to_string(), "stop")
+                }
+                Some(n) => {
+                    log.lock().unwrap().batches.push(n);
+                    let all: serde_json::Map<String, Value> = (1..=n)
+                        .filter(|i| !(how == Batched::Partly && *i == 2))
+                        .map(|i| {
+                            let mut a = pick.clone();
+                            if how == Batched::Partly && i == 3 {
+                                a.insert("breaking".into(), json!("perhaps"));
+                            }
+                            (format!("r{i}"), Value::Object(a))
+                        })
+                        .collect();
+                    match how {
+                        Batched::Answers | Batched::Partly => {
+                            (200, Value::Object(all).to_string(), "stop")
+                        }
+                        Batched::Unreadable => (200, "I could not decide.".to_string(), "stop"),
+                        Batched::CutOff => (200, "{\"r1\": {".to_string(), "length"),
+                        Batched::Refused => (400, String::new(), "stop"),
+                    }
+                }
+            };
+            let reply = if status == 200 {
+                json!({"model": "gpt-6-luna-test", "choices": [{"finish_reason": finish, "message": {"content": content}}],
+                       "usage": {"prompt_tokens": 100, "completion_tokens": 10}})
+                .to_string()
+            } else {
+                "{}".to_string()
+            };
+            let _ = write!(
+                s,
+                "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+        }
+    });
+    (url, seen)
+}
+
+/// `n` records' label states, each its own record.
+fn label_states(n: usize) -> Vec<Box<serde_json::value::RawValue>> {
+    let p = crate::prompts::prompts();
+    (0..n)
+        .map(|i| {
+            record_state(
+                p,
+                "Next.js",
+                &incoming(json!({"key": format!("next@16.3.2#0.{i}"), "subject": format!("option{i}")})),
+            )
+        })
+        .collect()
+}
+
+/// Tokens the ledger counts this month.
+fn spent(inf: &crate::inference::Inference) -> u64 {
+    inf.ledger
+        .spent(&crate::inference::ledger::this_month())
+        .unwrap()
+}
+
+/// On a key, label requests go eight records to a call, answered by record id; a record with no companion is asked
+/// alone; a second pass, or another repository, finds every answer cached. The labelling service takes one record a
+/// request and is never batched.
+#[test]
+fn on_a_key_labels_go_eight_records_to_a_call_and_are_cached_by_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = crate::prompts::prompts();
+    let qs = p.labels.questions();
+    let (url, seen) = chat_label_mock(Batched::Answers);
+    let inf = inference(ProviderConfig::openai(), &url, dir.path());
+    let results = super::results::Results::at(dir.path());
+    let ch = super::labels::Chooser::new(&inf, &results);
+    // 8 + 3, then one record on its own.
+    let states = label_states(11);
+    ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    assert_eq!(seen.lock().unwrap().batches, [8, 3]);
+    for s in &states {
+        let a = ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().unwrap();
+        assert!(!a.calibrated && super::labels::interpret(p, &a).is_some());
+    }
+    assert_eq!((seen.lock().unwrap().alone, ch.calls.get()), (0, 2));
+    // Two calls, each counted once.
+    assert_eq!(spent(&inf), 2 * 110);
+    // Nothing is asked twice: neither by a batch nor alone.
+    let again = super::labels::Chooser::new(&inf, &results);
+    again.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    for s in &states {
+        again.ask(super::labels::STEP_LABELS, s, &qs).unwrap().unwrap();
+    }
+    assert_eq!((again.calls.get(), spent(&inf)), (0, 2 * 110));
+    // One new record: no batch of one; it is asked alone, in the form measured for one record.
+    let one = label_states(12).pop().unwrap();
+    again
+        .prefetch(super::labels::STEP_LABELS, std::slice::from_ref(&one), &qs)
+        .unwrap();
+    assert_eq!(seen.lock().unwrap().batches.len(), 2);
+    again.ask(super::labels::STEP_LABELS, &one, &qs).unwrap().unwrap();
+    assert_eq!(seen.lock().unwrap().alone, 1);
+    // The labelling service: prefetch does nothing.
+    let jev = inference(ProviderConfig::jev(), "http://127.0.0.1:9", dir.path());
+    let jch = super::labels::Chooser::new(&jev, &results);
+    jch.prefetch(super::labels::STEP_LABELS, &label_states(4), &qs).unwrap();
+    assert_eq!(jch.calls.get(), 0);
+}
+
+/// A batch that comes back unreadable, cut off or refused loses no record: each is asked alone. The ledger counts
+/// every call the provider answered exactly once (the failed batch's tokens were spent; a refused request has none).
+#[test]
+fn a_batch_that_fails_falls_back_to_asking_alone_and_no_call_is_counted_twice() {
+    let p = crate::prompts::prompts();
+    let qs = p.labels.questions();
+    for (how, batch_counted) in [
+        (Batched::Unreadable, 1),
+        (Batched::CutOff, 1),
+        (Batched::Refused, 0),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let (url, seen) = chat_label_mock(how);
+        let inf = inference(ProviderConfig::openai(), &url, dir.path());
+        let results = super::results::Results::at(dir.path());
+        let ch = super::labels::Chooser::new(&inf, &results);
+        let states = label_states(5);
+        ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+        assert_eq!(seen.lock().unwrap().batches, [5]);
+        assert_eq!(spent(&inf), batch_counted * 110);
+        let labelled = states
+            .iter()
+            .filter(|s| {
+                ch.ask(super::labels::STEP_LABELS, s, &qs)
+                    .unwrap()
+                    .is_some_and(|a| super::labels::interpret(p, &a).is_some())
+            })
+            .count();
+        assert_eq!((labelled, seen.lock().unwrap().alone), (5, 5));
+        assert_eq!(spent(&inf), (batch_counted + 5) * 110);
+        // The batch is not tried again for records now answered alone.
+        ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+        assert_eq!(seen.lock().unwrap().batches.len(), 1);
+    }
+}
+
+/// A batch that leaves a record out, or answers one with an option that does not exist, keeps the others' answers and
+/// asks only those two alone.
+#[test]
+fn records_a_batch_leaves_out_or_answers_unreadably_are_asked_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let qs = crate::prompts::prompts().labels.questions();
+    let (url, seen) = chat_label_mock(Batched::Partly);
+    let inf = inference(ProviderConfig::openai(), &url, dir.path());
+    let results = super::results::Results::at(dir.path());
+    let ch = super::labels::Chooser::new(&inf, &results);
+    let states = label_states(6);
+    ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    for s in &states {
+        assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([6].as_slice(), 2));
+    assert_eq!(spent(&inf), 3 * 110);
+}
+
+/// The monthly limit stops batching between calls: the batch already answered stays cached and paid for once, and the
+/// next pass (with room again) asks only for the rest.
+#[test]
+fn the_monthly_limit_stops_batches_and_the_next_pass_pays_only_for_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    let qs = crate::prompts::prompts().labels.questions();
+    let (url, seen) = chat_label_mock(Batched::Answers);
+    let mut inf = inference(ProviderConfig::openai(), &url, dir.path());
+    // Room for one call.
+    inf.monthly_budget = 100;
+    let results = super::results::Results::at(dir.path());
+    let states = label_states(16);
+    let ch = super::labels::Chooser::new(&inf, &results);
+    assert_eq!(
+        ch.prefetch(super::labels::STEP_LABELS, &states, &qs),
+        Err(crate::inference::Deferred::Budget)
+    );
+    assert_eq!((seen.lock().unwrap().batches.len(), spent(&inf)), (1, 110));
+    // The first eight are answered from the cache even with the limit reached; the ninth defers.
+    for s in &states[..8] {
+        assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
+    }
+    assert_eq!(
+        ch.ask(super::labels::STEP_LABELS, &states[8], &qs),
+        Err(crate::inference::Deferred::Budget)
+    );
+    inf.monthly_budget = 1_000_000;
+    let ch = super::labels::Chooser::new(&inf, &results);
+    ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    for s in &states {
+        assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([8, 8].as_slice(), 0));
+    assert_eq!(spent(&inf), 2 * 110);
 }

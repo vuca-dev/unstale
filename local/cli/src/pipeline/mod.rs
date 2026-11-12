@@ -342,6 +342,18 @@ pub fn run_step(
             }
             let p = crate::prompts::prompts();
             let ch = labels::Chooser::new(&main, &results);
+            if step == "labels" {
+                // As a pass does: the records' label requests go several to a call where the route allows it.
+                let states: Vec<_> = text
+                    .lines()
+                    .filter_map(|l| serde_json::from_str::<Item>(l).ok())
+                    .map(|it| labels::record_state(p, &it.name, &it.incoming))
+                    .collect();
+                if let Err(d) = ch.prefetch(labels::STEP_LABELS, &states, &p.labels.questions()) {
+                    writeln!(out, "{}", serde_json::json!({"deferred": d.line()}))?;
+                    return Ok(());
+                }
+            }
             for (n, line) in text
                 .lines()
                 .enumerate()
