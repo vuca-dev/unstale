@@ -58,7 +58,7 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   // The first run's question, and the trade stated on the page and in its Markdown twin.
   expect(home).toContain("How should unstale read new release notes?");
   expect(home).toContain("  ● OpenAI key   ≈ $1.98 a year   ≈ 3% less precise labels");
-  expect(home).toContain("  ○ Not now      free             ≈ 27% of a full report&#39;s findings");
+  expect(home).toContain("  ○ Not now      free             ≈ 25% of a full report&#39;s findings");
   expect(home).toContain("↑↓ to move · Enter to choose · d for details");
   expect(home).toContain("Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.");
   expect(home).not.toContain("Enter for 1");
@@ -80,7 +80,7 @@ test("a package page lists majors newest first, breaking changes before fixes, w
     expect(page).toContain("On your Codex plan there is nothing extra to pay");
     expect(page).not.toMatch(/470,000|409,000|1,300 a day/);
     expect(page).toContain("because each release note is read once, only for the packages you use");
-    expect(page).toContain("publisher deprecations, unmaintained packages and security advisories: about 27% of what a full report finds");
+    expect(page).toContain("publisher deprecations, unmaintained packages and security advisories: about 25% of what a full report finds");
   }
   for (const page of [home, readFileSync(join(site, "index.md"), "utf8")]) {
     expect(page).toContain("No client telemetry.");

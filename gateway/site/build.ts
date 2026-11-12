@@ -306,7 +306,7 @@ export function packageMarkdown(p: Package): string {
 
 /** What going without a provider keeps, as a share (percent) of a full report's real findings: `NO_PROVIDER_SHARE`
  *  in the client's setup, measured in `eval/no-key/RESULTS.md`. */
-const NO_PROVIDER_SHARE = 27;
+const NO_PROVIDER_SHARE = 25;
 
 // Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones. The question is the first
 // run's, as the client prints it with one OpenAI key set and 38 packages followed (the figures of

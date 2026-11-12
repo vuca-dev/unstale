@@ -4,7 +4,7 @@ None is set up here. Tell the user and ask which they want. Never ask them to pa
   1  Set one up
      one line to add, listed below
   2  Not now
-     free · deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings
+     free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
 
 For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:
 

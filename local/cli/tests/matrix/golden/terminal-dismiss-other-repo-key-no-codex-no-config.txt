@@ -8,7 +8,7 @@ None is set up here.
   ● Set one up
     shows the one line to add
   ○ Not now
-    free · deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings
+    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
 
 ↑↓ to move · Enter to choose
 Nothing chosen: deprecations, unmaintained packages and advisories only. `unstale setup` asks again.

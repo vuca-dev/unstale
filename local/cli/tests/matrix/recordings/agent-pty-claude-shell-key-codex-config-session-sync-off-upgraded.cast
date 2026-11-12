@@ -253,7 +253,7 @@
 [16.81,"o","     Read with    Key              Cost a year, this repo   Compared with the best option\r\n"]
 [16.87,"o","  1  OpenAI       OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels\r\n"]
 [16.93,"o","  2  Codex plan                    ≈ 2.3M Codex tokens      ≈ 80% of its changes; rest not measured\r\n"]
-[16.99,"o","  3  Not now                       free                     ≈ 27% of a full report's findings\r\n"]
+[16.99,"o","  3  Not now                       free                     ≈ 25% of a full report's findings\r\n"]
 [17.05,"o","\r\n"]
 [17.11,"o","Record their answer with the matching command:\r\n"]
 [17.17,"o","  1  unstale setup --inference env:OPENAI_API_KEY\r\n"]

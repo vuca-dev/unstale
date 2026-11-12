@@ -141,7 +141,7 @@
 [9.51,"o","  1 Set one up\r\n"]
 [9.57,"o","    shows the one line to add\r\n"]
 [9.63,"o","  2 Not now\r\n"]
-[9.69,"o","    free · deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings\r\n"]
+[9.69,"o","    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings\r\n"]
 [9.75,"o","\r\n"]
 [9.81,"o","This repo's config suggests Codex plan: install Codex and run `codex login`, then run `unstale setup`.\r\n"]
 [9.87,"o","\r\n"]

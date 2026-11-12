@@ -27,13 +27,13 @@ beside an OpenAI-compatible key.
 
 3  Not now
    cost     free: no model is called
-   results  deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings
+   results  deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
 
 How should unstale read new release notes?
 
   ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
   ○ Codex plan   no extra cost    your Codex plan, up to the limit you set
-  ○ Not now      free             ≈ 27% of a full report's findings
+  ○ Not now      free             ≈ 25% of a full report's findings
 
 ↑↓ to move · Enter to choose · d for details
 Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.

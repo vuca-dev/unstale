@@ -70,7 +70,7 @@ Never choose for them.
 
      Read with   Key                 Cost a year, this repo   Compared with the best option
   1  Anthropic   ANTHROPIC_API_KEY   ≈ $0.23                  ≈ 90% of its changes
-  2  Not now                         free                     ≈ 27% of a full report's findings
+  2  Not now                         free                     ≈ 25% of a full report's findings
 
 Record their answer with the matching command:
   1  unstale setup --inference env:ANTHROPIC_API_KEY

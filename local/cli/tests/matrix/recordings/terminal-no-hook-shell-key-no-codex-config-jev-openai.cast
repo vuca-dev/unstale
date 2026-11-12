@@ -40,7 +40,7 @@
 [1.36,"o","How should unstale read new release notes?\r\n"]
 [1.42,"o","\r\n"]
 [1.48,"o","  1 OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels\r\n"]
-[1.54,"o","  2 Not now      free             ≈ 27% of a full report's findings\r\n"]
+[1.54,"o","  2 Not now      free             ≈ 25% of a full report's findings\r\n"]
 [1.6,"o","\r\n"]
 [1.66,"o","This repo's config suggests Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), which is not one of the options here.\r\n"]
 [1.72,"o","\r\n"]

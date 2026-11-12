@@ -507,7 +507,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
         assert!(row.starts_with(&format!("  {}  ", i + 1)), "{row}");
         if *p == Pick::None {
             assert!(
-                row.contains("free") && row.contains("≈ 27% of a full report's findings"),
+                row.contains("free") && row.contains("≈ 25% of a full report's findings"),
                 "{row}"
             );
             continue;
@@ -570,7 +570,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
 #[test]
 fn going_without_a_provider_states_what_is_left_with_the_measured_share() {
     // The figure is one constant; every place that states the trade reads it.
-    assert_eq!(NO_PROVIDER_SHARE, Some(27));
+    assert_eq!(NO_PROVIDER_SHARE, Some(25));
     let nothing = machine(&[], CodexState::Absent);
     for reader in [Reader::Person, Reader::Agent] {
         let text = view::nothing_lines(&nothing, reader, view::WIDTH)
@@ -579,7 +579,7 @@ fn going_without_a_provider_states_what_is_left_with_the_measured_share() {
             .collect::<Vec<_>>()
             .join(" ");
         assert!(
-            text.contains(&format!("{}: ≈ 27% of a full report's findings", view::WITHOUT)),
+            text.contains(&format!("{}: ≈ 25% of a full report's findings", view::WITHOUT)),
             "{text}"
         );
     }

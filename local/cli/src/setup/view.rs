@@ -96,7 +96,7 @@ fn cost(q: &Quote, years: f64) -> String {
 /// deprecations, unmaintained packages, security advisories), short enough that a line stating it fits 100 columns.
 pub const WITHOUT: &str = "deprecations, unmaintained packages and advisories";
 
-/// The measured share: `≈ 27% of a full report's findings`.
+/// The measured share: `≈ 25% of a full report's findings`.
 fn without_cell(n: u32) -> String {
     format!("≈ {n}% of a full report's findings")
 }

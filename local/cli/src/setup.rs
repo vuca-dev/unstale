@@ -259,10 +259,10 @@ pub fn detect(root: &Path, probe: &dyn Probe) -> Detected {
 pub const NO_KEY_MODE: bool = false;
 
 /// What a user still gets with no provider, as a share (percent) of a full report's real findings: the sections built
-/// with no model at all (publisher deprecations, unmaintained packages, lockfile advisories) hold 42 of 154 real
-/// findings of a full report on the evaluation pool, 27% (28% of the ones to act on now). Source:
-/// `eval/no-key/RESULTS.md`. `None` prints the trade in words, with no figure.
-pub const NO_PROVIDER_SHARE: Option<u32> = Some(27);
+/// with no model at all hold 39 of 154 real findings of a full report on the evaluation pool, 25%: 22 publisher
+/// deprecations, 9 unmaintained packages, 8 lockfile advisories. Source: `eval/no-key/RESULTS.md` and
+/// `eval/no-key/deterministic_share.py`. `None` prints the trade in words, with no figure.
+pub const NO_PROVIDER_SHARE: Option<u32> = Some(25);
 
 /// One option of the picker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

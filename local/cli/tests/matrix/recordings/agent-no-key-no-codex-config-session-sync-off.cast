@@ -165,7 +165,7 @@
 [9.44,"o","  1  Set one up\r\n"]
 [9.5,"o","     one line to add, listed below\r\n"]
 [9.56,"o","  2  Not now\r\n"]
-[9.62,"o","     free · deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings\r\n"]
+[9.62,"o","     free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings\r\n"]
 [9.68,"o","\r\n"]
 [9.74,"o","For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:\r\n"]
 [9.8,"o","\r\n"]

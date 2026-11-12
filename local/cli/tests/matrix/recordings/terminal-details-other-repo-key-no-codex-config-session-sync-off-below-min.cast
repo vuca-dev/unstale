@@ -140,7 +140,7 @@
 [9.45,"o","  ● Set one up\r\n"]
 [9.51,"o","    shows the one line to add\r\n"]
 [9.57,"o","  ○ Not now\r\n"]
-[9.63,"o","    free · deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings\r\n"]
+[9.63,"o","    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings\r\n"]
 [9.69,"o","\r\n"]
 [9.75,"o","This repo's config suggests OpenAI: set OPENAI_API_KEY, then run `unstale setup`.\r\n"]
 [9.81,"o","\r\n"]

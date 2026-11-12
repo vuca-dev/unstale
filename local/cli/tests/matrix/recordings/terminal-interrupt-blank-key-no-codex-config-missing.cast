@@ -43,7 +43,7 @@
 [1.54,"o","  ● Set one up\r\n"]
 [1.6,"o","    shows the one line to add\r\n"]
 [1.66,"o","  ○ Not now\r\n"]
-[1.72,"o","    free · deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings\r\n"]
+[1.72,"o","    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings\r\n"]
 [1.78,"o","\r\n"]
 [1.84,"o","This repo's config suggests OpenRouter: set OPENROUTER_API_KEY, then run `unstale setup`.\r\n"]
 [1.9,"o","\r\n"]

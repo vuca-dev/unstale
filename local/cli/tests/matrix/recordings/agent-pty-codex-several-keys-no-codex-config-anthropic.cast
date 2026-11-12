@@ -158,7 +158,7 @@
 [9.02,"o","  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option\r\n"]
 [9.08,"o","  2  Vercel AI Gateway         ≈ $0.16                  ≈ 3% less precise labels\r\n"]
 [9.14,"o","  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes\r\n"]
-[9.2,"o","  4  Not now                   free                     ≈ 27% of a full report's findings\r\n"]
+[9.2,"o","  4  Not now                   free                     ≈ 25% of a full report's findings\r\n"]
 [9.26,"o","     Jev: a labelling service, used beside the provider that reads the notes.\r\n"]
 [9.32,"o","     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY\r\n"]
 [9.38,"o","\r\n"]

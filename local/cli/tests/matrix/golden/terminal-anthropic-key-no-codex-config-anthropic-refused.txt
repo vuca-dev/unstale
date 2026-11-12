@@ -5,7 +5,7 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
   ● Anthropic key   ≈ $0.23 a year   ≈ 90% of the best option's changes   suggested by this repo
-  ○ Not now         free             ≈ 27% of a full report's findings
+  ○ Not now         free             ≈ 25% of a full report's findings
 
 ↑↓ to move · Enter to choose · d for details
 Saved for you: Anthropic (ANTHROPIC_API_KEY) reads release notes.

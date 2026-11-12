@@ -15,7 +15,7 @@ How should unstale read new release notes?
   ○ Anthropic key
     ≈ $0.23 a year · ≈ 90% of the best option's changes
   ○ Not now
-    free · ≈ 27% of a full report's findings
+    free · ≈ 25% of a full report's findings
 
     Jev: a labelling service, used beside the provider that reads the notes.
 

@@ -42,4 +42,4 @@ This repo has 38 packages unstale follows.
 
 6  Not now
    cost     free: no model is called
-   results  deprecations, unmaintained packages and advisories: ≈ 27% of a full report's findings
+   results  deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings

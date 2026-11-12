@@ -6,7 +6,7 @@ How should unstale read new release notes?
 
   ○ OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
   ● Codex plan   no extra cost    your Codex plan, up to the limit you set   suggested by this repo
-  ○ Not now      free             ≈ 27% of a full report's findings
+  ○ Not now      free             ≈ 25% of a full report's findings
 
 ↑↓ to move · Enter to choose · d for details
 [interrupted]
