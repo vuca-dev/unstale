@@ -341,7 +341,7 @@ function terminal(): string {
     tone === "rule" ? `<span class="t-rule"></span>` : `<span class="t-${tone || "body"}">${esc(text) || "&nbsp;"}</span>`,
   ).join("");
   return `<section class="prose example">
-<p>Example output of <code>unstale init</code> on a Next.js and Prisma app</p>
+<p>Example output of <code>unstale init</code> on a Next.js and Prisma app. The yearly figure is this one repository's, for 38 packages.</p>
 <figure class="term" id="terminal-demo" aria-label="Example unstale init session">
 <div class="term-toolbar"><span>my-app — unstale init</span><div class="term-controls" hidden><button type="button" class="copy" data-demo-toggle data-state="pause" aria-label="Pause demo" title="Pause demo"><svg class="demo-play" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7Z"/></svg><svg class="demo-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button><button type="button" class="copy" data-demo-replay aria-label="Replay demo" title="Replay demo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></svg></button><label class="term-speed" title="Playback speed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 6 7 6-7 6m9-12 7 6-7 6"/></svg><select data-demo-speed aria-label="Playback speed"><option value="2" selected>2×</option><option value="1">1×</option><option value="0.5">0.5×</option></select></label></div></div>
 <div class="term-screen"><pre class="term-result">${rows}</pre><div class="term-progress" hidden><pre><span class="t-cmd">$ npx @unstale/cli init</span></pre><canvas id="demo-wordmark" aria-label="unstale"></canvas><pre><span class="t-accent" data-demo-stage></span><span class="t-body" data-demo-detail></span></pre></div></div>
@@ -357,7 +357,24 @@ const CONTRIBUTIONS: { lead: string; rest: string; url: string }[] = [
 ];
 
 const SUMMARY =
-  "unstale tells you and your coding agent what changed upstream for your package versions and your code. Cited, local, free and open source.";
+  "unstale (@unstale/cli, unstale.sh) tells your coding agent what a dependency upgrade means for your code: the breaking changes that affect your code, security fixes, deprecations and new APIs, at your installed versions. Dependency upgrade impact analysis from official release notes. Cited, local, open source.";
+
+/** Shown before the measured comparison: fixes those projects merged, not our own claim. */
+const MERGED = "Two projects merged fixes for what unstale found at their installed versions:";
+
+/** What each kind of tool does, in one line each. */
+const COMPARE: [string, string][] = [
+  ["Update bot", "Tells you a new version exists"],
+  ["Docs lookup", "Returns documentation when your agent asks"],
+  ["unstale", "Finds changes that apply at your installed version, no version bump needed, and tells your agent unasked"],
+];
+
+/** The same three statements as the README's and the npm README's. */
+const SAFETY: [string, string][] = [
+  ["No install scripts.", "The npm package is a launcher for a prebuilt binary. Each release is published from the project's GitHub release workflow with npm provenance: `npm view @unstale/cli dist.attestations`."],
+  ["What `init` writes.", "`.unstale/`, the review skill in `.claude/skills` and `.agents/skills`, and session-start hooks for Claude Code, Codex and opencode. `unstale uninstall` removes all of it and backs up your decisions."],
+  ["What leaves your machine.", "Public package names, to the unstale service. Package names and versions, to OSV, as `npm audit` would. Release-note text, to the model provider you chose. Never your code or file paths."],
+];
 
 const EVAL = `${REPO}/blob/main/eval/gate/MISSES.md`;
 const READING = `${REPO}/blob/main/docs/reading-release-notes.md`;
@@ -399,7 +416,7 @@ export function homePage(pkgs: Package[], version?: string): string {
 <p class="lede">unstale finds what changed in your dependencies and where your code needs it. It reads the release
 notes, migration guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited
 list.</p>
-<p class="lede">It finds 4x as many upstream changes that apply to your code as Claude Code alone, and your agent uses 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
+<p class="lede">${MERGED} ${CONTRIBUTIONS.map((c) => `<a href="${esc(c.url)}">${esc(c.lead)}</a>`).join(" and ")}. In our own comparison it finds 4x as many upstream changes that apply to your code as Claude Code alone, and your agent uses 1/16 of the tokens. <a href="${BEAT_NAIVE}">How we measured</a></p>
 </section>
 <section class="catalog-proof" aria-label="Current catalog coverage">
 <dl class="catalog-stats">
@@ -421,10 +438,14 @@ ${copyable("unstale init")}
 </section>
 ${terminal()}
 <section class="prose">
-<h2>Found with unstale</h2>
+<h2>Merged by other projects</h2>
+<p>${MERGED}</p>
 <ul>
 ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc(c.rest)}</li>`).join("\n")}
 </ul>
+<table class="compare">
+${COMPARE.map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`).join("\n")}
+</table>
 <h2>What you get</h2>
 <ul>
 <li><strong>Upgrade plans.</strong> Breaking changes, deprecations and affected files.</li>
@@ -435,17 +456,21 @@ ${CONTRIBUTIONS.map((c) => `<li><a href="${esc(c.url)}">${esc(c.lead)}</a> ${esc
 <p>${COST} <code>unstale init</code> asks once and shows your repository's yearly cost before anything is spent. <a href="${READING}">Every option</a></p>
 <h2>How it works</h2>
 <ol>
-<li><strong>Read your lockfile.</strong> JavaScript, TypeScript and Python projects.</li>
+<li><strong>Read your lockfile.</strong> JavaScript, TypeScript, Python and Rust projects.</li>
 <li><strong>Find what applies.</strong> Track your dependencies for upstream changes that matter to your code.</li>
 <li><strong>Review with your agent.</strong> Run the <code>unstale-review</code> skill to see what changed, where it matters, and what to do next.</li>
 </ol>
+<h2>Safe to try</h2>
+<ul>
+${SAFETY.map(([k, v]) => `<li><strong>${prose(k)}</strong> ${prose(v)}</li>`).join("\n")}
+</ul>
 <h2>Your code stays on your machine</h2>
 <p>unstale receives public package names; <a href="https://osv.dev">OSV</a> receives package names and versions for advisory checks. Release-note text goes to the model provider you chose, never your code. No client telemetry.</p>
 <details class="privacy-details"><summary>Network details</summary>
 <p>Public package names (like <code>pkg:npm/next</code>) to fetch the changes that apply. Not your code, file paths,
 versions or any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate
 limits and count each address once per package, and never writes it to storage. Daily aggregate coverage-request outcome counts are kept for up to 90 UTC days, without addresses, package lists or individual request histories. To check advisories, the CLI sends the package names and versions your lockfiles resolve to
-<a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm and PyPI registries. If you choose a model provider, it receives public release-note text and the changes read from it, and nothing from your repository. <a href="${PRIVACY}">More</a></p>
+<a href="https://osv.dev">OSV</a>, as <code>npm audit</code> would, and it reads the public npm, PyPI and crates.io registries. If you choose a model provider, it receives public release-note text and the changes read from it, and nothing from your repository. <a href="${PRIVACY}">More</a></p>
 </details>
 
 <p class="license">AGPL-3.0 · <a href="${REPO}">GitHub</a></p>
@@ -457,7 +482,7 @@ limits and count each address once per package, and never writes it to storage. 
 <ul class="pkgs" id="pkgs">${list}</ul>
 </section>`;
   return layout({
-    title: "unstale: what changed upstream that matters to your code, for coding agents",
+    title: "unstale: what a dependency upgrade means for your code, for coding agents",
     description: SUMMARY,
     path: "/",
     body,
@@ -478,12 +503,18 @@ unstale finds what changed in your dependencies and where your code needs it. It
 guides and advisories for your installed versions, and hands Claude Code, Codex or Cursor a cited list. Runs locally,
 free and open source.
 
-It finds 4x as many upstream changes that apply to your code as Claude Code alone, and your agent uses 1/16 of the tokens
-([how we measured](${BEAT_NAIVE})).
+## Merged by other projects
 
-## Found with unstale
+${MERGED}
 
 ${CONTRIBUTIONS.map((c) => `- [${c.lead}](${c.url}) ${c.rest}`).join("\n")}
+
+In our own comparison it finds 4x as many upstream changes that apply to your code as Claude Code alone, and your
+agent uses 1/16 of the tokens ([how we measured](${BEAT_NAIVE})).
+
+| | What it does |
+|---|---|
+${COMPARE.map(([k, v]) => `| ${k} | ${v} |`).join("\n")}
 
 ## What you get
 
@@ -498,9 +529,13 @@ ${COST} \`unstale init\` asks once and shows your repository's yearly cost befor
 
 ## How it works
 
-1. **Read your lockfile.** JavaScript, TypeScript and Python projects.
+1. **Read your lockfile.** JavaScript, TypeScript, Python and Rust projects.
 2. **Find what applies.** Track your dependencies for upstream changes that matter to your code.
 3. **Review with your agent.** Run the \`unstale-review\` skill to see what changed, where it matters, and what to do next.
+
+## Safe to try
+
+${SAFETY.map(([k, v]) => `- **${k}** ${v}`).join("\n")}
 
 ## Your code stays on your machine
 
@@ -508,7 +543,7 @@ Public package names (like \`pkg:npm/next\`) to fetch the changes that apply. No
 any ID. The service, hosted on Cloudflare, sees your IP address. It keeps it in memory only, to apply rate limits and count
 each address once per package, and never writes it to storage. Daily aggregate coverage-request outcome counts are kept for up to 90 UTC days, without addresses, package lists or individual request histories.
 No client telemetry. To check advisories, the CLI sends the package names and versions your lockfiles resolve to OSV
-(https://osv.dev), as \`npm audit\` would, and it reads the public npm and PyPI registries. If you choose a model
+(https://osv.dev), as \`npm audit\` would, and it reads the public npm, PyPI and crates.io registries. If you choose a model
 provider, it receives public release-note text and the changes read from it, and nothing from your repository
 ([more](${PRIVACY})).
 
@@ -533,6 +568,14 @@ export function llmsTxt(pkgs: Package[], version?: string): string {
 unstale is a CLI (\`@unstale/cli\` on npm${version ? `, ${version}` : ""}) plus a public, signed catalog of upstream changes.
 \`${INSTALL_NPX}\` in a repository maps its dependencies, matches the catalog against the code locally, and installs the review
 skill (\`/unstale-review\`; \`$unstale-review\` in Codex). ${COST}
+
+Use it when the question is which breaking changes affect a codebase, what a dependency upgrade means for the code
+before it is merged, or how to keep up with changes in the libraries a project uses. Ecosystems: npm, PyPI and
+crates.io.
+
+${MERGED} ${CONTRIBUTIONS.map((c) => `[${c.lead}](${c.url})`).join(" and ")}.
+
+${SAFETY.map(([k, v]) => `- **${k}** ${v}`).join("\n")}
 
 Notes for agents:
 
