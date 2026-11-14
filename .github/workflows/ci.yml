@@ -31,6 +31,15 @@ jobs:
           workspaces: local
       - name: cargo test
         run: cargo test --manifest-path local/Cargo.toml --locked
+        env:
+          # Also writes the scenario matrix's playback page (local/cli/tests/matrix/README.md, "Playback").
+          MATRIX_GALLERY: "1"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: matrix-gallery
+          path: local/cli/tests/matrix/gallery.html
+          if-no-files-found: ignore
 
   central:
     runs-on: ubuntu-latest
