@@ -40,7 +40,7 @@ client then behaves as it did before (catalog records, no model calls, no picker
   and makes no model call. It runs its own steps only for releases that have change events and no catalog records.
   During the grace period that is nothing, or close to it; after day 20 it is every new release. History is never
   re-derived on the user's tokens.
-- The picker, the session-start sync and no-key mode are active.
+- The picker, the session-start hooks and sync, and no-key mode are active.
 
 Tests and the environment matrix state the switch explicitly; the scenarios that mean it off set `0`.
 
@@ -59,13 +59,16 @@ Tests and the environment matrix state the switch explicitly; the scenarios that
 | Key detection | Names only: environment variable names, CLIs on PATH, `codex login status`. Never values before consent; never other repos' `.env` files; never other tools' auth files | — |
 | Consent | One picker, recommended option preselected; Enter accepts. No "what was checked" line | — |
 | Cost quotes | Always with units and scope: per technology-year, this repo's total, first sync once. Plan-billed tools in tokens plus "≈ $X at API prices" | — |
-| Budget | A monthly token budget that throttles and works in demand order; never fails | — |
+| Budget | A monthly token limit that throttles and works in demand order; never fails. **A user setting** with a stated default; it can be changed or removed, and reaching it is a warning that says how | [Terminal principles](terminal-principles.md) 7 |
 | Team setting | The repo config names the provider and the key's environment variable; the value stays in each person's env | — |
 | Grace period | 20 days, then `min_client` is raised | — |
 | No key and no Codex | Pass deterministic signals and the raw change events (unparsed, sometimes duplicated) to the agent, with one line stating the extra token spend. **Shipped only if WS9 shows the agent with this mode beats the agent alone**; otherwise the client says a key or Codex is needed. Encoder deferred | WS9; `eval/edge-encoder/RESULTS.md` |
 | Anthropic key only | Offered last, with its trade stated (extraction misses more changes in upgrade guides; matching off, so more duplicates) | `eval/provider-matrix/RESULTS.md` |
 | Picker order | Jev + OpenAI-compatible key; Jev + Codex; Snap + OpenAI-compatible key; OpenAI-compatible key alone; Codex alone; Anthropic key alone. Options below Jev say so in one line | Snap's place: `eval/select/slice19/RESULTS.md` |
 | Day 0 / day 20 | Day 0 is the day the release ships; day 20 follows automatically | — |
+| Terminal output | Governed by [Terminal principles](terminal-principles.md) (CEO playback review, 11 November) | — |
+| Session-start hooks and sync | Behind the one switch until the release: no half release, no new files or requests before then | Terminal principles 8 |
+| `key_env` | Accepted only when it is the known key variable for that route; a repo's config cannot name an arbitrary variable | WS4 review, 11 November |
 
 ## Open decisions (CEO)
 

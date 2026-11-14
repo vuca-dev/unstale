@@ -30,6 +30,9 @@ WS3 merged.
 - [ ] **Changing your mind:** `unstale setup` reopens the picker; the choice is never asked again unprompted.
 
 ## Copy
+**Superseded where they differ by [Terminal principles](terminal-principles.md)** (11 November): one cost and one
+quality figure per option, detail behind `--details`; a prompt, not a paragraph, when nothing is usable.
+
 - Every option line, including each fallback (Anthropic key alone, Codex alone, no-key mode), states its trade the
   same way: cost with units and scope, and quality as a word band plus a number ("somewhat less complete, ≈ 90% of
   the best option's results").
