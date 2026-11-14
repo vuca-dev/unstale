@@ -2,11 +2,12 @@
 //! The environment matrix: the client run end to end in simulated developer environments, each with its own HOME,
 //! PATH, environment and fixture repositories, a mock catalog, a mock model provider and a fake `codex`, all on this
 //! machine. Every scenario is checked against the hold-the-line properties (docs/edge-inference/README.md,
-//! "Verification posture") and leaves a golden transcript and a recording; `gallery.html` plays them back.
+//! "Verification posture") and leaves a golden transcript; `MATRIX_GALLERY=1` also writes its recording and a
+//! `gallery.html` that plays them back.
 //!
 //! Scenarios are data: the dimension tables in `dimensions.rs`, expanded to all pairs, plus the critical paths in full. Adding a
 //! dimension value or a critical path is one line. `UPDATE_GOLDEN=1 cargo test --test matrix` rewrites the
-//! transcripts, recordings and the gallery; see tests/matrix/README.md.
+//! transcripts; see tests/matrix/README.md.
 
 #[path = "../support/mod.rs"]
 mod support;
@@ -76,6 +77,11 @@ fn run_all(list: &[Scenario]) -> Vec<Outcome> {
 fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
     // `MATRIX_ONLY=<part of a slug>` runs only the scenarios whose slug contains it (no gallery, no orphan check).
     let only = std::env::var("MATRIX_ONLY").ok();
+    // `MATRIX_GALLERY=1` writes the recordings and the gallery (not committed, never compared).
+    let playback = std::env::var_os("MATRIX_GALLERY").is_some();
+    if playback {
+        let _ = std::fs::remove_dir_all(golden_dir().join("recordings"));
+    }
     let list: Vec<Scenario> = scenarios()
         .into_iter()
         .filter(|s| only.as_ref().is_none_or(|o| s.slug.contains(o.as_str())))
@@ -100,15 +106,15 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
         }
         let text = transcript(s, se, &broken, &known);
         let cast = recording(s, se);
-        for f in [
-            golden(&format!("golden/{}.txt", s.slug), &text),
-            golden(&format!("recordings/{}.cast", s.slug), &cast),
-        ]
-        .into_iter()
-        .flatten()
-        {
+        if let Some(f) = golden(&format!("golden/{}.txt", s.slug), &text) {
             failing.insert(s.slug.clone());
             failures.push(f);
+        }
+        if playback {
+            world::write(
+                &golden_dir().join(format!("recordings/{}.cast", s.slug)),
+                &cast,
+            );
         }
         entries.push((s, text, cast));
     }
@@ -132,27 +138,27 @@ fn every_scenario_holds_the_line_and_matches_its_golden_transcript() {
         assert!(failures.is_empty(), "{}", failures.join("\n\n"));
         return;
     }
-    failures.extend(golden("gallery.html", &gallery(&entries)));
+    if playback {
+        world::write(&golden_dir().join("gallery.html"), &gallery(&entries));
+    }
     // A transcript left behind by a scenario that no longer exists: deleted on update, a failure otherwise.
     let slugs: BTreeSet<String> = list.iter().map(|s| s.slug.clone()).collect();
-    for dir in ["golden", "recordings"] {
-        for e in std::fs::read_dir(golden_dir().join(dir))
-            .into_iter()
-            .flatten()
-            .flatten()
-        {
-            let stem = e.path().file_stem().unwrap().to_string_lossy().to_string();
-            if slugs.contains(&stem) {
-                continue;
-            }
-            if std::env::var_os("UPDATE_GOLDEN").is_some() {
-                std::fs::remove_file(e.path()).unwrap();
-            } else {
-                failures.push(format!(
-                    "{dir}/{} belongs to no scenario; `UPDATE_GOLDEN=1 cargo test --test matrix` deletes it",
-                    e.file_name().to_string_lossy()
-                ));
-            }
+    for e in std::fs::read_dir(golden_dir().join("golden"))
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
+        let stem = e.path().file_stem().unwrap().to_string_lossy().to_string();
+        if slugs.contains(&stem) {
+            continue;
+        }
+        if std::env::var_os("UPDATE_GOLDEN").is_some() {
+            std::fs::remove_file(e.path()).unwrap();
+        } else {
+            failures.push(format!(
+                "golden/{} belongs to no scenario; `UPDATE_GOLDEN=1 cargo test --test matrix` deletes it",
+                e.file_name().to_string_lossy()
+            ));
         }
     }
     assert!(

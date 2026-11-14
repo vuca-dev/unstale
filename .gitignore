@@ -8,3 +8,7 @@ dist/
 __pycache__/
 .wrangler/
 npm/*/LICENSE
+
+# The scenario matrix playback, written by MATRIX_GALLERY=1 (local/cli/tests/matrix/README.md).
+local/cli/tests/matrix/recordings/
+local/cli/tests/matrix/gallery.html
