@@ -7,7 +7,7 @@ Never choose for them.
   3  Vercel AI Gateway         ≈ $1.98                       ≈ 3% less precise labels
   4  Codex plan                ≈ 29M Codex tokens            ≈ 80% of its changes; rest not measured
   5  Anthropic                 ≈ $2.86                       ≈ 90% of its changes
-  6  Not now                   free                          ≈ 27% of its changes in new releases
+  6  Not now                   free                          ≈ 25% of a full report's findings
      Jev: a labelling service, used beside the provider that reads the notes.
      Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
 

@@ -1,7 +1,9 @@
 unstale reads new release notes with a model, on your own key or your Codex plan.
 None is set up here.
 
-  ● Set one up   shows the one line to add
-  ○ Not now      free · advisories and deprecations only, ≈ 27% of changes in new releases
+  ● Set one up
+    shows the one line to add
+  ○ Not now
+    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
 
 ↑↓ to move · Enter to choose

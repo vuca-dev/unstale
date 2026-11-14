@@ -5,13 +5,15 @@ $ unstale init --wait 0 --no-animation
 unstale reads new release notes with a model, on your own key or your Codex plan.
 None is set up here.
 
-  ● Set one up   shows the one line to add
-  ○ Not now      free · advisories and deprecations only, ≈ 27% of changes in new releases
+  ● Set one up
+    shows the one line to add
+  ○ Not now
+    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
 
 This repo's config suggests OpenAI: set OPENAI_API_KEY, then run `unstale setup`.
 
 ↑↓ to move · Enter to choose
-Nothing chosen: new releases get advisories and deprecations only. `unstale setup` asks again.
+Nothing chosen: deprecations, unmaintained packages and advisories only. `unstale setup` asks again.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.

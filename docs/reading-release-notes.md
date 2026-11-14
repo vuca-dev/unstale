@@ -22,7 +22,7 @@ November 2026, billed by the provider to your key.
 | OpenAI, Vercel AI Gateway or OpenRouter key | `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | About $0.05 | As many breaking changes found, ≈ 3% less precise: ≈ 89% of breaking-change flags right, against 92%. ≈ 4 more changes listed twice |
 | Codex plan | `codex login` | Nothing extra: it draws on your plan | ≈ 80% of its changes. Flags and repeats not measured |
 | Anthropic key | `ANTHROPIC_API_KEY` | $0.075, an estimate | ≈ 90% of its changes, fewer from upgrade guides. ≈ 23 more changes listed twice. Estimates |
-| Not now | | Free | Advisories and deprecations only: ≈ 27% of the changes in new releases |
+| Not now | | Free | Publisher deprecations, unmaintained packages and security advisories: ≈ 25% of a full report's findings |
 
 Jev is a labelling service, and Snap a matching service, each used beside the provider that reads the notes. With
 several OpenAI-compatible keys set, the picker offers one of them. The picker shows this repository's figure for a
@@ -42,8 +42,9 @@ the work stops at the limit you set (see Limits).
 - **Measured** in [eval/select/slice19/RESULTS.md](../eval/select/slice19/RESULTS.md): the Snap row's matching cost
   ($0.0059, in place of $0.020) and its ≈ 1 more change listed twice.
 - **Estimates:** the Anthropic row, and the first sync, which the picker quotes at one more year, once, as a ceiling.
-- **≈ 27%** is the figure the client prints for what needs no model. Its evaluation is not yet published in this
-  repository.
+- **Measured** in [eval/no-key/RESULTS.md](../eval/no-key/RESULTS.md) (counted by `deterministic_share.py` there):
+  ≈ 25% is the share of a full report's real findings, 39 of 154 on 19 repositories as installed, that come from
+  sections built with no model (22 publisher deprecations, 9 unmaintained packages, 8 security advisories).
 
 ## What the provider receives
 

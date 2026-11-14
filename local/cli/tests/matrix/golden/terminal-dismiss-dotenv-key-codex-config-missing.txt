@@ -6,12 +6,12 @@ How should unstale read new release notes?
 
   ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
   ○ Codex plan   no extra cost    your Codex plan, up to the limit you set
-  ○ Not now      free             ≈ 27% of changes in new releases
+  ○ Not now      free             ≈ 25% of a full report's findings
 
 This repo's config suggests OpenRouter (OPENROUTER_API_KEY), which is not one of the options here.
 
 ↑↓ to move · Enter to choose · d for details
-Nothing chosen: new releases get advisories and deprecations only. `unstale setup` asks again.
+Nothing chosen: deprecations, unmaintained packages and advisories only. `unstale setup` asks again.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
   Mapped 3 direct dependencies from declared package ranges and checked local references.

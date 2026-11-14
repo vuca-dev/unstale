@@ -304,6 +304,10 @@ export function packageMarkdown(p: Package): string {
   return out.join("\n") + "\n";
 }
 
+/** What going without a provider keeps, as a share (percent) of a full report's real findings: `NO_PROVIDER_SHARE`
+ *  in the client's setup, measured in `eval/no-key/RESULTS.md`. */
+const NO_PROVIDER_SHARE = 25;
+
 // Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones. The question is the first
 // run's, as the client prints it with one OpenAI key set and 38 packages followed (the figures of
 // `local/cli/src/setup/golden/openai-only.txt`).
@@ -312,7 +316,7 @@ const TERMINAL: [string, string][] = [
   ["accent", "How should unstale read new release notes?"],
   ["", ""],
   ["body", "  ● OpenAI key   ≈ $1.98 a year   ≈ 3% less precise labels"],
-  ["body", "  ○ Not now      free             ≈ 27% of changes in new releases"],
+  ["body", `  ○ Not now      free             ≈ ${NO_PROVIDER_SHARE}% of a full report's findings`],
   ["", ""],
   ["muted", "↑↓ to move · Enter to choose · d for details"],
   ["muted", "Saved for you: OpenAI (OPENAI_API_KEY) reads release notes."],
@@ -383,7 +387,7 @@ const PRIVACY = `${REPO}/blob/main/docs/privacy.md`;
  *  sum of the three steps in `eval/edge-port/RESULTS.md` with labels four records to a call; the share with no
  *  provider is `NO_PROVIDER_SHARE` in the client's setup. */
 const COST =
-  "unstale reads new release notes with a small model, on the provider you choose. On your own API key that costs about $0.05 a year per package (measured November 2026). On your Codex plan there is nothing extra to pay: it draws on your plan and stops at the limit you set. The cost stays small because each release note is read once, only for the packages you use, and every answer is kept. Or pay nothing: new releases then get advisories and deprecations only, about 27% of the changes in new releases.";
+  `unstale reads new release notes with a small model, on the provider you choose. On your own API key that costs about $0.05 a year per package (measured November 2026). On your Codex plan there is nothing extra to pay: it draws on your plan and stops at the limit you set. The cost stays small because each release note is read once, only for the packages you use, and every answer is kept. Or pay nothing for publisher deprecations, unmaintained packages and security advisories: about ${NO_PROVIDER_SHARE}% of what a full report finds.`;
 const BEAT_NAIVE = `${REPO}/blob/main/eval/beat-naive/RESULTS.md`;
 
 /** Distinct package identities, including related packages grouped on a single page. */

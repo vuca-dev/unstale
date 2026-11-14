@@ -112,7 +112,7 @@ about $0.05 a year per package (measured November 2026). On your Codex plan ther
 your plan, `unstale status` shows the usage, and it stops at the limit you set. The cost stays small because unstale
 reads each release note once, only for the packages you use, and keeps every answer.
 
-Or pay nothing: new releases then get advisories and deprecations only, ≈ 27% of the changes in new releases.
+Or pay nothing for publisher deprecations, unmaintained packages and security advisories: about 25% of what a full report finds.
 
 - The release-note text goes to that provider. Your code and file paths never do.
 - Nothing is spent before you choose. `unstale init` asks once and shows this repository's yearly cost first.

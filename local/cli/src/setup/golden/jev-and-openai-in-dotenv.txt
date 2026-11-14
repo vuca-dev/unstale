@@ -2,7 +2,7 @@ How should unstale read new release notes?
 
   ● Jev + OpenAI key   ≈ $0.43 a year   the best option
   ○ OpenAI key         ≈ $0.62 a year   ≈ 3% less precise labels
-  ○ Not now            free             ≈ 27% of changes in new releases
+  ○ Not now            free             ≈ 25% of a full report's findings
     Jev: a labelling service, used beside the provider that reads the notes.
 
 ↑↓ to move · Enter to choose · d for details

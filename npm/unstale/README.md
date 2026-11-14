@@ -35,8 +35,8 @@ and can focus on a package, upgrade target, or capability you name.
 unstale reads new release notes with a small model, on the provider you choose: about $0.05 a year per package on
 your own API key (measured November 2026), nothing extra on your Codex plan, which stops at the limit you set. The
 cost stays small because each release note is read once, only for the packages you use, and every answer is kept.
-`init` asks once and shows your repository's cost first. Or pay nothing: new releases then get advisories and
-deprecations only, about 27% of the changes in new releases
+`init` asks once and shows your repository's cost first. Or pay nothing for publisher
+deprecations, unmaintained packages and security advisories: about 25% of what a full report finds
 ([every option](https://github.com/vuca-dev/unstale/blob/main/docs/reading-release-notes.md)).
 
 ## Safe to try

@@ -50,7 +50,7 @@ $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
   ● Anthropic key   ≈ $0.23 a year   ≈ 90% of the best option's changes
-  ○ Not now         free             ≈ 27% of changes in new releases
+  ○ Not now         free             ≈ 25% of a full report's findings
 
 This repo's config suggests OpenAI (OPENAI_API_KEY), which is not one of the options here.
 
