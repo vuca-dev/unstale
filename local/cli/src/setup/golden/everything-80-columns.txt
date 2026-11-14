@@ -1,0 +1,18 @@
+How should unstale read new release notes?
+
+  ● Jev + Vercel AI Gateway key
+    ≈ $1.36 a year · the best option
+  ○ Jev + Codex plan
+    ≈ $0.68 a year · your Codex plan, up to the limit you set
+  ○ Vercel AI Gateway key
+    ≈ $1.98 a year · ≈ 3% less precise labels
+  ○ Codex plan
+    no extra cost · your Codex plan, up to the limit you set
+  ○ Anthropic key
+    ≈ $2.86 a year · ≈ 90% of the best option's changes
+  ○ Not now
+    free · ≈ 25% of a full report's findings
+
+    Jev: a labelling service, used beside the provider that reads the notes.
+
+↑↓ to move · Enter to choose · d for details

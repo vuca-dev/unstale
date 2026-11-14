@@ -47,12 +47,34 @@ WS2 (timestamps) and WS3 (background work under the budget). Hook installation c
 - **Per agent:** Claude Code `.claude/settings.local.json` (as before); Codex `.codex/hooks.json` (`SessionStart`,
   timeout 5 s; Codex runs a project hook once the user trusts it in `/hooks`, which it points to at startup; a hooks
   file Git tracks is left alone); opencode `.opencode/plugins/unstale-session.js` on `session.created` (opencode adds
-  no hook output to the agent's context, so only the sync runs there). Each names this machine's executable and is
+  no hook output to the agent's context, so only the sync runs there). One default export serves both plugin APIs:
+  2.x requires `id` and `setup` and refuses 1.x's named-export function, and 1.x from 1.18.29 runs its `server`.
+  Under `opencode run`, 2.x sends no `session.created`, so a session's first `session.execution.started` counts.
+  2.x's event stream is the whole server's, so the plugin acts only on its own location's top-level sessions. One
+  instance runs per session directory, and a session's `location.directory` equals that instance's, a subdirectory or
+  a worktree's too. Checked on 2.2.7. 1.x was not run here; releases before 1.18.29 do not read a default export (per that guide). Each names this machine's executable and is
   excluded from Git.
-- **With the switch off** records still sync at session start: no model is called and the files are static. Change
-  events and the model stage follow the switch. `"session_sync": false` in `.unstale/config.json` turns it off.
-- **Output:** one line when records new to this repository arrived since the last report (or the shared-coverage line,
-  or a catalog notice), nothing otherwise. Failures show only in `unstale status`.
+- **Behind the one switch until the release** (owner decision, 10 November). With it off the client behaves as before
+  session-start sync: the Claude Code hook does what `notify` did (its one fix: at most one line, exit 0, within the
+  deadline), no catalog request or other process at session start, no Codex or opencode file, no new state file,
+  exclude line or status line. With it on, records sync at session start, change events and the model stage as
+  before. `"session_sync": false` in `.unstale/config.json` turns it off. A repository set up while the switch was
+  on keeps its Codex and opencode hook files after the switch goes off; they are inert then (the hook does only what
+  `notify` did), and `unstale uninstall` removes them.
+- **Hosts contacted:** the hook asks the catalog only. The background stage's sync contacts what `unstale status`
+  contacts (the catalog, and the public registries for unpinned dependencies). Its model stage, with a provider
+  chosen, also contacts that provider (and only it), sending public release-note text; `unstale status` never does.
+- **Installers** keep the user's bytes: our entry is inserted as text and removed exactly; it is recognised by its
+  exact command, never a substring; the executable is quoted so no shell expands it; a file Git tracks, a read-only
+  or linked file, and a Codex repository with hooks inline in `.codex/config.toml` are left alone (`unstale status`
+  says why for Codex, including a `hooks.json` that is not plain JSON with a `hooks` object).
+- **Deadline:** 1.2 s from the process's start, covering every blocking step (a read that never finishes included).
+  Worst measured: 1.23 s.
+- **Output:** one line, the most important first. A warning when the sync failed or the model stage could not run,
+  said once when that begins (compared by kind of trouble, recorded only after it is printed), with no raw error or
+  path; otherwise records new to this repository since the last report (or the shared-coverage line, or a catalog
+  notice); nothing otherwise. `unstale status` shows the detail, and a later successful session start clears a
+  failure.
 
 ## Request budget (measured)
 
@@ -69,7 +91,7 @@ packed file or a 404 runs the Worker (free plan: 100,000 requests a day).
 
 Projection, 10,000 users at 20 session starts a day: 200,000 static requests a day unchanged; the list changes at most
 8 times a day (ingest every 3 hours), so at most 8 changed starts per user a day, about 14 requests each with 3 changed
-technologies: at most 1.12M static requests a day. Worker requests: 0. **Default on**, for records. Watch: if current
+technologies: at most 1.12M static requests a day. Worker requests: 0. Within the allowance; off until the release with the rest of the switch. Watch: if current
 files are ever packed (past 20,000 deployed files), changed starts would spend Worker requests.
 
 ## Built (freshness)
@@ -79,9 +101,9 @@ files are ever packed (past 20,000 deployed files), changed starts would spend W
   30 days up to the newest release published, plus one entry per day for the trend. Backfilled sources are left out.
   It is computed from the change events the exported indexes name, so it is deterministic and the same catalog gives
   the same bytes. The deploy check verifies it.
-- **Client:** `unstale status`, with model steps on, prints one line for this repository's technologies over the last
-  30 days. It gives registry to catalog and catalog to this machine, each as a median and a 90th percentile, then
-  "records made here: not yet" until the client pipeline exists. When each event first reached this machine is kept
+- **Client:** `unstale status`, with model steps on, prints two short lines for this repository's technologies over
+  the last 30 days: registry to catalog, and catalog to this machine, each as a median and the slowest tenth; none
+  when no release arrived. When each event first reached this machine is kept
   in `.synced.json` beside the cached events. What a technology's first sync finds counts as already published. It is
   local only: nothing is sent anywhere.
 

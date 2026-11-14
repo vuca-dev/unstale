@@ -183,9 +183,11 @@ impl Env {
             .env("UNSTALE_TODAY", "2026-11-10")
             .env("UNSTALE_NO_REGISTRY", "1")
             .env("UNSTALE_HTTP_TIMEOUT", "3")
+            .env("UNSTALE_DEV_UNSIGNED_CATALOG", "1")
             .env_remove("UNSTALE_CATALOG")
             .env_remove("UNSTALE_CATALOG_KEY")
-            .env_remove("UNSTALE_EDGE_INFERENCE")
+            // Session start is behind the switch: on here unless a test turns it off.
+            .env("UNSTALE_EDGE_INFERENCE", "1")
             .stdin(Stdio::null());
         for (k, v) in &self.extra {
             c.env(k, v);
@@ -297,10 +299,12 @@ fn an_unchanged_catalog_costs_one_request_and_a_changed_one_syncs_in_the_backgro
             &format!("/{} 200", shard_path(&cat))
         ]
     );
-    // The first sync's records are new to this repository: one line at the next session start.
+    // The first sync here is not news (the report after setup reads the same records): no line.
     // Unchanged: one conditional request, and no background stage.
-    let line = session_start(&env, env.repo.path(), "unchanged catalog");
-    assert!(line.starts_with("unstale: 2 new upstream records for 1 technology this repository uses since the last onboarding report."), "{line}");
+    assert_eq!(
+        session_start(&env, env.repo.path(), "unchanged catalog"),
+        ""
+    );
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(srv.take_log(), vec!["/v1/technologies.json 304"]);
     // `unstale status` refreshes the report: the line is no longer new.
@@ -326,7 +330,9 @@ fn an_unchanged_catalog_costs_one_request_and_a_changed_one_syncs_in_the_backgro
     );
     let line = session_start(&env, env.repo.path(), "new record");
     assert!(
-        line.starts_with("unstale: 1 new upstream records for 1 technology"),
+        line.starts_with(
+            "unstale: 1 new upstream change for next. Run `unstale status --wait 0` to see it."
+        ),
         "{line}"
     );
 }
@@ -338,8 +344,104 @@ fn shard_path(cat: &FixtureCatalog) -> String {
     idx["shards"][0]["path"].as_str().unwrap().to_string()
 }
 
+const SLOW_LINE: &str = "warning: catalog too slow at session start, so newer changes are missing. The next session retries.\n";
+
 #[test]
-fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
+fn a_failed_sync_is_one_warning_when_it_starts_failing_not_again_while_it_lasts() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 2);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert_eq!(session_start(&env, env.repo.path(), "all well"), "");
+
+    // The catalog stops answering: said once, in the user's words, with what it costs and what happens next. No
+    // raw error, no path.
+    srv.set(Mode::Hang);
+    assert_eq!(
+        session_start(&env, env.repo.path(), "catalog hanging"),
+        SLOW_LINE
+    );
+    assert_eq!(env.state()["warned"], json!("catalog-slow"));
+    // Still failing: nothing is said again.
+    assert_eq!(session_start(&env, env.repo.path(), "still hanging"), "");
+    // Nor days later: what is compared is the kind of trouble, not the wording or the age of the last attempt.
+    let mut state = env.state();
+    state["last_attempt"] = json!(state["last_attempt"].as_u64().unwrap() - 3 * 86_400);
+    std::fs::write(
+        env.repo.path().join(".unstale/state/session-sync.json"),
+        state.to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        session_start(&env, env.repo.path(), "hanging, days later"),
+        ""
+    );
+
+    // The catalog answers again and nothing changed there: the failure is over, and `unstale status` shows none.
+    srv.set(Mode::Serve);
+    assert_eq!(session_start(&env, env.repo.path(), "answering again"), "");
+    let s = env.state();
+    assert!(
+        s.get("failure").is_none() && s.get("warned").is_none(),
+        "{s}"
+    );
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(!status.contains("the sync at session start"), "{status}");
+    // Failing again later is new, so it is said again.
+    srv.set(Mode::Hang);
+    assert_eq!(
+        session_start(&env, env.repo.path(), "hanging again"),
+        SLOW_LINE
+    );
+}
+
+#[test]
+fn a_warning_the_hook_did_not_print_is_still_due() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 2);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    env.ok(&["status", "--wait", "0", "--no-animation"]);
+    // A failure already on record that session start has not said yet (as when its deadline cut the line): the
+    // record of what was said is written only after printing, so the next session start says it.
+    let mut state = env.state();
+    state["failure"] =
+        json!("next could not be synced: reading /Users/someone/.cache/unstale/v1/x: denied");
+    state["last_attempt"] = json!(1);
+    std::fs::write(
+        env.repo.path().join(".unstale/state/session-sync.json"),
+        state.to_string(),
+    )
+    .unwrap();
+    assert!(env.state().get("warned").is_none());
+    srv.set(Mode::Hang);
+    // The line cannot be delivered (nobody reads the hook's output any more): it is not recorded as said.
+    let mut child = env
+        .command(env!("CARGO_BIN_EXE_unstale"))
+        .arg("notify")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    assert_eq!(child.wait().unwrap().code(), Some(0));
+    assert!(env.state().get("warned").is_none(), "{}", env.state());
+    // An unusual failure: summarised, with no raw error and no path; `unstale status` has the detail.
+    let line = session_start(&env, env.repo.path(), "a failure not yet said");
+    assert!(line.starts_with("warning: "), "{line}");
+    assert!(
+        !line.contains('/') && !line.contains("denied") && line.trim_end().chars().count() <= 100,
+        "{line}"
+    );
+}
+
+#[test]
+fn session_start_is_quick_at_most_one_line_and_exits_0_whatever_fails() {
     let cat = FixtureCatalog::new();
     publish(&cat, 2);
     let srv = Server::start(cat.dir.path().to_path_buf());
@@ -375,7 +477,10 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
 
     // The catalog hanging: the request is bounded and nothing is waited for.
     srv.set(Mode::Hang);
-    assert_eq!(session_start(&env, env.repo.path(), "catalog hanging"), "");
+    assert_eq!(
+        session_start(&env, env.repo.path(), "catalog hanging"),
+        SLOW_LINE
+    );
     let s = env.state();
     assert_eq!(
         s["failure"],
@@ -387,9 +492,12 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
     let line = status
         .lines()
-        .find(|l| l.starts_with("Sync at agent session start: "))
+        .find(|l| l.starts_with("warning: the sync at session start failed "))
         .unwrap_or_else(|| panic!("{status}"));
-    assert!(line.ends_with(" did not finish: the catalog did not answer in time. The next session start tries again"), "{line}");
+    assert!(
+        line.ends_with(": the catalog did not answer in time. The next session start tries again."),
+        "{line}"
+    );
 
     // The catalog and the coverage service both hanging, with shared coverage still growing (so the hook asks it):
     // the worst case, bounded by the hook's deadline. The service accepts connections and never answers.
@@ -412,7 +520,7 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
         ""
     );
     assert!(
-        started.elapsed() > Duration::from_millis(1_200),
+        started.elapsed() > Duration::from_millis(1_000),
         "the coverage service was asked and waited for"
     );
     std::fs::remove_file(env.repo.path().join(".unstale/state/coverage.json")).unwrap();
@@ -421,8 +529,13 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
 
     // The catalog unreachable.
     env.config(|c| c["catalog"] = json!("http://127.0.0.1:9"));
+    // Said once, as its own kind of trouble; still one line, still exit 0.
     assert_eq!(
         session_start(&env, env.repo.path(), "catalog unreachable"),
+        "warning: catalog not reached at session start, so newer changes are missing. The next session retries.\n"
+    );
+    assert_eq!(
+        session_start(&env, env.repo.path(), "catalog still unreachable"),
         ""
     );
     env.config(|c| c["catalog"] = json!(srv.base));
@@ -464,12 +577,16 @@ fn session_start_is_quick_silent_and_exits_0_whatever_fails() {
         ("UNSTALE_EDGE_INFERENCE".into(), "1".into()),
         ("OPENAI_BASE_URL".into(), "http://127.0.0.1:9".into()),
     ];
+    // Earlier background stages have finished (each holds the lock from the moment the hook returns).
+    wait_idle(&env);
     std::fs::remove_file(env.repo.path().join(".unstale/state/session-sync.json")).unwrap();
     assert_eq!(
         session_start(&env, env.repo.path(), "provider down, background running"),
         ""
     );
     std::thread::sleep(Duration::from_millis(300));
+    // As the hook starts it.
+    env.extra.push(("UNSTALE_HOOK_STAGE".into(), "1".into()));
     let (code, out, err, took) = env.run_in(env.repo.path(), &["session-sync"]);
     eprintln!("background stage, lock held: {} ms", took.as_millis());
     assert_eq!((code, out.as_str(), err.as_str()), (0, "", ""));
@@ -506,10 +623,16 @@ fn the_hook_never_waits_for_the_background_stage() {
         session_start(&env, env.repo.path(), "background stage hanging"),
         ""
     );
-    std::thread::sleep(Duration::from_millis(300));
+    // The hook has returned; the stage it started reaches the hanging catalog whenever the machine gets to it.
+    let until = Instant::now() + Duration::from_secs(20);
+    let mut log = vec![];
+    while !log.contains(&"/v1/root.json hang".to_string()) && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+        log.extend(srv.take_log());
+    }
     assert!(
-        srv.take_log().contains(&"/v1/root.json hang".to_string()),
-        "the background stage is running"
+        log.contains(&"/v1/root.json hang".to_string()),
+        "the background stage is running: {log:?}"
     );
 }
 
@@ -599,8 +722,7 @@ fn each_agents_session_start_syncs_on_a_fresh_install() {
     assert_eq!((out.status.code(), out.stderr.len()), (Some(0), 0));
     wait_for(&env, synced);
 
-    // opencode loads the plugin and sends it `session.created`; its `$` is Bun's shell, played here by a stand-in
-    // that runs the command it is given the way Bun's does (each interpolated value one argument, arrays spread).
+    // opencode loads the plugin and sends it a session's start, as 2.x and as 1.x do, played here by a stand-in.
     fresh("opencode");
     let plugin =
         std::fs::read_to_string(repo.join(".opencode/plugins/unstale-session.js")).unwrap();
@@ -640,34 +762,83 @@ fn each_agents_session_start_syncs_on_a_fresh_install() {
     );
 }
 
-/// A stand-in for opencode: loads the plugin with a `$` like Bun's and sends events.
+/// A stand-in for opencode: loads the plugin as opencode 2.x does (its default export's `setup`, given the location
+/// and the server's event stream) and as opencode 1.x does (its `server` hooks), and sends events. Every process the
+/// plugin starts is recorded, and still runs.
 const OPENCODE_SESSION: &str = r#"
-import { spawn } from "node:child_process";
-const repo = process.argv[2];
+import { createRequire, syncBuiltinESMExports } from "node:module";
+const cp = createRequire(import.meta.url)("node:child_process");
+const real = cp.spawn;
 const calls = [];
-const $ = (strings, ...values) => {
-  const argv = [];
-  strings.forEach((s, i) => {
-    argv.push(...s.split(/\s+/).filter(Boolean));
-    if (i < values.length) argv.push(...[values[i]].flat().map(String));
-  });
-  calls.push(argv);
-  const run = new Promise((resolve) => {
-    const p = spawn(argv[0], argv.slice(1), { stdio: "ignore" });
-    p.on("exit", resolve);
-    p.on("error", resolve);
-  });
-  const shell = { quiet: () => shell, nothrow: () => shell, catch: (f) => run.catch(f), then: (a, b) => run.then(a, b) };
-  return shell;
+const patch = (f) => { cp.spawn = f; syncBuiltinESMExports(); };
+patch((cmd, args, opts) => { calls.push([cmd, ...args]); return real(cmd, args, opts); });
+const repo = process.argv[2];
+const settle = () => new Promise((r) => setTimeout(r, 200));
+const stream = (events) => ({ subscribe: async function* () { for (const e of events) yield e; } });
+const { default: plugin } = await import(new URL("./plugin.mjs", import.meta.url));
+if (!plugin?.id || typeof plugin.setup !== "function" || typeof plugin.server !== "function") throw new Error("not a 2.x and 1.x plugin");
+const expect = (n, what) => {
+  if (calls.length !== n) throw new Error(`${what}: ${JSON.stringify(calls)}`);
+  const last = calls[n - 1];
+  if (n && last.slice(-3).join(" ") !== `-C ${repo} notify`) throw new Error(`${what}: ${JSON.stringify(last)}`);
 };
-const { UnstaleSessionSync } = await import(new URL("./plugin.mjs", import.meta.url));
-const hooks = await UnstaleSessionSync({ $, directory: repo });
+// The server's sessions, as `ctx.session.get` returns them: this repository's, another's, a child of ours.
+const other = repo + "-elsewhere";
+const sessions = {
+  ses_1: { id: "ses_1", location: { directory: repo } },
+  ses_2: { id: "ses_2", location: { directory: repo } },
+  ses_b: { id: "ses_b", location: { directory: other } },
+  ses_c: { id: "ses_c", parentID: "ses_1", location: { directory: repo } },
+};
+const ctx = (events) => ({
+  location: { directory: repo },
+  event: stream(events),
+  session: { get: async ({ sessionID }) => sessions[sessionID] },
+});
+// opencode 2.x, a session started in the interface: created, then its executions; one sync.
+await plugin.setup(ctx([
+  { type: "message.updated", data: {} },
+  { type: "session.created", location: { directory: repo }, data: { sessionID: "ses_1", location: { directory: repo } } },
+  { type: "session.execution.started", data: { sessionID: "ses_1" } },
+  { type: "session.execution.started", data: { sessionID: "ses_1" } },
+]));
+await settle();
+const ignored = calls.length === 1;
+expect(1, "2.x session.created");
+// The stream is the whole server's: another repository's session, created or only executing, and a child session of
+// ours start nothing.
+await plugin.setup(ctx([
+  { type: "session.created", location: { directory: other }, data: { sessionID: "ses_b", location: { directory: other } } },
+  { type: "session.execution.started", data: { sessionID: "ses_b" } },
+  { type: "session.created", location: { directory: repo }, data: { sessionID: "ses_c", parentID: "ses_1", location: { directory: repo } } },
+  { type: "session.execution.started", data: { sessionID: "ses_c" } },
+]));
+await settle();
+expect(1, "2.x another location, a child session");
+await plugin.setup(ctx([{ type: "session.execution.started", data: { sessionID: "ses_b" } }]));
+await settle();
+expect(1, "2.x another location's run");
+// opencode 2.x, `opencode run`: the session is not announced as created; its first execution counts, once, its
+// location read from the server.
+await plugin.setup(ctx([
+  { type: "session.execution.started", data: { sessionID: "ses_2" } },
+  { type: "session.execution.started", data: { sessionID: "ses_2" } },
+]));
+await settle();
+expect(2, "2.x opencode run");
+// opencode 1.x: the `server` hooks get `session.created`.
+const hooks = await plugin.server({ directory: repo });
 await hooks.event({ event: { type: "message.updated" } });
-const ignored = calls.length === 0;
 await hooks.event({ event: { type: "session.created" } });
-if (calls.length !== 1) throw new Error("not started: " + JSON.stringify(calls));
-const broken = await UnstaleSessionSync({ $: () => { throw new Error("no shell"); }, directory: repo });
-await broken.event({ event: { type: "session.created" } });
+expect(3, "1.x session.created");
+// Nothing reaches opencode: no event stream, a stream that fails, a process that cannot start.
+await plugin.setup({ location: { directory: repo } });
+await plugin.setup({ location: { directory: repo }, event: { subscribe: () => { throw new Error("no stream"); } } });
+patch(() => { throw new Error("no spawn"); });
+sessions.ses_3 = { id: "ses_3", location: { directory: repo } };
+await plugin.setup(ctx([{ type: "session.execution.started", data: { sessionID: "ses_3" } }]));
+await (await plugin.server({ directory: repo })).event({ event: { type: "session.created" } });
+await settle();
 console.log(`other events: ${ignored ? "ignored" : "ran"}; failure: contained`);
 await new Promise((r) => setTimeout(r, 1500));
 "#;
@@ -707,7 +878,7 @@ fn the_codex_hook_keeps_the_users_entries_and_never_writes_a_file_git_tracks() {
     std::fs::create_dir_all(repo.join(".codex")).unwrap();
     std::fs::write(repo.join(".codex/hooks.json"), mine).unwrap();
     Command::new("git")
-        .args(["add", ".codex/hooks.json"])
+        .args(["add", "-f", ".codex/hooks.json"])
         .current_dir(repo)
         .status()
         .unwrap();
@@ -878,7 +1049,10 @@ fn status_shows_how_long_releases_took_to_reach_this_machine() {
     // The first sync here: what it finds was published before this machine followed the technology.
     env.ok(&["session-sync"]);
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    assert!(status.contains("Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days"), "{status}");
+    assert!(
+        !status.contains("Registry to catalog"),
+        "nothing to report, so no line: {status}"
+    );
     // A release published 2 h ago, 5 h after the registry had it, synced now.
     publish(vec![
         event("16.0.1", 90 * 86_400, 89 * 86_400),
@@ -886,18 +1060,351 @@ fn status_shows_how_long_releases_took_to_reach_this_machine() {
     ]);
     env.ok(&["session-sync"]);
     let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
-    let line = status
-        .lines()
-        .find(|l| l.starts_with("Freshness on this machine"))
-        .unwrap();
-    assert_eq!(
-        line,
-        "Freshness on this machine, last 30 days (1 release): registry to catalog 5h median (5h at the 90th percentile) · catalog to here 2h median (2h at the 90th percentile) · records made here: not yet"
+    // Two short lines, aligned with the rest of the status block.
+    assert!(
+        status.contains(
+            "Registry to catalog   5h median, 5h for the slowest tenth (1 release, last 30 days)\nCatalog to here       2h median, 2h for the slowest tenth\n"
+        ),
+        "{status}"
     );
     // With model steps off, events are not synced and the line is not shown.
-    env.extra.clear();
+    env.extra = vec![("UNSTALE_EDGE_INFERENCE".into(), "0".into())];
     assert!(
         !env.ok(&["status", "--wait", "0", "--no-animation"])
-            .contains("Freshness on this machine")
+            .contains("Registry to catalog")
     );
+}
+
+/// Files under the repository and the cache, relative, without Git's own.
+fn tree(env: &Env) -> Vec<String> {
+    let mut out = vec![];
+    for (base, name) in [(env.repo.path(), "repo"), (env.cache.path(), "cache")] {
+        for p in walk(base) {
+            let rel = p.strip_prefix(base).unwrap().display().to_string();
+            if !rel.starts_with(".git/") {
+                out.push(format!("{name}/{rel}"));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// With the switch off, setup and session start are what they were before session-start sync: the same files (as
+/// a build of the commit before it writes, checked by hand against that build), no catalog request at session start,
+/// no other process, no new line.
+#[test]
+fn with_the_switch_off_setup_and_session_start_are_as_before() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 1);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let mut env = Env::new();
+    env.extra = vec![("UNSTALE_EDGE_INFERENCE".into(), "0".into())];
+    env.init(&srv.base);
+    srv.take_log();
+    assert_eq!(session_start(&env, env.repo.path(), "switch off"), "");
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert_eq!(
+        session_start(&env, env.repo.path(), "switch off, after status"),
+        ""
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    // Only status asked the catalog (its own sync); session start asked nothing.
+    assert!(srv.take_log().iter().all(|l| !l.contains("hang")));
+    assert!(
+        !status.contains("Sync at agent session start")
+            && !status.contains("Freshness on this machine")
+            && !status.contains("Codex session start"),
+        "{status}"
+    );
+    let want = [
+        "repo/.agents/skills/unstale-review/SKILL.md",
+        "repo/.agents/skills/unstale-review/agents/openai.yaml",
+        "repo/.claude/settings.local.json",
+        "repo/.claude/skills/unstale-review/SKILL.md",
+        "repo/.claude/skills/unstale-review/agents/openai.yaml",
+        // opencode's `/unstale-review`, the review's own command: not session start, so with the switch off too.
+        "repo/.opencode/commands/unstale-review.md",
+        "repo/.unstale/.gitignore",
+        "repo/.unstale/config.json",
+        "repo/.unstale/coverage.md",
+        "repo/.unstale/ledger.jsonl",
+        "repo/.unstale/onboarding-report.md",
+        "repo/.unstale/review/opportunities.md",
+        "repo/.unstale/review/upgrades.md",
+        "repo/.unstale/skills/review/SKILL.md",
+        "repo/.unstale/state/coverage.json",
+        "repo/.unstale/state/integration-conflicts.json",
+        "repo/.unstale/state/onboarding-log.txt",
+        "repo/.unstale/state/review.json",
+        "repo/node_modules/next/package.json",
+        "repo/package.json",
+    ];
+    let got: Vec<String> = tree(&env)
+        .into_iter()
+        .filter(|f| f.starts_with("repo/"))
+        .collect();
+    assert_eq!(got, want);
+    let exclude = std::fs::read_to_string(env.repo.path().join(".git/info/exclude")).unwrap();
+    assert!(
+        !exclude.contains("hooks.json") && !exclude.contains("unstale-session.js"),
+        "{exclude}"
+    );
+    // The hook written is the one written before, byte for byte.
+    let exe = std::fs::canonicalize(env!("CARGO_BIN_EXE_unstale")).unwrap();
+    let before = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&json!({"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": format!("\"{}\" -C \"$CLAUDE_PROJECT_DIR\" notify", exe.display()), "timeout": 10}]}]}}))
+            .unwrap()
+    );
+    if !exe
+        .display()
+        .to_string()
+        .contains(['$', '`', '"', '\\', '\''])
+    {
+        assert_eq!(
+            std::fs::read_to_string(env.repo.path().join(".claude/settings.local.json")).unwrap(),
+            before
+        );
+    }
+}
+
+/// Waits until no background stage holds the repository's lock.
+fn wait_idle(env: &Env) {
+    let lock = env.repo.path().join(".unstale/state/session-sync.lock");
+    let until = Instant::now() + Duration::from_secs(10);
+    while let Ok(f) = std::fs::OpenOptions::new().write(true).open(&lock) {
+        if f.try_lock().is_ok() {
+            return;
+        }
+        assert!(
+            Instant::now() < until,
+            "a background stage is still running"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn installers_never_write_a_tracked_read_only_or_inline_configured_file() {
+    // Claude Code's settings tracked by Git: left exactly as they are.
+    let env = Env::new();
+    let repo = env.repo.path();
+    let mine = "{ \"model\": \"x\" }\n";
+    std::fs::create_dir_all(repo.join(".claude")).unwrap();
+    std::fs::write(repo.join(".claude/settings.local.json"), mine).unwrap();
+    Command::new("git")
+        .args(["add", "-f", ".claude/settings.local.json"])
+        .current_dir(repo)
+        .status()
+        .unwrap();
+    env.init("http://127.0.0.1:9");
+    assert_eq!(
+        std::fs::read_to_string(repo.join(".claude/settings.local.json")).unwrap(),
+        mine
+    );
+
+    // Read-only hooks files: left alone, still read-only; `unstale status` says why Codex's was not installed.
+    let env = Env::new();
+    let repo = env.repo.path();
+    for f in [".claude/settings.local.json", ".codex/hooks.json"] {
+        std::fs::create_dir_all(repo.join(f).parent().unwrap()).unwrap();
+        std::fs::write(repo.join(f), mine).unwrap();
+        let mut p = std::fs::metadata(repo.join(f)).unwrap().permissions();
+        p.set_readonly(true);
+        std::fs::set_permissions(repo.join(f), p).unwrap();
+    }
+    env.init("http://127.0.0.1:9");
+    for f in [".claude/settings.local.json", ".codex/hooks.json"] {
+        assert_eq!(std::fs::read_to_string(repo.join(f)).unwrap(), mine, "{f}");
+        assert!(
+            std::fs::metadata(repo.join(f))
+                .unwrap()
+                .permissions()
+                .readonly(),
+            "{f} stayed read-only"
+        );
+    }
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(
+        status.contains("Codex session start not installed: .codex/hooks.json is read-only"),
+        "{status}"
+    );
+
+    // Hooks defined inline in .codex/config.toml: no second form is added, and status says so.
+    let env = Env::new();
+    let repo = env.repo.path();
+    std::fs::create_dir_all(repo.join(".codex")).unwrap();
+    std::fs::write(
+        repo.join(".codex/config.toml"),
+        "[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = \"command\"\ncommand = \"echo\"\n",
+    )
+    .unwrap();
+    env.init("http://127.0.0.1:9");
+    assert!(!repo.join(".codex/hooks.json").exists());
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(
+        status
+            .contains("Codex session start not installed: .codex/config.toml defines hooks inline"),
+        "{status}"
+    );
+
+    // A hooks.json the installer cannot read as the JSON object Codex expects (comments, a syntax error, another
+    // shape): left as it is, and status gives the reason.
+    for mine in [
+        "{\n  // my hooks\n  \"hooks\": {}\n}\n",
+        "{ \"hooks\": ",
+        "[]\n",
+        "{\"hooks\": []}\n",
+    ] {
+        let env = Env::new();
+        let repo = env.repo.path();
+        std::fs::create_dir_all(repo.join(".codex")).unwrap();
+        std::fs::write(repo.join(".codex/hooks.json"), mine).unwrap();
+        env.init("http://127.0.0.1:9");
+        assert_eq!(
+            std::fs::read_to_string(repo.join(".codex/hooks.json")).unwrap(),
+            mine
+        );
+        let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+        assert!(
+            status.contains("Codex session start not installed: .codex/hooks.json is not plain JSON with a \"hooks\" object (comments, a syntax error or another shape)"),
+            "{mine:?}:\n{status}"
+        );
+    }
+}
+
+#[test]
+fn an_executable_path_a_shell_would_expand_is_never_run_as_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let odd = dir
+        .path()
+        .join("a b 'q' \"d\" $(touch pwned) `touch pwned2`");
+    std::fs::create_dir_all(&odd).unwrap();
+    let exe = odd.join("unstale");
+    std::fs::copy(env!("CARGO_BIN_EXE_unstale"), &exe).unwrap();
+    let env = Env::new();
+    let run = |args: &[&str]| {
+        env.command(exe.to_str().unwrap())
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let out = run(&[
+        "init",
+        "--catalog",
+        "http://127.0.0.1:9",
+        "--service",
+        "http://127.0.0.1:9",
+        "--mode",
+        "local",
+        "--yes",
+        "--wait",
+        "0",
+        "--no-animation",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let repo = env.repo.path();
+    for (file, extra) in [
+        (
+            ".claude/settings.local.json",
+            vec![("CLAUDE_PROJECT_DIR", repo.to_str().unwrap())],
+        ),
+        (".codex/hooks.json", vec![]),
+    ] {
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(repo.join(file)).unwrap()).unwrap();
+        let command = v["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let mut c = env.command("sh");
+        c.args(["-c", &command]).current_dir(dir.path());
+        for (k, val) in extra {
+            c.env(k, val);
+        }
+        let out = c.output().unwrap();
+        assert_eq!(
+            (
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr).to_string()
+            ),
+            (Some(0), String::new()),
+            "{file}: {command}"
+        );
+    }
+    wait_idle(&env);
+    assert!(
+        !dir.path().join("pwned").exists()
+            && !dir.path().join("pwned2").exists()
+            && !repo.join("pwned").exists(),
+        "the path was run as code"
+    );
+    assert!(
+        repo.join(".unstale/state/session-sync.json").is_file(),
+        "the hook ran the executable at that path"
+    );
+}
+
+#[test]
+fn only_manifests_start_a_sync_and_a_repository_with_nothing_covered_asks_once_and_stops() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 1);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    // Nothing this repository uses is in the catalog.
+    std::fs::write(
+        env.repo.path().join("package.json"),
+        r#"{"name":"app","private":true,"dependencies":{"left-pad":"1.3.0"}}"#,
+    )
+    .unwrap();
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    assert_eq!(env.state()["technologies"], json!([]));
+    srv.take_log();
+    // Editing a README is not a reason to sync.
+    std::fs::write(env.repo.path().join("README.md"), "# notes\n").unwrap();
+    for case in ["nothing covered", "README edited"] {
+        session_start(&env, env.repo.path(), case);
+        wait_idle(&env);
+        assert_eq!(srv.take_log(), vec!["/v1/technologies.json 304"], "{case}");
+    }
+}
+
+#[test]
+fn a_rebuilt_cache_is_not_reported_as_new_records() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 3);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    std::fs::remove_dir_all(env.cache.path().join("v1")).unwrap();
+    env.ok(&["session-sync"]);
+    assert!(env.state().get("arrived").is_none(), "{}", env.state());
+    assert_eq!(
+        session_start(&env, env.repo.path(), "after a rebuilt cache"),
+        ""
+    );
+}
+
+#[test]
+fn the_last_failure_shows_once_in_status_with_its_age() {
+    let cat = FixtureCatalog::new();
+    publish(&cat, 1);
+    let srv = Server::start(cat.dir.path().to_path_buf());
+    let env = Env::new();
+    env.init(&srv.base);
+    env.ok(&["session-sync"]);
+    srv.set(Mode::Hang);
+    session_start(&env, env.repo.path(), "catalog hanging");
+    srv.set(Mode::Serve);
+    let status = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(status.contains("warning: the sync at session start failed just now: the catalog did not answer in time. The next session start tries again."), "{status}");
+    let again = env.ok(&["status", "--wait", "0", "--no-animation"]);
+    assert!(!again.contains("the sync at session start"), "{again}");
 }

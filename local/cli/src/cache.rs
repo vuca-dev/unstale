@@ -28,6 +28,23 @@ pub fn cache_dir() -> PathBuf {
     }
 }
 
+/// Where what one catalog source gives is cached. An HTTP catalog shares the per-user cache: a release build checks
+/// every file it serves against the catalog key, so every repository reading one reads the same verified files (a
+/// build with no key is a development build and checks nothing). A local directory is never checked, so it gets a
+/// folder of its own under `unsigned/`, named by the directory: its catalog files, and the records and results the
+/// model steps make from them, never reach a repository that reads another catalog. Token use and the worker lock stay
+/// per user (`inference/` at the top).
+pub fn cache_for(catalog: &str) -> PathBuf {
+    let base = cache_dir();
+    if crate::sync::is_http(catalog) {
+        return base;
+    }
+    base.join(UNSIGNED).join(&sha256_hex(catalog.trim().as_bytes())[..16])
+}
+
+/// The folder of the caches of catalog directories (`cache_for`).
+pub const UNSIGNED: &str = "unsigned";
+
 pub fn index_path(cache: &Path, tech: &str) -> PathBuf {
     cache.join("v1/tech").join(format!("{tech}.json"))
 }
@@ -151,6 +168,9 @@ pub struct TechData {
     pub retracted: Vec<String>,
     /// Lines skipped: unknown status or a record that does not parse.
     pub skipped: usize,
+    /// Who made or extended a record on this machine, by record id (edge-inference switch on); a record absent here
+    /// is the catalog's as published.
+    pub provenance: BTreeMap<String, crate::pipeline::store::RecordProvenance>,
 }
 
 /// A parsed shard: active records, merged ids (id to target), retracted ids, and lines skipped.
@@ -189,8 +209,22 @@ pub fn parse_shard(gz: &[u8]) -> Result<Shard> {
     Ok((recs, merged, retracted, skipped))
 }
 
-/// Load one technology from the cache, verifying every shard. `Ok(None)` when it was never synced.
+/// Load one technology from the cache, verifying every shard. `Ok(None)` when it was never synced. With the
+/// edge-inference switch on, the records the client made itself are merged in (`pipeline::store::overlay`).
 pub fn load_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
+    let mut td = load_catalog_tech(cache, tech)?;
+    if crate::util::edge_inference()
+        && let Some(td) = td.as_mut()
+    {
+        use crate::pipeline::store;
+        let cover = store::Cover::new(td, store::processed(cache, tech));
+        store::overlay(td, &store::LocalStore::load(cache, tech), &cover);
+    }
+    Ok(td)
+}
+
+/// [`load_tech`] without the client's own records: the catalog as published.
+pub fn load_catalog_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
     let ip = index_path(cache, tech);
     let Ok(bytes) = std::fs::read(&ip) else { return Ok(None) };
     let index: TechIndex = serde_json::from_slice(&bytes).with_context(|| format!("cached index {}", ip.display()))?;
@@ -204,6 +238,7 @@ pub fn load_tech(cache: &Path, tech: &str) -> Result<Option<TechData>> {
         merged: BTreeMap::new(),
         retracted: vec![],
         skipped: 0,
+        provenance: BTreeMap::new(),
     };
     for s in td.index.shards.clone() {
         let p = shard_path(cache, tech, &s);

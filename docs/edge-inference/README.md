@@ -32,8 +32,9 @@ last.
 
 ## One switch
 
-Everything the sprint adds to the client's behaviour sits behind one switch, **off by default until WS7**: with it
-off, the client behaves exactly as it does today (catalog records, no model calls, no picker). With it on:
+Everything the sprint adds to the client's behaviour sits behind one switch, `UNSTALE_EDGE_INFERENCE`, **on by
+default since the release switch-on**. `UNSTALE_EDGE_INFERENCE=0` (or `false`, `off`, `no`) turns it off, and the
+client then behaves as it did before (catalog records, no model calls, no picker). With it on:
 
 - **Catalog records win where they exist.** For a release whose records are in the catalog, the client uses them
   and makes no model call. It runs its own steps only for releases that have change events and no catalog records.
@@ -41,19 +42,20 @@ off, the client behaves exactly as it does today (catalog records, no model call
   re-derived on the user's tokens.
 - The picker, the session-start hooks and sync, and no-key mode are active.
 
-Tests and the environment matrix turn the switch on. WS7 flips the default.
+Tests and the environment matrix state the switch explicitly; the scenarios that mean it off set `0`.
 
 ## Resolved decisions (10 November 2026)
 
 | Decision | Result | Evidence |
 |---|---|---|
 | Where the model steps run on the client | **Rust**, in the client. TypeScript's advantages (MDX and HTML parsing, Playwright) belong to collection, which stays central | central calls models over plain HTTP (`central/src/pipeline/llm.ts`), not an SDK |
-| Codex as a provider | **Yes**: `codex exec` headless with `gpt-6-luna` pinned, lean flags, batch 8 | `eval/edge-cli/RESULTS.md` |
+| Codex as a provider | **Yes**: `codex exec` headless with `gpt-6-luna` pinned, lean flags. Extraction is batched by length (a chunk above 6,000 characters goes alone; a batch holds at most 12,000 characters and 8 chunks). Measured: extraction recall is below the direct route (60.1% pooled against 75.6% for the client's direct run and 66.3 to 67.4% for central's), with precision level; 167k plan tokens per technology-year. Labels and matching through Codex are not measured | `eval/edge-cli/RESULTS.md`; batching and recall: `eval/edge-port/RESULTS.md`, addendum 1 |
 | Cursor CLI as a provider | **No**: the plan serves no cheap model; 39–84× the direct cost | `eval/edge-cli/RESULTS.md` |
 | Local encoder | **Experimental, not shipped**: fails stages 4 and 5 on precision; 299 MB lossless | `eval/edge-encoder/RESULTS.md` |
 | Extraction (A+B) model | `gpt-6-luna`, reasoning low, two calls, on any OpenAI-compatible route or Codex | `eval/provider-matrix/RESULTS.md` |
 | Labels (D) without Jev | `gpt-6-luna`, read on its choices; **allowed as a fallback, marked below Jev** on breaking recall | `eval/provider-matrix/RESULTS.md` addendum 1 |
-| Matching (E) without Jev | `gpt-6-luna` answering by choice, with central's production rule (an uncalibrated answer counts as 0 in the guards): **allowed**. No false merges measured; about 4 more duplicate records (about 800 tokens) per technology-year, which the reading agent absorbs. The fitted 0.82 / 0.97 / 1.01 bars need the stated-probability prompt, which the client does not send | `eval/provider-matrix/RESULTS.md` addendum 2; WS4 review, 11 November |
+| Matching (E) without Jev | `gpt-6-luna` answering by choice, with central's production rule (an uncalibrated answer counts as 0 in the guards): **allowed**. From the re-measurement with text answers read as options: no false merges measured on 141 merges; about 4 more duplicate records (4.0 to 4.5) per technology-year, which the reading agent absorbs. The fitted 0.82 / 0.97 / 1.01 bars need the stated-probability prompt, which the client does not send | `eval/provider-matrix/RESULTS.md` addendum 2; duplicates: `eval/edge-port/RESULTS.md`, addendum 1; WS4 review, 11 November |
+| Matching (E) on SubQ Snap | **Snap 1.2 is the no-Jev matcher**. It is asked with the longer rules and the first 4 candidates, at its own bars (0.61 / 0.93 / 0.95), and offered as "Snap + <key>", ahead of the key alone. Against gpt-6-luna on two sets it had not seen: 86.3% and 89.1% of merges against 80.2% and 85.1% (both significant), with 0.3 and 0.4 false merges per 100. $0.0059 per technology-year. Labels stay on the key: Snap fails H2 breaking precision there (−3.4) | `eval/select/slice19/RESULTS.md`, part 2 |
 | Key detection | Names only: environment variable names, CLIs on PATH, `codex login status`. Never values before consent; never other repos' `.env` files; never other tools' auth files | — |
 | Consent | One picker, recommended option preselected; Enter accepts. No "what was checked" line | — |
 | Cost quotes | Always with units and scope: per technology-year, this repo's total, first sync once. Plan-billed tools in tokens plus "≈ $X at API prices" | — |
@@ -62,7 +64,7 @@ Tests and the environment matrix turn the switch on. WS7 flips the default.
 | Grace period | 20 days, then `min_client` is raised | — |
 | No key and no Codex | Pass deterministic signals and the raw change events (unparsed, sometimes duplicated) to the agent, with one line stating the extra token spend. **Shipped only if WS9 shows the agent with this mode beats the agent alone**; otherwise the client says a key or Codex is needed. Encoder deferred | WS9; `eval/edge-encoder/RESULTS.md` |
 | Anthropic key only | Offered last, with its trade stated (extraction misses more changes in upgrade guides; matching off, so more duplicates) | `eval/provider-matrix/RESULTS.md` |
-| Picker order | Jev + OpenAI-compatible key; Jev + Codex; OpenAI-compatible key alone; Codex alone; Anthropic key alone. Options below Jev say so in one line | — |
+| Picker order | Jev + OpenAI-compatible key; Jev + Codex; Snap + OpenAI-compatible key; OpenAI-compatible key alone; Codex alone; Anthropic key alone. Options below Jev say so in one line | Snap's place: `eval/select/slice19/RESULTS.md` |
 | Day 0 / day 20 | Day 0 is the day the release ships; day 20 follows automatically | — |
 | Terminal output | Governed by [Terminal principles](terminal-principles.md) (CEO playback review, 11 November) | — |
 | Session-start hooks and sync | Behind the one switch until the release: no half release, no new files or requests before then | Terminal principles 8 |

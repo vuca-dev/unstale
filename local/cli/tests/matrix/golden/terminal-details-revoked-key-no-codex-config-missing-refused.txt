@@ -1,0 +1,99 @@
+# A revoked OpenAI key in the shell, asking for the details at the question; the repo config names a key that is not here
+# keys: revoked-key · Codex: no-codex · run: terminal-details · repo config: --inference env:OPENROUTER_API_KEY · client: fresh · provider: refused
+
+$ unstale init --wait 0 --no-animation
+Costs are estimates from evaluation runs, billed by the provider to your key or plan.
+This repo has 3 packages unstale follows.
+The best option, which the others are compared with: Jev, a labelling service (JEV_API_KEY),
+beside an OpenAI-compatible key.
+
+1  OpenAI (OPENAI_API_KEY)
+   per package, per year  $0.052
+   this repo, a year      ≈ $0.16
+   first sync, once       ≈ $0.16
+   results                as many breaking changes found as the best option; ≈ 3% less precise
+                          ≈ 89% of breaking-change flags right, against 92%
+                          on short release notes ≈ 62%, against 75% (42 flags)
+                          on upgrade guides ≈ 93%, against 95% (228 flags)
+   repeats                ≈ 4 more changes listed twice per package, per year
+
+2  Not now
+   cost     free: no model is called
+   results  deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
+
+How should unstale read new release notes?
+
+  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels
+  ○ Not now      free             ≈ 25% of a full report's findings
+
+This repo's config suggests OpenRouter (OPENROUTER_API_KEY), which is not one of the options here.
+
+↑↓ to move · Enter to choose · d for details
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
+  ✓ shop · Shared setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal
+  --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
+unstale <newer version> available: npm install -g @unstale/cli@latest
+
+$ unstale status --wait 0 --no-animation
+  ✓ shop · Shared setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal
+  --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Release notes         OpenAI (OPENAI_API_KEY), your user config
+Tokens                0 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Cache                 under 1 MB of 100 MB
+
+# contacted
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   model provider: nothing
+#   codex: not run
+#   through the proxy: nothing

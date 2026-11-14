@@ -223,12 +223,13 @@ fn change_events_round_trip_and_an_index_names_their_shards() {
     assert_eq!(serde_json::from_value::<EventLine>(other).unwrap().kind, EvidenceKind::Other);
     let bare = EventLine { prompt_date: None, no_later_than: None, chunks: vec![], ..e.clone() };
     let text = serde_json::to_string(&bare).unwrap();
-    assert!(!text.contains("prompt_date") && !text.contains("no_later_than") && !text.contains("backfilled"));
+    assert!(!text.contains("prompt_date") && !text.contains("no_later_than") && !text.contains("backfilled") && !text.contains("extracted"));
     // Rust → TypeScript: events with every optional field set, for the Zod to accept.
     let full = EventLine {
         kind: EvidenceKind::UpgradeGuide,
         no_later_than: Some("16.2.0".into()),
         freshness: Freshness { backfilled: true, ..e.freshness.clone() },
+        extracted: true,
         ..e.clone()
     };
     let out = [&e, &bare, &full].iter().map(|l| serde_json::to_string(l).unwrap() + "\n").collect::<String>();

@@ -1,5 +1,7 @@
-Choose how unstale reads new release notes (costs are estimates; this repo has 1 technology):
-  1) OpenRouter (OPENROUTER_API_KEY): $0.091 per technology-year · this repo ≈ $0.091 a year, first sync ≈ $0.091 once · slightly less complete: ≈ 93% of the best option's breaking-change flags; ≈ 2 more duplicate records per technology-year
-  2) Codex plan: 590k Codex tokens ($0.075 at API prices) per technology-year · this repo ≈ 590k Codex tokens a year, first sync ≈ 590k Codex tokens once · results through Codex not measured yet
-  3) None: deterministic signals only; new change details need a key or Codex
-Choose 1–3, or press Enter for 1 (recommended): 
+How should unstale read new release notes?
+
+  ● OpenRouter key   ≈ $0.052 a year   ≈ 3% less precise labels
+  ○ Codex plan       no extra cost     your Codex plan, up to the limit you set
+  ○ Not now          free              ≈ 25% of a full report's findings
+
+↑↓ to move · Enter to choose · d for details

@@ -87,6 +87,8 @@ pub struct Variants {
     pub diet_full: Vec<Edit>,
     /// Compact JSON only.
     pub diet_compact: Vec<Edit>,
+    /// Several chunks in one call (a Codex batch), answered by chunk id: `%CHUNKS%` holds [`Extract::batch_chunk`]s.
+    pub batch: Vec<Edit>,
 }
 
 /// `extract.json`: the two extraction calls.
@@ -113,6 +115,9 @@ pub struct Extract {
     #[serde(deserialize_with = "text")]
     pub docs_preamble_marked: String,
     pub variants: Variants,
+    /// One chunk of a batch: `%ID%`, `%TECH%`, `%VERSION%`, `%DATE%`, `%NOTES%`.
+    #[serde(deserialize_with = "text")]
+    pub batch_chunk: String,
     /// A chat-completions `response_format`; its `json_schema.schema` is the schema a [`crate::inference::Prompt`] takes.
     pub one_call_schema_response_format: Value,
 }
@@ -200,13 +205,24 @@ pub struct Judge {
     pub sources: JudgeSources,
 }
 
-/// `choice.json` and `advisory-apis.json`: one prompt each.
+/// `advisory-apis.json`: one prompt.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PromptFile {
     pub version: u32,
     #[serde(deserialize_with = "text")]
     pub prompt: String,
+}
+
+/// `choice.json`: the closed-choice prompt for a text model (`%STATE%`, `%QUESTIONS%`), and its batched form for
+/// several records answered by record id (`%RECORDS%`).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChoiceFile {
+    pub version: u32,
+    #[serde(deserialize_with = "text")]
+    pub prompt: String,
+    pub batch: Vec<Edit>,
 }
 
 /// `thresholds.json`: the bars labels and merges are decided at.
@@ -236,7 +252,7 @@ pub struct Prompts {
     pub labels: Labels,
     pub judge: Judge,
     /// The choice fallback: `%STATE%`, `%QUESTIONS%`.
-    pub choice: PromptFile,
+    pub choice: ChoiceFile,
     /// An advisory's affected APIs: `%PACKAGE%`, `%TEXT%`.
     pub advisory_apis: PromptFile,
     pub thresholds: Thresholds,
@@ -439,6 +455,40 @@ mod tests {
         );
     }
 
+    /// `schema/prompts-lock.json`: the embedded bytes of each file are its latest locked version, and versions only rise,
+    /// so a changed prompt, question or threshold always comes with a raised version (central checks the same lock).
+    #[test]
+    fn every_file_is_its_latest_locked_version() {
+        let lock: Value =
+            serde_json::from_str(include_str!("../../../schema/prompts-lock.json")).unwrap();
+        let files = lock["files"].as_object().unwrap();
+        let mut names: Vec<&str> = files.keys().map(String::as_str).collect();
+        names.sort();
+        let mut embedded: Vec<&str> = FILES.iter().map(|(n, _)| *n).collect();
+        embedded.sort();
+        assert_eq!(names, embedded);
+        for (name, raw) in FILES {
+            let entries = files[name].as_array().unwrap();
+            let v = |e: &Value| e["version"].as_u64().unwrap();
+            assert!(
+                entries.windows(2).all(|w| v(&w[1]) > v(&w[0])),
+                "{name}: versions rise"
+            );
+            let last = entries.last().unwrap();
+            assert_eq!(
+                crate::util::sha256_hex(raw.as_bytes()),
+                last["sha256"].as_str().unwrap(),
+                "{name}: content changed without a new version in schema/prompts-lock.json"
+            );
+            let file: Value = serde_json::from_str(raw).unwrap();
+            assert_eq!(
+                file["version"].as_u64().unwrap(),
+                v(last),
+                "{name}: version"
+            );
+        }
+    }
+
     #[test]
     fn every_variant_applies() {
         let e = &prompts().extract;
@@ -449,6 +499,7 @@ mod tests {
             &v.evidence_ids,
             &v.diet_full,
             &v.diet_compact,
+            &v.batch,
         ] {
             apply_edits(&e.extract, edits).expect("applies");
         }

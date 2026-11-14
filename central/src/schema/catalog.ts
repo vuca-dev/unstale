@@ -199,6 +199,7 @@ export type ShardLine = z.infer<typeof ShardLine>;
 export const EventLine = z.strictObject({
   "chunks": z.array(EventChunk),
   "date": z.string(),
+  "extracted": z.boolean().optional(),
   "freshness": Freshness,
   "id": z.string(),
   "kind": EvidenceKind,

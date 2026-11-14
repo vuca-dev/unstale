@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "prompt": [
     "You answer closed-choice questions about a record. Read the state and answer every question by picking",
     "exactly one of its options.",
@@ -12,5 +12,31 @@
     "Questions:",
     "%QUESTIONS%",
     ""
+  ],
+  "batch": [
+    {
+      "find": "about a record. Read the state",
+      "replace": "about each of several records. Read each record's state"
+    },
+    {
+      "find": "Output only a JSON object, no prose: {\"<question id>\": \"<option>\", ...}",
+      "replace": "Output only a JSON object, no prose: {\"<record id>\": {\"<question id>\": \"<option>\", ...}, ...}"
+    },
+    {
+      "find": [
+        "State:",
+        "%STATE%",
+        "",
+        "Questions:",
+        ""
+      ],
+      "replace": [
+        "Records:",
+        "%RECORDS%",
+        "",
+        "Questions (the same for every record):",
+        ""
+      ]
+    }
   ]
 }

@@ -206,6 +206,11 @@ export interface RefreshOptions {
    * on a later one, diffed against the snapshot it had.
    */
   budget?: number;
+  /**
+   * When the rotation through a site larger than the budget began (an earlier pass's `at`): `left` then counts the
+   * pages not checked since. Without it the rotation begins with this pass.
+   */
+  since?: string;
   /** Pages checked so far and pages to check in this run. */
   progress?: (done: number, total: number) => void;
   log?: (s: string) => void;
@@ -215,6 +220,11 @@ export interface RefreshReport {
   technology: string;
   sites: Array<{ site: string; prefix: string; method: string; pages: number; listingFailed?: boolean; copyRule: string; dropped: Listing["dropped"]; namespaces: string[] }>;
   checked: number;
+  /** When this pass ran (the time its checked pages carry). */
+  at: string;
+  /** Pages this pass could have checked (not quiet, allowed by robots.txt) that no pass has checked since `since`
+   * (this pass, when none was given): 0 once the rotation under a page budget has covered the site. */
+  left: number;
   outcomes: Record<string, number>;
   events: Record<string, number>;
   sections: { publishable: number; held: Record<string, number> };
@@ -358,6 +368,10 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
     p.checked = at;
     specs.push(WatchSpec.parse(p.watch));
   }
+  // What the rotation has still to cover: a page the budget left out, last checked before the rotation began.
+  const since = opts.since && opts.since < at ? opts.since : at;
+  let left = 0;
+  for (const [, p] of order) if (!quiet[p.site] && (p.checked ?? "") < since && (await robots.allowed(p.watch.url))) left++;
   // A site's llms-full.txt hash is kept once every one of its pages has been checked against it.
   for (const st of sites) {
     const sig = signals.get(st.site);
@@ -451,6 +465,8 @@ export async function refresh(src: Source, opts: RefreshOptions): Promise<Refres
       namespaces: s.listing.namespaces.map((n) => `${n.kept ? "+" : "-"}${n.kind}:${n.segment}@${n.position}(${n.pages}, mirror ${n.mirror})`),
     })),
     checked: specs.length,
+    at,
+    left,
     outcomes,
     events: counts,
     sections,

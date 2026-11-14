@@ -1,0 +1,11 @@
+unstale reads new release notes with a
+model, on your own key or your Codex
+plan. None is set up here.
+
+  1  Set one up
+     shows the one line to add
+  2  Not now
+     free · deprecations, unmaintained
+     packages and advisories: ≈ 25% of a
+     full report's findings
+

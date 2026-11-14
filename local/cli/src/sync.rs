@@ -37,14 +37,58 @@ use crate::util::{normalize_purl, parse_version, sha256_hex, write_atomic};
 
 /// The catalog refused as a whole: newer schema or a newer minimum client. The cache is left as it was.
 #[derive(Debug)]
-pub struct Incompatible(pub String);
+pub struct Incompatible {
+    message: String,
+    pub refusal: Refusal,
+}
 
 impl std::fmt::Display for Incompatible {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(&self.message)
     }
 }
 impl std::error::Error for Incompatible {}
+
+/// Why the catalog refused this client, for the commands that report it as a warning and carry on with the cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    /// The catalog needs a newer unstale (a newer schema or `min_client`): upgrading fixes it.
+    TooOld,
+    /// The catalog's `min_client` is not a version: upgrading does not fix it.
+    Unreadable,
+}
+
+impl Refusal {
+    /// The warning, the same wherever a refusal is one: what happened, what it costs, and the upgrade command
+    /// (`upgrade`) only where upgrading helps.
+    pub fn line(self, upgrade: &str) -> String {
+        let ours = env!("CARGO_PKG_VERSION");
+        match self {
+            Refusal::TooOld => {
+                format!("warning: unstale {ours} is too old for the catalog; nothing new arrives. `{upgrade}`")
+            }
+            Refusal::Unreadable => {
+                "warning: the catalog names no version of unstale it serves; nothing new arrives.".into()
+            }
+        }
+    }
+}
+
+/// The last catalog sync's refusal in this process, with its full message: `init`, `status` and `session-sync` sync
+/// and carry on with the cached catalog, so they say it after ([`refused`]).
+static REFUSED: std::sync::Mutex<Option<(Refusal, String)>> = std::sync::Mutex::new(None);
+
+/// The last catalog sync's refusal in this process and its full message (as `sync` prints it); `None` when it did not
+/// refuse, or no sync reached the catalog.
+pub fn refused() -> Option<(Refusal, String)> {
+    REFUSED.lock().ok().and_then(|r| r.clone())
+}
+
+fn set_refused(r: Option<(Refusal, String)>) {
+    if let Ok(mut x) = REFUSED.lock() {
+        *x = r;
+    }
+}
 
 /// Largest body read over HTTP (an index or a shard). Shards are at most a few hundred kilobytes; this only bounds a bad
 /// server, across all the requests a sync has in flight at once.
@@ -87,6 +131,68 @@ struct Validators {
 fn http_timeout() -> Duration {
     let secs = std::env::var("UNSTALE_HTTP_TIMEOUT").ok().and_then(|s| s.trim().parse::<u64>().ok()).filter(|&n| n > 0).unwrap_or(30);
     Duration::from_secs(secs)
+}
+
+/// Whether `loc` is an `http(s)://` location (anything else is a local directory).
+pub fn is_http(loc: &str) -> bool {
+    let lower = loc.trim().to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
+/// The directory a non-HTTP catalog location names (a path or `file://` URL), as written.
+pub fn directory_of(loc: &str) -> PathBuf {
+    let loc = loc.trim();
+    match loc.strip_prefix("file://") {
+        Some(rest) => PathBuf::from(rest.replace("%20", " ")),
+        None => PathBuf::from(loc),
+    }
+}
+
+/// Set to `1` on a development machine to read a catalog directory without approving it first (tests and eval
+/// scripts). Read from the process environment only; never from a repository's files.
+pub const DEV_UNSIGNED_CATALOG: &str = "UNSTALE_DEV_UNSIGNED_CATALOG";
+
+fn dev_unsigned_catalog() -> bool {
+    cfg!(test) || std::env::var(DEV_UNSIGNED_CATALOG).is_ok_and(|v| v.trim() == "1")
+}
+
+/// A local directory is not signature-checked, so one is read only when this machine's user chose it: `unstale init
+/// --catalog <dir>` records its canonical path in the user's own config (`approved`), which no repository can write.
+/// A directory named only by a repository's `.unstale/config.json` is refused, and a relative path always (it would
+/// name whatever sits in the repository). HTTP catalogs are not this function's concern: their files are checked
+/// against the catalog key.
+pub fn directory_allowed(loc: &str, approved: &[String], dev: bool) -> Result<()> {
+    if is_http(loc) || dev {
+        return Ok(());
+    }
+    let dir = directory_of(loc);
+    let canonical = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+    if dir.is_absolute() && approved.iter().any(|a| Path::new(a) == canonical) {
+        return Ok(());
+    }
+    bail!(
+        "this repository names a catalog directory ({}) that you have not chosen on this machine, so it is not read. If it is yours, run `unstale init --catalog <dir>`.",
+        dir.display()
+    )
+}
+
+/// [`directory_allowed`] for this machine's user: their approved directories, and the development setting.
+pub fn check_directory(loc: &str) -> Result<()> {
+    if is_http(loc) || dev_unsigned_catalog() {
+        return Ok(());
+    }
+    directory_allowed(loc, &crate::setup::approved_catalog_dirs(&crate::setup::user_config_path()), false)
+}
+
+/// Records a catalog directory the user named (`unstale init --catalog <dir>`) as approved, by its canonical path.
+/// Nothing for an HTTP catalog, or under the development setting.
+pub fn approve_directory(loc: &str) -> Result<()> {
+    if is_http(loc) || dev_unsigned_catalog() {
+        return Ok(());
+    }
+    let dir = directory_of(loc);
+    let canonical = dir.canonicalize().with_context(|| format!("catalog directory {}", dir.display()))?;
+    crate::setup::approve_catalog_dir(&crate::setup::user_config_path(), &canonical.to_string_lossy())
 }
 
 /// Where the catalog is read from: a local directory (a path or `file://` URL) or an `http(s)://` base URL. A
@@ -269,9 +375,6 @@ pub fn quick_check(loc: &str, cache_dir: &Path, techs: &BTreeSet<String>, events
 }
 
 fn quick_check_with(base: String, cache_dir: &Path, techs: &BTreeSet<String>, events: bool, timeout: Duration, key: Option<&[u8; 32]>) -> Result<Quick> {
-    if techs.is_empty() {
-        return Ok(Quick::Changed);
-    }
     let key_id = key.map(|k| sha256_hex(k));
     let cached = std::fs::read(cache_dir.join(TECHNOLOGIES)).ok();
     let Some(cond) = std::fs::read(technologies_validators_path(cache_dir))
@@ -306,17 +409,26 @@ fn quick_check_with(base: String, cache_dir: &Path, techs: &BTreeSet<String>, ev
 pub fn check_root(root: &Root) -> std::result::Result<(), Incompatible> {
     let ours = env!("CARGO_PKG_VERSION");
     if root.schema > CATALOG_SCHEMA {
-        return Err(Incompatible(format!(
-            "the catalog uses schema {} and this unstale ({ours}) reads schema {CATALOG_SCHEMA}: upgrade unstale (cargo install --path local/cli, or your package manager); the cached catalog is kept and still used",
-            root.schema
-        )));
+        return Err(Incompatible {
+            message: format!(
+                "the catalog uses schema {} and this unstale ({ours}) reads schema {CATALOG_SCHEMA}: upgrade unstale (cargo install --path local/cli, or your package manager); the cached catalog is kept and still used",
+                root.schema
+            ),
+            refusal: Refusal::TooOld,
+        });
     }
     match (parse_version(&root.min_client), parse_version(ours)) {
-        (Some(min), Some(me)) if min > me => Err(Incompatible(format!(
-            "the catalog needs unstale {} or newer and this is {ours}: upgrade unstale; the cached catalog is kept and still used",
-            root.min_client
-        ))),
-        (None, _) => Err(Incompatible(format!("the catalog's min_client `{}` is not a version; the cached catalog is kept", root.min_client))),
+        (Some(min), Some(me)) if min > me => Err(Incompatible {
+            message: format!(
+                "the catalog needs unstale {} or newer and this is {ours}: upgrade unstale; the cached catalog is kept and still used",
+                root.min_client
+            ),
+            refusal: Refusal::TooOld,
+        }),
+        (None, _) => Err(Incompatible {
+            message: format!("the catalog's min_client `{}` is not a version; the cached catalog is kept", root.min_client),
+            refusal: Refusal::Unreadable,
+        }),
         _ => Ok(()),
     }
 }
@@ -340,7 +452,10 @@ pub struct TechSync {
     pub reused: usize,
     pub unchanged: bool,
     /// Change-event shards fetched and reused from the cache (both 0 with the edge-inference switch off).
+    // Counted for tests and for whoever reports on a sync; `unstale sync` itself says nothing of them.
+    #[allow(dead_code)]
     pub events_downloaded: usize,
+    #[allow(dead_code)]
     pub events_reused: usize,
     /// Why this technology's change events were refused (missing, failing verification, or not fetched in time). The
     /// records synced anyway; the failure is kept for `unstale status` until a later sync verifies the events.
@@ -382,11 +497,14 @@ static CATALOG_KEY: Option<&str> = option_env!("UNSTALE_CATALOG_KEY");
 
 /// The catalog's Ed25519 public key (hex): `UNSTALE_CATALOG_KEY`, else the one compiled into release builds.
 fn catalog_key() -> Result<Option<[u8; 32]>> {
-    let Some(hex) = std::env::var("UNSTALE_CATALOG_KEY")
-        .ok()
-        .or_else(|| CATALOG_KEY.map(String::from))
-        .filter(|s| !s.trim().is_empty())
-    else {
+    catalog_key_from(std::env::var("UNSTALE_CATALOG_KEY").ok(), CATALOG_KEY)
+}
+
+/// The key from the variable's value, else the compiled one. A variable set but empty is not set: it must not turn
+/// the compiled key's check off.
+fn catalog_key_from(env: Option<String>, compiled: Option<&str>) -> Result<Option<[u8; 32]>> {
+    let filled = |s: &String| !s.trim().is_empty();
+    let Some(hex) = env.filter(filled).or_else(|| compiled.map(String::from).filter(filled)) else {
         return Ok(None);
     };
     let bytes = from_hex(hex.trim()).filter(|b| b.len() == 32).ok_or_else(|| anyhow!("UNSTALE_CATALOG_KEY is not a 32-byte hex Ed25519 public key"))?;
@@ -455,7 +573,11 @@ fn sync_with_events(src: &Source, cache_dir: &Path, candidates: &BTreeSet<String
         return if stop() { Ok(not_checked(candidates, &mut progress)) } else { Err(e) };
     }
     let root: Root = serde_json::from_slice(&root_bytes).context("root.json does not parse")?;
-    check_root(&root)?;
+    if let Err(e) = check_root(&root) {
+        set_refused(Some((e.refusal, e.message.clone())));
+        return Err(e.into());
+    }
+    set_refused(None);
     write_atomic(&cache_dir.join("v1/root.json"), &root_bytes)?;
 
     let mut techs: Vec<&String> = candidates.iter().filter(|t| !t.is_empty() && !t.contains(['/', '\\', '?', '#', '%']) && !t.starts_with('.')).collect();
@@ -746,6 +868,39 @@ fn sync_tech(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_empty_key_variable_does_not_turn_the_compiled_key_off() {
+        let compiled = "07".repeat(32);
+        let other = "09".repeat(32);
+        assert_eq!(catalog_key_from(None, Some(&compiled)).unwrap(), Some([7u8; 32]));
+        for empty in ["", "  "] {
+            assert_eq!(catalog_key_from(Some(empty.into()), Some(&compiled)).unwrap(), Some([7u8; 32]), "{empty:?}");
+        }
+        assert_eq!(catalog_key_from(Some(other), Some(&compiled)).unwrap(), Some([9u8; 32]));
+        assert_eq!(catalog_key_from(Some(String::new()), None).unwrap(), None);
+        assert!(catalog_key_from(Some("zz".into()), Some(&compiled)).is_err());
+    }
+
+
+    #[test]
+    fn a_catalog_directory_is_read_only_when_the_user_chose_it() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().canonicalize().unwrap();
+        let chosen = vec![dir.to_string_lossy().to_string()];
+        let loc = dir.to_string_lossy().to_string();
+        assert!(directory_allowed(&loc, &chosen, false).is_ok());
+        assert!(directory_allowed(&format!("file://{loc}"), &chosen, false).is_ok());
+        // Not chosen; relative (whatever sits in the repository), even when its canonical path was chosen.
+        let e = directory_allowed(&loc, &[], false).unwrap_err().to_string();
+        assert!(e.contains("that you have not chosen on this machine") && e.contains("unstale init --catalog <dir>"), "{e}");
+        assert!(directory_allowed("docs/cat", &chosen, false).is_err());
+        assert!(directory_allowed(".", &[std::env::current_dir().unwrap().canonicalize().unwrap().to_string_lossy().to_string()], false).is_err());
+        // HTTP is checked by signature, not here; the development setting reads any directory.
+        assert!(directory_allowed("https://catalog.example", &[], false).is_ok());
+        assert!(directory_allowed("docs/cat", &[], true).is_ok());
+    }
+
     use crate::testcat::{FixtureCatalog, event, rec};
 
     fn purls(p: &[&str]) -> BTreeSet<String> {
@@ -925,6 +1080,15 @@ mod tests {
     }
 
     #[test]
+    fn an_unreadable_min_client_is_refused_without_upgrade_advice() {
+        let root: Root = serde_json::from_str(r#"{"schema":1,"min_client":"soon"}"#).unwrap();
+        let e = check_root(&root).unwrap_err();
+        assert_eq!(e.refusal, Refusal::Unreadable);
+        let line = e.refusal.line("npm install -g @unstale/cli@latest");
+        assert!(line.starts_with("warning: ") && !line.contains("npm") && !line.contains("upgrade"), "{line}");
+    }
+
+    #[test]
     fn incompatible_root_fails_safely() {
         let cat = FixtureCatalog::new();
         cat.tech("next", &[("16", vec![rec("next:a", "pkg:npm/next", "16.0.1")])]);
@@ -934,8 +1098,9 @@ mod tests {
         for root in [r#"{"schema":2,"min_client":"0.0.1"}"#, r#"{"schema":1,"min_client":"99.0.0"}"#] {
             cat.root(root);
             let err = sync(cat.loc(), cache.path(), &cands(&["next"]), &purls(&["pkg:npm/next"])).unwrap_err();
-            assert!(err.downcast_ref::<Incompatible>().is_some(), "{err:#}");
+            assert_eq!(err.downcast_ref::<Incompatible>().map(|e| e.refusal), Some(Refusal::TooOld), "{err:#}");
             assert!(format!("{err}").contains("upgrade unstale"));
+            assert!(Refusal::TooOld.line("brew upgrade unstale").ends_with("; nothing new arrives. `brew upgrade unstale`"));
             assert_eq!(std::fs::read(index_path(cache.path(), "next")).unwrap(), idx, "cache untouched");
             let cached_root = std::fs::read_to_string(cache.path().join("v1/root.json")).unwrap();
             assert!(cached_root.contains("\"schema\":1") && !cached_root.contains("99.0.0"));

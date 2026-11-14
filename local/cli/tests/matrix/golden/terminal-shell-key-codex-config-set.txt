@@ -2,16 +2,25 @@
 # keys: shell-key · Codex: codex · run: terminal · repo config: --inference env:OPENAI_API_KEY · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
+How should unstale read new release notes?
+
+  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels                   suggested by this repo
+  ○ Codex plan   no extra cost    your Codex plan, up to the limit you set
+  ○ Not now      free             ≈ 25% of a full report's findings
+
+↑↓ to move · Enter to choose · d for details
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
   1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -28,28 +37,32 @@ $ unstale init --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-unstale notice: This is the catalog's notice for the matrix (shown once a day).
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
 unstale <newer version> available: npm install -g @unstale/cli@latest
+Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
 
 $ unstale sync
-synced next: 2 records (sources checked 2026-10-15T00:00:00Z); unchanged; change events 0 downloaded, 1 reused
-Not covered by the catalog: 1 other candidate technologies (no index for them, or no record names a package used here).
+next: 2 upstream changes on file, nothing new
+react: 1 upstream change on file, nothing new
 
-# model step: the internal `unstale infer` on the chosen provider, standing in for the client's own pipeline steps
-$ unstale infer --provider openai  (no terminal)
-{"ok":true}
+$ unstale session-sync
+Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
+  Reading 1 release note of react
+  Reading 1 release note of next
+New release notes read: 2 new changes, 0 added to known ones, for 2 technologies.
 
 $ unstale status --wait 0 --no-animation
   ✓ shop · Shared setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.
-  Mapped 2 direct dependencies from declared package ranges and checked local references.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
 
   Upgrades to review · 1 shortlisted
   Upstream change counts, not confirmed issues in your code.
-  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+  1. next 16.0.0 → 16.3.0 picks up 1 advisory (affected path not found), 1 behaviour change
 
-  Capabilities to explore · 0 shortlisted
-  No strong capability candidates in the coverage checked so far.
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
   These are review candidates, not confirmed benefits or safe-to-apply changes.
   Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
 
@@ -66,12 +79,12 @@ $ unstale status --wait 0 --no-animation
   only; do not edit files.
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Model provider: OpenAI (OPENAI_API_KEY), from this repo's config · `unstale setup` changes it
-Model tokens this month: 12 of 48M (monthly budget; past it, work waits for next month)
-Freshness on this machine: no new release of this repository's technologies reached it in the last 30 days
+Release notes         OpenAI (OPENAI_API_KEY), your user config
+Tokens                84 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Cache                 under 1 MB of 100 MB
 
 # contacted
-#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.6b4b93175dbd.jsonl.gz, GET /v1/shards/next/16.events.156a9b1d3a00.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react.json, GET /v1/technologies.json
-#   model provider: POST /v1/chat/completions (1 request)
-#   codex: not run
-#   anything else: nothing
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   model provider: POST /v1/chat/completions (7 requests)
+#   codex: --version, login status
+#   through the proxy: nothing

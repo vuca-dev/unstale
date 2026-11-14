@@ -7,11 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { attachAdvisories, basisOf, fetchAdvisories, fixesInWindow, fromOsv, idsAtQuote, inRange, listedPackages, resolveRange, semverCmp, toRecordAdvisory, type Advisory, type AffectedRange } from "../src/pipeline/advisories.ts";
-import { canonicalPurl, cargoName, cargoPurl, ecosystemOf, githubRepo, pep440Order, semverOrder } from "../src/pipeline/ecosystems.ts";
+import { canonicalPurl, cargoName, cargoPurl, ecosystemOf, githubRepo, listingLifetimeMs, pep440Order, semverOrder } from "../src/pipeline/ecosystems.ts";
 import type { Classification } from "../src/pipeline/classify/adapter.ts";
 import type { StoredRecord, TechStore } from "../src/pipeline/store.ts";
 import { TECHNOLOGIES } from "../src/pipeline/technologies.ts";
 import { writeAtomic } from "../src/pipeline/util.ts";
+import { registryCache } from "../src/pipeline/registry.ts";
 
 const prev = process.env.UNSTALE_CENTRAL_DIR;
 beforeAll(() => {
@@ -290,12 +291,147 @@ describe("advisories", () => {
       // A merged type stub's scope belongs to another repository: never listed.
       expect(await siblings(tech(["pkg:npm/ws", "pkg:npm/%40types/ws"], "websockets/ws"))).toEqual([]);
       expect(asked).toEqual(["@types%2fws/latest"]);
-      expect(await siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).toEqual(["pkg:npm/%40acme/cli", "pkg:npm/%40acme/core"]);
+      // The refusal is asked first: once read, the listings are kept for a day (the test below).
       refuse = "@acme%2fother/latest";
       await expect(siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).rejects.toThrow(/403/);
+      refuse = "";
+      expect(await siblings(tech(["pkg:npm/%40acme/core"], "acme/acme"))).toEqual(["pkg:npm/%40acme/cli", "pkg:npm/%40acme/core"]);
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  test("npm listings: one scope's and one maintainer's listings are read once a day for every technology, kept with public fields only; a refusal is never kept", async () => {
+    const manifest = (r: string) => ({ repository: { url: `git+https://github.com/${r}.git` }, maintainers: [{ name: "keeper", email: "keeper@example.org" }], readme: "long text" });
+    const answers: Record<string, unknown> = {
+      "@shared%2fa/latest": manifest("shared/mono"),
+      "@shared%2fb/latest": manifest("shared/mono"),
+      "@shared%2fc/latest": manifest("someone/else"),
+      "-/org/shared/package": { "@shared/a": "write", "@shared/b": "write", "@shared/c": "write" },
+      [`-/v1/search?text=${encodeURIComponent("maintainer:keeper")}&size=250&from=0`]: {
+        total: 2,
+        objects: [
+          { package: { name: "@shared/a", description: "A", links: { repository: "https://github.com/shared/mono" }, publisher: { email: "keeper@example.org" } } },
+          { package: { name: "@shared/b", description: "B", links: { repository: "https://github.com/shared/mono" } } },
+        ],
+      },
+    };
+    const asked: string[] = [];
+    let status = 0;
+    vi.stubGlobal("fetch", async (url: string) => {
+      const key = url.replace("https://registry.npmjs.org/", "");
+      asked.push(key);
+      if (status) return new Response("", { status });
+      return key in answers ? Response.json(answers[key]) : new Response("", { status: 404 });
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
+    try {
+      const eco = ecosystemOf("pkg:npm/%40shared/a");
+      const tech = (component: string) => ({ ...TECHNOLOGIES.next!, repo: "shared/mono", components: [component] });
+      // A rate-limited read (retried, then given up) fails the lookup and keeps nothing.
+      status = 429;
+      const limited = expect(eco.siblings!(tech("pkg:npm/%40shared/a"))).rejects.toThrow(/429/);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await limited;
+      status = 0;
+      asked.length = 0;
+      // Two technologies of the scope at once: every listing and manifest is asked once.
+      const [a, b] = await Promise.all([eco.siblings!(tech("pkg:npm/%40shared/a")), eco.siblings!(tech("pkg:npm/%40shared/b"))]);
+      expect(a).toEqual(["pkg:npm/%40shared/a", "pkg:npm/%40shared/b"]);
+      expect(b).toEqual(a);
+      expect(asked.sort()).toEqual(["-/org/shared/package", "@shared%2fa/latest", "@shared%2fb/latest", "@shared%2fc/latest"]);
+      // Later in the day (another cycle reads the same saved cache): nothing is asked, the maintainer's list once.
+      vi.setSystemTime(Date.now() + 23 * 3600_000);
+      asked.length = 0;
+      expect(await eco.siblings!(tech("pkg:npm/%40shared/b"))).toEqual(a);
+      const packages = [{ purl: "pkg:npm/%40shared/a", name: "@shared/a", description: "A" }, { purl: "pkg:npm/%40shared/b", name: "@shared/b", description: "B" }];
+      expect(await eco.repositoryPackages!(tech("pkg:npm/%40shared/a"))).toEqual(packages);
+      expect(await eco.repositoryPackages!(tech("pkg:npm/%40shared/b"))).toEqual(packages);
+      expect(asked).toEqual([`-/v1/search?text=${encodeURIComponent("maintainer:keeper")}&size=250&from=0`]);
+      // Only the fields the lookups use are kept: no address, no README.
+      const kept = [...registryCache().entries()].filter(([name]) => name.startsWith("listings/")).map(([, v]) => v.toString("utf8")).join("\n");
+      expect(kept).toContain('"maintainers":["keeper"]');
+      expect(kept).not.toMatch(/example\.org|long text|publisher/);
+      // Past its lifetime (30 hours at most), read again.
+      vi.setSystemTime(Date.now() + 8 * 3600_000);
+      asked.length = 0;
+      expect(await eco.siblings!(tech("pkg:npm/%40shared/b"))).toEqual(a);
+      expect(asked.sort()).toEqual(["-/org/shared/package", "@shared%2fa/latest", "@shared%2fb/latest", "@shared%2fc/latest"]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("npm listings: a 404 is kept, an empty later search page is not, and a new process reads what an earlier one kept", async () => {
+    const asked: string[] = [];
+    const page = (from: number) => `-/v1/search?text=${encodeURIComponent("maintainer:many")}&size=250&from=${from}`;
+    const answers: Record<string, unknown> = {
+      "@gone%2fcore/latest": { repository: "github:gone/gone", maintainers: [{ name: "many" }] },
+      [page(0)]: { total: 300, objects: [{ package: { name: "@gone/core", links: { repository: "github:gone/gone" } } }] },
+      [page(1)]: { total: 300, objects: [] },
+    };
+    vi.stubGlobal("fetch", async (url: string) => {
+      const key = url.replace("https://registry.npmjs.org/", "");
+      asked.push(key);
+      return key in answers ? Response.json(answers[key]) : new Response("", { status: 404 });
+    });
+    try {
+      const tech = { ...TECHNOLOGIES.next!, repo: "gone/gone", components: ["pkg:npm/%40gone/core"] };
+      const eco = ecosystemOf("pkg:npm/%40gone/core");
+      // The scope has no public listing (404): no siblings, and the answer is kept.
+      expect(await eco.siblings!(tech)).toEqual([]);
+      expect(asked).toEqual(["@gone%2fcore/latest", "-/org/gone/package"]);
+      // The maintainer's list ends early: unknown, and the empty page is asked again next time; the first is kept.
+      asked.length = 0;
+      expect(await eco.repositoryPackages!(tech)).toBeUndefined();
+      expect(await eco.repositoryPackages!(tech)).toBeUndefined();
+      expect(asked).toEqual([page(0), page(1), page(1)]);
+      // Another process (a later cycle) starts with no memory and reads the saved answers: nothing is asked.
+      vi.resetModules();
+      const fresh = (await import("../src/pipeline/ecosystems.ts")).ecosystemOf("pkg:npm/%40gone/core");
+      asked.length = 0;
+      expect(await fresh.siblings!(tech)).toEqual([]);
+      expect(asked).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("a detected new version asks OSV again once: a query cached before the detection is read again, one after it is fresh", async () => {
+    const t = { ...TECHNOLOGIES.next!, id: "osv-since", components: ["pkg:pypi/osv-since"] };
+    let queries = 0;
+    vi.stubGlobal("fetch", async () => {
+      queries++;
+      return Response.json({ vulns: [] });
+    });
+    try {
+      await fetchAdvisories(t);
+      expect(queries).toBe(1);
+      // Within the 12-hour window: no query, and none for a detection older than the cache.
+      await fetchAdvisories(t);
+      await fetchAdvisories(t, { since: new Date(Date.now() - 3600_000).toISOString() });
+      expect(queries).toBe(1);
+      // A detection after the cached query: asked again, then fresh for the same detection.
+      const since = new Date(Date.now() + 1000).toISOString();
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 2000);
+      await fetchAdvisories(t, { since });
+      await fetchAdvisories(t, { since });
+      expect(queries).toBe(2);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("npm listings: each lives 24 to 30 hours by its URL, so one scope's entries come due in pieces", () => {
+    const urls = Array.from({ length: 200 }, (_, i) => `https://registry.npmjs.org/@big%2fp${i}/latest`);
+    const lives = urls.map(listingLifetimeMs);
+    expect(Math.min(...lives)).toBeGreaterThanOrEqual(24 * 3600_000);
+    expect(Math.max(...lives)).toBeLessThan(30 * 3600_000);
+    expect(new Set(lives.map((l) => Math.floor(l / 3600_000))).size).toBe(6);
+    expect(urls.map(listingLifetimeMs)).toEqual(lives);
   });
 
   test("an OSV query whose connection drops is tried again; one that keeps failing names its cause", async () => {

@@ -1,8 +1,13 @@
-Model provider: not chosen; deterministic signals only · `unstale setup` shows the options
-Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)
-Model provider: Jev labelling API + OpenAI (JEV_API_KEY, OPENAI_API_KEY), from this repo's config · `unstale setup` changes it · OPENAI_API_KEY is not set in this shell or .env
-Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)
-Model provider: Codex plan, from your user config · `unstale setup` changes it
-Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)
-Model provider: none (deterministic signals only), from this repo's config · `unstale setup` changes it
-Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)
+Release notes         not read: no provider chosen · `unstale setup` shows the options
+
+warning: OPENAI_API_KEY is not set here, so new release notes are not read. Set it.
+Release notes         Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), this repo's config
+Tokens                1.2M of 48M this month (the default limit; `unstale setup --limit` changes it)
+
+Release notes         Codex plan, your user config
+Tokens                1.2M this month, no limit (`unstale setup --limit` sets one)
+
+Release notes         not read, by this repo's config · `unstale setup` changes it
+
+Release notes         Codex plan, this repo's config
+Tokens                5M of 5M this month (your limit, reached)

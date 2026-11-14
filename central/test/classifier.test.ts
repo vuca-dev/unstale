@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
-import { attributeEvidence, classifierAttribution, ChatClassifier, ClassifierCache, FallbackClassifier, Jev, type ChatRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
+import { attributeEvidence, classifierAttribution, ChatClassifier, ClassifierCache, FallbackClassifier, Jev, optionKey, type ChatRunner, type Questions } from "../src/pipeline/classify/adapter.ts";
 
 const Q: Questions = {
   breaking: { instructions: "Breaking?", options: { yes: "Breaking.", no: "Not breaking." } },
@@ -218,6 +218,23 @@ describe("classifier adapter", () => {
     const r = await c.classify(STATE, Q);
     expect(r.answers.breaking).toEqual({ choice: "yes", confidence: 1, probabilities: { yes: 1, no: 0 } });
     expect(r.calibrated).toBe(false);
+  });
+
+  test("chat fallback reads an answer repeating one option's text as its key; unknown or ambiguous text stays unreadable", async () => {
+    const same = (c: string) => ({ instructions: `Is the incoming change the same change as candidate ${c}?`, options: { yes: `The same change as candidate ${c}.`, no: `A different change from candidate ${c}, or unsure.` } });
+    const qs: Questions = { same_c1: same("c1"), same_c2: same("c2"), same_c3: same("c3") };
+    // The parity run's matching item nuxt@4.3.0#0.3, answered with the options' text.
+    const answer = '{"same_c1":"The same change as candidate c1.","same_c2":"A different change from candidate c2, or unsure.","same_c3":"A different change from candidate c3, or unsure."}';
+    const r = await new ChatClassifier({ model: MODEL, run: async (_p, parse) => parse(answer) }).classify(STATE, qs);
+    expect(Object.fromEntries(Object.entries(r.answers).map(([k, a]) => [k, a.choice]))).toEqual({ same_c1: "yes", same_c2: "no", same_c3: "no" });
+    expect(r.answers.same_c1).toEqual({ choice: "yes", confidence: 1, probabilities: { yes: 1, no: 0 } });
+    expect(optionKey(same("c1"), "  the same change as candidate C1 \n")).toBe("yes");
+    for (const unknown of ["The same change", "maybe", "candidate c1", ""]) expect(optionKey(same("c1"), unknown)).toBeUndefined();
+    const twice = { instructions: "", options: { a: "Unsure.", b: "unsure" } };
+    expect(optionKey(twice, "Unsure")).toBeUndefined();
+    expect(optionKey(twice, "b")).toBe("b");
+    const unread = await new ChatClassifier({ model: MODEL, run: async (_p, parse) => parse('{"same_c1":"maybe","same_c2":"no","same_c3":"no"}') }).classify(STATE, qs).catch((e: Error) => e);
+    expect(String(unread)).toMatch(/chat classifier/);
   });
 
   test("chat fallback: a later attempt's good answer is used; a failed call is a network error", async () => {

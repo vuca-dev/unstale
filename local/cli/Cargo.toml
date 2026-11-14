@@ -1,6 +1,6 @@
 [package]
 name = "unstale"
-version = "0.2.12"
+version = "0.3.1"
 edition = "2024"
 publish = false
 license = "AGPL-3.0-only"
@@ -22,10 +22,11 @@ globset = "0.4"
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 # raw_value: a Jev state is sent as the caller wrote it (key order included).
-serde_json = { version = "1", features = ["raw_value"] }
+serde_json = { version = "1", features = ["raw_value", "float_roundtrip"] }
 sha2 = "0.10"
 # Ed25519 verification of the signed catalog; already in the build through rustls.
 ring = "0.17"
+regex = "1"
 # Blocking HTTP for http(s) catalogs; rustls (ring) with webpki roots, no gzip so shard bytes stay as published.
 ureq = { version = "3", default-features = false, features = ["rustls"] }
 toml = { version = "0.8", default-features = false, features = ["parse"] }

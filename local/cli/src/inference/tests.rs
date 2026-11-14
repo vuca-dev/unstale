@@ -246,6 +246,28 @@ fn question(options: &[&str]) -> ChoiceQuestion {
 }
 
 #[test]
+fn jev_probabilities_are_read_exactly_so_a_threshold_cannot_flip() {
+    // Text as the labelling service writes it; read correctly rounded, as central's `JSON.parse` reads it.
+    let body = r#"{"model": "jev-7", "answers": {"code_api": {"choice": "no", "confidence": 0.54, "probabilities": {"yes": 0.45999999999999996, "no": 0.54}}, "same_c1": {"choice": "yes", "confidence": 0.9099999999999999, "probabilities": {"yes": 0.9099999999999999, "no": 0.09000000000000008}}}}"#;
+    let m = Mock::new(vec![(200, body.to_string())]);
+    let f = Fixture::new();
+    let inf = f.inference(ProviderConfig::jev(), &m.url);
+    let qs = vec![
+        ("code_api".to_string(), question(&["yes", "no"])),
+        ("same_c1".to_string(), question(&["yes", "no"])),
+    ];
+    let c = inf.classify(&raw(r#"{"subject":"x"}"#), &qs).unwrap();
+    let yes = |id: &str| c.answers[id].probabilities["yes"];
+    assert_eq!(yes("code_api"), 0.45999999999999996);
+    assert_ne!(yes("code_api"), 0.46);
+    // One unit below a merge threshold stays below it.
+    let t = crate::prompts::prompts().thresholds.cross_same_p_short;
+    assert_eq!(t, 0.91);
+    assert!(yes("same_c1") < t, "{} against {t}", yes("same_c1"));
+    assert!(c.answers["same_c1"].confidence < t);
+}
+
+#[test]
 fn jev_sends_choice_questions_and_checks_each_answer() {
     let answer = |ids: &[&str]| {
         let answers: serde_json::Map<String, Value> = ids
@@ -306,7 +328,8 @@ fn jev_sends_choice_questions_and_checks_each_answer() {
 }
 
 /// A fake `codex` script in `dir`: `--version` and `login status` answer as given, `exec` records its arguments,
-/// environment and working directory, then prints `exec_out` and exits with `exec_code`.
+/// environment and working directory, then prints `exec_out` and exits with `exec_code`. An `exec` with an argument containing the text in `{dir}/refuse`
+/// prints a start-up error and fails, as Codex does for an option it rejects.
 #[cfg(unix)]
 pub fn fake_codex(
     dir: &std::path::Path,
@@ -328,6 +351,9 @@ for a in "$@"; do printf '%s\n' "$a"; done > "{log}/$n.args"
 env > "{log}/$n.env"
 pwd > "{log}/$n.pwd"
 ls -A . > "{log}/$n.ls"
+if [ -f "{dir}/refuse" ] && grep -qF "$(cat "{dir}/refuse")" "{log}/$n.args"; then
+  echo 'Error loading config.toml: data did not match any variant' >&2; exit 1
+fi
 cat "{dir}/exec-out.jsonl"
 exit {exec_code}
 "#,
@@ -409,6 +435,9 @@ fn codex_runs_the_lean_flag_set_in_an_empty_directory_and_reads_turn_usage() {
     for d in codex::tests_disabled() {
         assert!(has(&["--disable", d]), "{d}");
     }
+    for c in codex::tests_hints() {
+        assert!(has(&["-c", c]), "{c}");
+    }
     assert_eq!(args[args.len() - 2..], ["--", "Reply."]);
     // The working directory is the empty temporary one named by -C, and it is gone afterwards.
     let work = &args[args.iter().position(|a| a == "-C").unwrap() + 1];
@@ -422,6 +451,52 @@ fn codex_runs_the_lean_flag_set_in_an_empty_directory_and_reads_turn_usage() {
         ""
     );
     assert!(!std::path::Path::new(work).exists());
+}
+
+fn exec_args(f: &Fixture) -> Vec<Vec<String>> {
+    let mut calls: Vec<(u32, std::path::PathBuf)> =
+        std::fs::read_dir(f.dir.path().join("codex-calls"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "args"))
+            .map(|p| (p.file_stem().unwrap().to_string_lossy().parse().unwrap(), p))
+            .collect();
+    calls.sort();
+    calls
+        .iter()
+        .map(|(_, p)| {
+            std::fs::read_to_string(p)
+                .unwrap()
+                .lines()
+                .map(String::from)
+                .collect()
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn codex_that_refuses_the_hint_options_at_start_up_gets_calls_without_them() {
+    let f = Fixture::new();
+    std::fs::write(f.dir.path().join("refuse"), "multi_agent_v2").unwrap();
+    let bin = fake_codex(f.dir.path(), "0.166.0", true, CODEX_OK, 0);
+    let inf = f.inference(ProviderConfig::codex(), &bin.to_string_lossy());
+    // The refused call is asked again at once without them; it costs no retry and the call answers.
+    assert_eq!(
+        inf.complete(&Prompt::new("a")).unwrap().value,
+        json!({"ok": true})
+    );
+    inf.complete(&Prompt::new("b")).unwrap();
+    let calls = exec_args(&f);
+    assert_eq!(calls.len(), 3, "one refused, then one each");
+    assert!(calls[0].iter().any(|a| a.contains("multi_agent_v2")));
+    for args in &calls[1..] {
+        assert!(
+            !args.iter().any(|a| a.contains("multi_agent_v2")),
+            "{args:?}"
+        );
+        assert!(args.iter().any(|a| a == "--ephemeral"));
+    }
 }
 
 #[test]
@@ -527,13 +602,12 @@ fn past_the_monthly_budget_work_is_deferred_without_a_call() {
     assert_eq!(m.count(), 2);
     assert_eq!(
         Deferred::Budget.line(),
-        "deferred: this month's token budget is used up; the rest runs next month"
+        "warning: monthly token limit reached, so new release notes wait. Change it: `unstale setup --limit`."
     );
     assert_eq!(ledger::DEFAULT_MONTHLY_TOKENS, 48_000_000);
-    assert_eq!(
-        ledger::budget_line(1_234_567, ledger::DEFAULT_MONTHLY_TOKENS),
-        "Model tokens this month: 1.2M of 48M (monthly budget; past it, work waits for next month)"
-    );
+    // The limit is the caller's to set (`unstale setup --limit`); none is the largest count.
+    inf.monthly_budget = u64::MAX;
+    assert!(inf.complete(&Prompt::new("four")).is_ok());
 }
 
 #[test]
@@ -590,7 +664,7 @@ fn provider_errors_are_typed_deferrals_and_only_transient_ones_retry() {
         assert_eq!(m.count(), calls, "HTTP {status}");
         // The line is fixed text: nothing the provider sent back (which can echo the key) reaches the user.
         assert!(
-            got.line().starts_with("deferred: ") && !got.line().contains("test-key-value"),
+            got.line().starts_with("warning: ") && !got.line().contains("test-key-value"),
             "{}",
             got.line()
         );
@@ -665,7 +739,8 @@ fn codex_problems_are_typed_deferrals() {
         ),
         ("0.166.0", true, lapsed, 1, Deferred::CodexLoggedOut, 1),
         ("0.166.0", true, limited, 1, Deferred::RateLimited, 3),
-        ("0.166.0", true, "", 1, Deferred::Unavailable, 3),
+        // No event at all reads as an option refused at start-up: one call without the hint options, then three.
+        ("0.166.0", true, "", 1, Deferred::Unavailable, 4),
         (
             "0.166.0",
             true,
@@ -700,7 +775,7 @@ fn codex_problems_are_typed_deferrals() {
 }
 
 #[test]
-fn every_deferral_is_one_plain_line() {
+fn every_deferral_is_one_warning_in_plain_words() {
     let all = [
         Deferred::Budget,
         Deferred::NoKey("OPENAI_API_KEY".into()),
@@ -716,13 +791,33 @@ fn every_deferral_is_one_plain_line() {
         Deferred::CodexMissing,
         Deferred::CodexTooOld,
         Deferred::CodexLoggedOut,
+        Deferred::Storage,
+        Deferred::StorageCorrupt,
+        Deferred::Redirected,
+        Deferred::InsecureUrl,
+        Deferred::BatchTooLarge,
     ];
     for d in all {
         let l = d.line();
+        // What happened, what it costs, the one thing to do: one line, about a terminal's width.
         assert!(
-            l.starts_with("deferred: ") && !l.contains('\n') && l.chars().count() <= 80,
+            l.starts_with("warning: ") && !l.contains('\n') && l.chars().count() <= 102,
             "{l}"
         );
+        assert!(l.contains(", so ") && l.ends_with('.'), "{l}");
+        // Nothing of the machine: no path, no raw error.
+        assert!(!l.contains('/') || l.contains("https://"), "{l}");
+        // Words the reader was never taught.
+        for internal in [
+            "deferred",
+            "deterministic",
+            "technology-year",
+            "edge",
+            "budget",
+            "ledger",
+        ] {
+            assert!(!l.contains(internal), "{internal:?} in {l}");
+        }
     }
 }
 
@@ -883,10 +978,12 @@ fn the_budget_fails_closed_on_a_ledger_it_cannot_trust() {
     let path = dir.join(format!("usage-{month}.jsonl"));
     std::fs::write(&path, format!("{{\"day\":\"{month}-01\",\"provider\":\"openai\",\"model\":\"m\",\"input\":4800000x,\"cached\":0,\"output\":0}}\n")).unwrap();
     let inf = f.inference(ProviderConfig::openai(), &m.url);
+    // Corrupt and unwritable are told apart: each warning gives the fix for its cause.
     assert_eq!(
         inf.complete(&Prompt::new("x")).unwrap_err(),
-        Deferred::Storage
+        Deferred::StorageCorrupt
     );
+    assert_ne!(Deferred::StorageCorrupt.what(), Deferred::Storage.what());
     assert_eq!(m.count(), 0, "no call on a corrupt ledger");
     std::fs::remove_file(&path).unwrap();
     // A ledger that cannot be written: no call is made.
@@ -1003,10 +1100,7 @@ fn an_absurd_token_count_reads_as_the_budget_used_up_never_a_panic_or_zero() {
             reasoning: Some(u64::MAX)
         }
     );
-    assert!(
-        ledger::budget_line(u64::MAX, ledger::DEFAULT_MONTHLY_TOKENS)
-            .starts_with("Model tokens this month: ")
-    );
+    assert_eq!(ledger::short_tokens(u64::MAX), "18446744073709M");
     // Anthropic counts cache reads and writes into input: that sum saturates as well.
     let anthropic = json!({
         "model": "claude-haiku-5-5", "stop_reason": "end_turn",

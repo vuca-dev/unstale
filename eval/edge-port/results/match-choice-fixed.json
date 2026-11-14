@@ -1,0 +1,115 @@
+{
+ "n": 236,
+ "client_failed": 0,
+ "client": {
+  "merges": 141,
+  "SAME": 141,
+  "DIFFERENT": 0,
+  "UNSURE": 0,
+  "unaudited": 0,
+  "false_per_100": 0.0,
+  "false_ci95": [
+   0.0,
+   2.582299866386556
+  ],
+  "same_items": 197,
+  "recalled": 141,
+  "recall": 0.7157360406091371,
+  "duplicates_per_100": 6.459054209919262
+ },
+ "client_merges_before_the_guide_exclusion": 141,
+ "central": {
+  "match-luna-choice": {
+   "merges": 142,
+   "SAME": 142,
+   "DIFFERENT": 0,
+   "UNSURE": 0,
+   "unaudited": 0,
+   "false_per_100": 0.0,
+   "false_ci95": [
+    0.0,
+    2.5643498484463176
+   ],
+   "same_items": 197,
+   "recalled": 142,
+   "recall": 0.7208121827411168,
+   "duplicates_per_100": 6.343713956170704
+  },
+  "match-jev-q8": {
+   "merges": 175,
+   "SAME": 171,
+   "DIFFERENT": 1,
+   "UNSURE": 3,
+   "unaudited": 0,
+   "false_per_100": 1.4285714285714286,
+   "false_ci95": [
+    0.6262114385388651,
+    5.748673887517247
+   ],
+   "same_items": 197,
+   "recalled": 171,
+   "recall": 0.868020304568528,
+   "duplicates_per_100": 2.9988465974625145
+  },
+  "match-jev-j1": {
+   "merges": 178,
+   "SAME": 175,
+   "DIFFERENT": 0,
+   "UNSURE": 3,
+   "unaudited": 0,
+   "false_per_100": 0.8426966292134831,
+   "false_ci95": [
+    0.34892639913391427,
+    4.84620222427718
+   ],
+   "same_items": 197,
+   "recalled": 175,
+   "recall": 0.8883248730964467,
+   "duplicates_per_100": 2.5374855824682814
+  }
+ },
+ "client_minus_central": {
+  "match-luna-choice": {
+   "recall_diff": -0.005076142131979695,
+   "recall_diff_ci95": [
+    -0.03553299492385787,
+    0.025380710659898477
+   ],
+   "recall_central_only": 5,
+   "recall_client_only": 4,
+   "recall_mcnemar_p": 1.0,
+   "false_central_only": 0,
+   "false_client_only": 0,
+   "false_mcnemar_p": 1.0,
+   "items_decided_differently": 9
+  },
+  "match-jev-q8": {
+   "recall_diff": -0.15228426395939088,
+   "recall_diff_ci95": [
+    -0.20812182741116753,
+    -0.10152284263959391
+   ],
+   "recall_central_only": 32,
+   "recall_client_only": 2,
+   "recall_mcnemar_p": 6.938353180885315e-08,
+   "false_central_only": 4,
+   "false_client_only": 0,
+   "false_mcnemar_p": 0.125,
+   "items_decided_differently": 38
+  },
+  "match-jev-j1": {
+   "recall_diff": -0.17258883248730963,
+   "recall_diff_ci95": [
+    -0.22842639593908629,
+    -0.1218274111675127
+   ],
+   "recall_central_only": 34,
+   "recall_client_only": 0,
+   "recall_mcnemar_p": 1.1641532182693481e-10,
+   "false_central_only": 3,
+   "false_client_only": 0,
+   "false_mcnemar_p": 0.25,
+   "items_decided_differently": 37
+  }
+ }
+}

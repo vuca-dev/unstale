@@ -129,26 +129,35 @@ fn num(v: &Value, path: &[&str]) -> Option<u64> {
         .and_then(Value::as_u64)
 }
 
+/// An OpenAI-compatible request body as JSON text, its keys in central's order (`model`, `messages` with `role` before
+/// `content`, `max_tokens`, `reasoning_effort`, `response_format`, then the route's extra fields), so the bytes sent
+/// equal central's for the same prompt.
+pub(crate) fn openai_request_body(c: &super::ProviderConfig, p: &Prompt) -> Box<RawValue> {
+    let s = |v: &str| serde_json::to_string(v).unwrap_or_default();
+    let mut out = format!(
+        "{{\"model\":{},\"messages\":[{{\"role\":\"user\",\"content\":{}}}],\"max_tokens\":{}",
+        s(&c.model),
+        s(&p.text),
+        p.max_tokens
+    );
+    if let Some(e) = &c.effort {
+        out.push_str(&format!(",\"reasoning_effort\":{}", s(e)));
+    }
+    if let Some(schema) = &p.schema {
+        let rf = json!({"type": "json_schema", "json_schema": {"name": "answer", "strict": true, "schema": schema}});
+        out.push_str(&format!(",\"response_format\":{rf}"));
+    }
+    for (k, v) in &c.extra {
+        out.push_str(&format!(",{}:{v}", s(k)));
+    }
+    out.push('}');
+    RawValue::from_string(out).expect("a JSON object built from serialized parts")
+}
+
 /// OpenAI-compatible `chat/completions` with a strict JSON-schema response format.
 pub(super) fn openai(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
     let c = &inf.provider;
-    let mut body = json!({
-        "model": c.model,
-        "messages": [{"role": "user", "content": p.text}],
-        "max_tokens": p.max_tokens,
-    });
-    if let Some(e) = &c.effort {
-        body["reasoning_effort"] = json!(e);
-    }
-    if let Some(s) = &p.schema {
-        body["response_format"] = json!({
-            "type": "json_schema",
-            "json_schema": {"name": "answer", "strict": true, "schema": s},
-        });
-    }
-    for (k, v) in &c.extra {
-        body[k] = v.clone();
-    }
+    let body = openai_request_body(c, p);
     let r = post(
         inf,
         &format!("{}/chat/completions", base(inf)),
@@ -181,7 +190,13 @@ pub(super) fn openai(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred> {
         return Err(Deferred::TooLong);
     }
     let value = text
-        .and_then(|t| parse_answer(t, p.schema.as_ref()))
+        .and_then(|t| {
+            if p.raw {
+                Some(Value::String(t.to_string()))
+            } else {
+                parse_answer(t, p.schema.as_ref())
+            }
+        })
         .ok_or(Deferred::Malformed)?;
     Ok(Answer {
         value,
@@ -258,7 +273,12 @@ pub(super) fn anthropic(inf: &Inference, p: &Prompt) -> Result<Answer, Deferred>
                 .collect()
         })
         .unwrap_or_default();
-    let value = parse_answer(&text, p.schema.as_ref()).ok_or(Deferred::Malformed)?;
+    let value = if p.raw {
+        Some(Value::String(text))
+    } else {
+        parse_answer(&text, p.schema.as_ref())
+    }
+    .ok_or(Deferred::Malformed)?;
     Ok(Answer {
         value,
         model,

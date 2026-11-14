@@ -116,22 +116,9 @@ pub fn run(start: &Path) -> Result<u8> {
             let _ = std::fs::remove_dir(parent.parent().unwrap());
         }
     }
-    // Our SessionStart hook: removed from the per-user Claude Code settings; the file goes only if nothing else is left.
-    let settings_path = root.join(onboarding::SESSION_HOOK_SETTINGS_PATH);
-    if !std::fs::symlink_metadata(&settings_path).is_ok_and(|m| m.file_type().is_symlink())
-        && let Ok(text) = std::fs::read_to_string(&settings_path)
-        && let Ok(mut settings) = serde_json::from_str::<serde_json::Value>(&text)
-        && onboarding::remove_own_hooks(&mut settings)
-    {
-        let dest = backup.join(onboarding::SESSION_HOOK_SETTINGS_PATH);
-        std::fs::create_dir_all(dest.parent().unwrap())?;
-        std::fs::write(&dest, &text)?;
-        if settings.as_object().is_some_and(|o| o.is_empty()) {
-            std::fs::remove_file(&settings_path)?;
-        } else {
-            util::write_atomic(&settings_path, format!("{}\n", serde_json::to_string_pretty(&settings)?).as_bytes())?;
-        }
-    }
+    // Our SessionStart hook: removed from the per-user Claude Code settings, which keep their other bytes; the file
+    // goes only when it holds nothing else.
+    hooks::uninstall(&root, onboarding::SESSION_HOOK_SETTINGS_PATH, onboarding::SESSION_HOOK_ARGS, &backup)?;
     // Codex's hook entry and opencode's plugin (session.rs).
     session::uninstall_hooks(&root, &backup)?;
     let attrs = root.join(".gitattributes");
@@ -147,6 +134,7 @@ pub fn run(start: &Path) -> Result<u8> {
             line == onboarding::SESSION_HOOK_EXCLUDE_LINE
                 || line == session::CODEX_HOOKS_EXCLUDE_LINE
                 || line == session::OPENCODE_PLUGIN_EXCLUDE_LINE
+                || line == session::OPENCODE_COMMAND_EXCLUDE_LINE
                 || dirs.iter().any(|dir| {
                 ["review", "upgrade-review", "improvements-pass", "onboarding"]
                     .iter()
@@ -168,6 +156,8 @@ pub fn run(start: &Path) -> Result<u8> {
         }
     }
     removed?;
+    // The user's answer for this repository goes with it (nothing is written where there is none).
+    let _ = setup::write_user_repo(&setup::user_config_path(), &root, None);
     println!(
         "Removed unstale from this repository. The CLI and shared catalog cache remain.\nLocal backup: {}\nRun unstale init to start fresh.",
         backup.display()

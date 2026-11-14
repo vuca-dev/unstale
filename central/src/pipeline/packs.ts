@@ -188,6 +188,40 @@ export class Packs {
     if (before && this.find(before, name)) this.compact(file);
   }
 
+  /** `put` for many names: one append per pack, and a pack that held one of them before is compacted once, not once
+   * per name. */
+  putMany(entries: Iterable<[string, string | Uint8Array]>): void {
+    const byPack = new Map<string, Array<[string, Uint8Array]>>();
+    for (const [name, data] of entries) {
+      this.check(name);
+      const file = this.bucket(name);
+      let list = byPack.get(file);
+      if (!list) byPack.set(file, (list = []));
+      list.push([name, typeof data === "string" ? Buffer.from(data) : data]);
+    }
+    for (const [file, list] of byPack) {
+      const before = readOr(file);
+      const had = before ? new Set(scan(before, false).map((h) => h.name)) : undefined;
+      append(file, Buffer.concat(list.map(([name, bytes]) => this.record(name, bytes))));
+      if (had && list.some(([name]) => had.has(name))) this.compact(file);
+    }
+  }
+
+  /** Each name's newest value in one pack file whose name `want` accepts (one read of the pack). */
+  bucketValues(file: string, want: (name: string) => boolean): Map<string, Buffer> {
+    const buf = readOr(file);
+    const out = new Map<string, Buffer>();
+    if (!buf) return out;
+    // Newest first, so a name's newest sound record wins (as `find` reads it); only wanted records are checksummed.
+    const heads = scan(buf, false);
+    for (let j = heads.length - 1; j >= 0; j--) {
+      const h = heads[j]!;
+      if (out.has(h.name) || !want(h.name) || !sound(buf, h)) continue;
+      out.set(h.name, valueOf(toRecord(buf, h)));
+    }
+    return out;
+  }
+
   /** Rewrites a pack with each name's newest record that `keep` accepts, when `keep` drops one or the pack is more than
    * half overwritten records. Skipped when another writer appended since it was read, so its record stays. Returns the
    * names dropped. */

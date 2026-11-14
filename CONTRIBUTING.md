@@ -20,7 +20,15 @@ npm --prefix central run typecheck
 npm --prefix central test
 npm --prefix central run check:schema             # generated schema and Zod match the Rust types
 npm --prefix gateway run typecheck && npm --prefix gateway test
+bash .github/scripts/ingest-cycles.test.sh       # the ingest cycles' deploy retry, against fake commands
 ```
+
+A catalog directory is not signature-checked, so the client reads one only after `unstale init --catalog <dir>` on
+this machine (it records the directory in the user's config), never because a repository's `.unstale/config.json` names
+it, and caches it apart from the signed catalog (`unsigned/` in the cache). The client's tests, which write such
+configs by hand, set `UNSTALE_DEV_UNSIGNED_CATALOG=1`: a development setting, read from the process environment only.
+The hidden `unstale infer` and `unstale internal run-step --provider` call a provider the user never chose, so they
+refuse unless `UNSTALE_DEV_INFER=1` is set the same way (the client's tests and `eval/edge-port/run_cell.sh` set it).
 
 A client following a fast-track run can be previewed locally: `node gateway/scripts/preview.ts --new pkg:npm/picocolors`
 runs the gateway with a played coverage run in place of GitHub (catalog and known statuses from the live gateway) and
@@ -46,6 +54,7 @@ Central's operator commands: `npm --prefix central run catalog -- <command>` (pi
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/ci.yml` | every pull request and push to `main` | The commands under [Tests](#tests) (Rust job; central job with Rust for the schema checks; gateway job with a `wrangler deploy --dry-run` bundle), Node 24 |
+| `.github/workflows/ci.yml` (`windows-link`) | every push to `main`; pull requests that change `local/**`, `npm/build.sh`, `release.yml` or `ci.yml` (skipped otherwise) | Links the Windows client (`x86_64-pc-windows-gnu`, debug) with cargo-zigbuild as the release builds `win32-x64`, so a Windows-only link failure shows before a tag; uploads nothing |
 | `.github/workflows/release.yml` | tag `v*` | Checks the tag equals the crate version; `npm/build.sh <platform>` per platform (darwin on macOS, linux and win32 with cargo-zigbuild on Ubuntu); runs every binary on a native runner; `npm publish` per package (`--dry-run` until `NPM_PUBLISH` is `true`; `--provenance` while the repository is public); generates the Homebrew formula (`npm/homebrew-formula.sh`) and commits it to the tap when publishing for real |
 | `.github/workflows/ingest.yml` | daily while the repository is private (every 3 hours once public), manually, from the gateway (fast-track), and from itself when a run's window ends with work left (continue) | Restores the central store; runs `pipeline --refresh` (catalog technologies); then, in 15-minute cycles (`.github/scripts/ingest-cycles.sh`), `drain` (registrations pulled from the gateway every 5 minutes, refreshes, new technologies by demand, ties broken by adoption, one slot in three kept for a waiting new technology, under the coverage budget; a cycle that pulled new packages ends early, after at least 5 minutes, once each has its admission decision, so decisions and advisories publish minutes after registration), exports and verifies the static catalog, deploys it with the gateway, saves the store and acknowledges the registrations the cycle took. A failed pipeline step holds nothing back: the cycles publish as usual and the job still fails. A `deploy: false` run drains once for the whole 140-minute window instead of in cycles, then exports, verifies and saves the store; it deploys and acknowledges nothing |
 | `.github/workflows/gateway-diagnostics.yml` | manually (`gh workflow run gateway-diagnostics.yml`) | Read-only: prints the gateway Durable Object's rows read and written, requests and storage per hour (`gateway/scripts/diagnostics.ts`, GraphQL Analytics), the Worker's invocations by status, its live logs and exceptions (`wrangler tail`) while it sends a few status reads, and `/health` and `/internal/usage`. Nothing secret is printed |
@@ -138,7 +147,9 @@ commits nothing; re-enable it with `gh workflow enable ingest.yml`.
 - **No per-technology code or tables.** Knowledge lives in one adapter per ecosystem (npm, PyPI, …); a new package in
   a supported ecosystem must work with no change.
 - **What cannot be checked automatically fails open.** It is shown as prose; it never hides a record.
-- **Model calls run centrally, once per record or source**, never per repository on a user's machine.
+- **A model call is never made twice.** Central's run once per record or source. The client's run on the provider the
+  user chose, only for releases the catalog has no records for, and every answer is cached. `unstale sync` never calls
+  a model.
 - **Ranking changes are pre-registered** and measured on the replay gate (`eval/gate/`), with a held-out split that is
   never used for tuning.
 

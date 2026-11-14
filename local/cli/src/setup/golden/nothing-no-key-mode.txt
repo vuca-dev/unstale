@@ -1,3 +1,5 @@
-Choose how unstale reads new release notes (costs are estimates; this repo has 38 technologies):
-  1) No key: your agent reads the raw change events (unparsed, sometimes repeated): 8k more agent tokens per technology-year · this repo ≈ 300k more agent tokens a year, first sync ≈ 300k more agent tokens once · results not measured yet
-Press Enter to use it: 
+How should unstale read new release notes?
+
+  ● No key   ≈ 300k more agent tokens a year   not measured yet
+
+Enter to choose · d for details

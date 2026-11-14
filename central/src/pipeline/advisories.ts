@@ -287,14 +287,17 @@ export function fromOsv(v: OsvVuln, ours: ReadonlySet<string>): Advisory | undef
   };
 }
 
-/** Advisories affecting any of the technology's packages (OSV), withdrawn ones dropped, sorted by id. */
-export async function fetchAdvisories(t: Technology, opts: { refresh?: boolean; offline?: boolean } = {}): Promise<Advisory[]> {
-  const packages = await techPackages(t, opts);
+/** Advisories affecting any of the technology's packages (OSV), withdrawn ones dropped, sorted by id. `since`: a
+ * package's query cached before then is asked again (a new version the registry poll saw: its advisory may be new),
+ * and nothing else is. */
+export async function fetchAdvisories(t: Technology, opts: { refresh?: boolean; offline?: boolean; since?: string } = {}): Promise<Advisory[]> {
+  const packages = await techPackages(t, { ...(opts.refresh ? { refresh: true } : {}), ...(opts.offline ? { offline: true } : {}) });
   const raw = new Map<string, OsvVuln>();
+  const since = Date.parse(opts.since ?? "");
   for (const p of packages) {
     const file = join(dir(t), "osv", `${safe(p)}.json`);
     let cached = readJson<{ checked: string; vulns: OsvVuln[] }>(file);
-    const fresh = cached && Date.now() - Date.parse(cached.checked) < FRESH_MS;
+    const fresh = cached && Date.now() - Date.parse(cached.checked) < FRESH_MS && !(Date.parse(cached.checked) < since);
     if (!cached || (!opts.offline && (!fresh || opts.refresh))) {
       if (opts.offline) continue;
       const vulns = (await osvQuery(p)).sort((a, b) => a.id.localeCompare(b.id));
@@ -1350,7 +1353,7 @@ export async function advisoryStage(
   s: TechStore,
   releases: ReadonlyArray<{ version: string; date: string; url: string }>,
   judge: (state: Record<string, unknown>, questions: Questions) => Promise<Classification>,
-  opts: { refresh?: boolean; offline?: boolean; unread?: ReadonlySet<string>; apis?: boolean } = {},
+  opts: { refresh?: boolean; offline?: boolean; unread?: ReadonlySet<string>; apis?: boolean; since?: string } = {},
 ): Promise<AttachReport | undefined> {
   // The release index and its derived lines first (lines.ts): the attachment and the releases below use them.
   s.releaseIndex = buildIndex(releases);

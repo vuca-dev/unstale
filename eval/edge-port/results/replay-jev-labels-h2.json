@@ -1,0 +1,46 @@
+{
+ "client_answered": 347,
+ "n": 347,
+ "client_models": [
+  "jev-1.13.0"
+ ],
+ "central_models": [
+  "jev-1.13.0"
+ ],
+ "central": {
+  "breaking_recall": 0.9,
+  "breaking_precision": 0.9452054794520548,
+  "obligation_recall": 0.861878453038674
+ },
+ "client": {
+  "breaking_recall": 0.9,
+  "breaking_precision": 0.9452054794520548,
+  "obligation_recall": 0.861878453038674
+ },
+ "client_minus_central": {
+  "breaking recall": {
+   "diff": 0.0,
+   "ci": [
+    0.0,
+    0.0
+   ],
+   "p": 1.0,
+   "b": 0,
+   "c": 0
+  },
+  "breaking precision": {
+   "diff": 0.0,
+   "ci": [
+    0.0,
+    0.0
+   ],
+   "p": 1.0,
+   "b": 0,
+   "c": 0
+  }
+ },
+ "records_with_a_different_label": [],
+ "answers_differing_from_central": 0,
+ "answers_differing_only_in_the_last_digit": 13,
+ "exact": true
+}

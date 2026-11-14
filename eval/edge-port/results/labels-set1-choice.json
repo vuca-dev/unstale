@@ -1,0 +1,189 @@
+{
+ "client_answered": 233,
+ "n": 233,
+ "client_models": [
+  "openai/gpt-6-luna"
+ ],
+ "central_models": [
+  "openai/gpt-6-luna"
+ ],
+ "central": {
+  "breaking_recall": 0.8620689655172413,
+  "breaking_precision": 0.6756756756756757,
+  "benefit_recall": 0.9669421487603306,
+  "benefit_precision": 0.8297872340425532,
+  "actionable_recall": 0.8904109589041096,
+  "actionable_precision": 0.5603448275862069,
+  "change_type_acc": 0.8497854077253219,
+  "obligation_recall": 0.9166666666666666
+ },
+ "client": {
+  "breaking_recall": 0.896551724137931,
+  "breaking_precision": 0.6190476190476191,
+  "benefit_recall": 0.9834710743801653,
+  "benefit_precision": 0.85,
+  "actionable_recall": 0.8767123287671232,
+  "actionable_precision": 0.5925925925925926,
+  "change_type_acc": 0.8326180257510729,
+  "obligation_recall": 0.9166666666666666
+ },
+ "client_minus_central": {
+  "breaking recall": {
+   "diff": 0.034482758620689724,
+   "ci": [
+    -0.10344827586206906,
+    0.1724137931034483
+   ],
+   "p": 1.0,
+   "b": 2,
+   "c": 3
+  },
+  "breaking accuracy": {
+   "diff": -0.012875536480686622,
+   "ci": [
+    -0.0429184549356223,
+    0.01716738197424894
+   ],
+   "p": 0.5810546875,
+   "b": 8,
+   "c": 5
+  },
+  "benefit-vs-none recall": {
+   "diff": 0.016528925619834767,
+   "ci": [
+    0.0,
+    0.04132231404958675
+   ],
+   "p": 0.5,
+   "b": 0,
+   "c": 2
+  },
+  "benefit-vs-none accuracy": {
+   "diff": 0.02145922746781115,
+   "ci": [
+    -0.008583690987124526,
+    0.05150214592274682
+   ],
+   "p": 0.266845703125,
+   "b": 4,
+   "c": 9
+  },
+  "benefit identical set": {
+   "diff": 0.02145922746781115,
+   "ci": [
+    -0.012875536480686622,
+    0.05579399141630903
+   ],
+   "p": 0.332305908203125,
+   "b": 6,
+   "c": 11
+  },
+  "change_type accuracy": {
+   "diff": -0.01716738197424894,
+   "ci": [
+    -0.05579399141630903,
+    0.02145922746781115
+   ],
+   "p": 0.5034446716308594,
+   "b": 12,
+   "c": 8
+  },
+  "actionable recall (yes)": {
+   "diff": -0.013698630136986356,
+   "ci": [
+    -0.04109589041095896,
+    0.0
+   ],
+   "p": 1.0,
+   "b": 1,
+   "c": 0
+  },
+  "removal+deprecation recall": {
+   "diff": 0.0,
+   "ci": [
+    0.0,
+    0.0
+   ],
+   "p": 1.0,
+   "b": 0,
+   "c": 0
+  }
+ },
+ "records_with_a_different_label": [
+  "posthog-js-bf3ade81:bootstrap",
+  "posthog-js-bf3ade81:cross-domain-cookie-probes",
+  "posthog-js-bf3ade81:feature-flag-return-values",
+  "posthog-js-bf3ade81:inlinestylesheetbudgetrules",
+  "posthog-js-bf3ade81:json-ld-replay-redaction",
+  "posthog-js-bf3ade81:log-exports",
+  "posthog-js-bf3ade81:onactivematchingsurveyschanged",
+  "posthog-js-bf3ade81:otlpanyvalue-intvalue",
+  "posthog-js-bf3ade81:posthog.debug",
+  "posthog-js-bf3ade81:posthog.displaysurvey-initialresponses",
+  "posthog-js-bf3ade81:react",
+  "posthog-js-bf3ade81:replay-network-masking-callback",
+  "posthog-js-bf3ade81:sdk-debug-recording-script-not-loaded",
+  "posthog-js-bf3ade81:sdk-debug-replay-deferred-stylesheets-failed",
+  "posthog-js-bf3ade81:session-diagnostic",
+  "posthog-js-bf3ade81:survey-language",
+  "posthog-js-bf3ade81:web-vitals-attribution~2",
+  "posthog-js-bf3ade81:webmcp",
+  "typer-4f6b46bd@0.20.0#0.0",
+  "typer-4f6b46bd@0.20.1#0.2",
+  "typer-4f6b46bd@0.20.1#0.3",
+  "typer-4f6b46bd@0.21.2#0.2",
+  "typer-4f6b46bd@0.22.0#0.0",
+  "typer-4f6b46bd@0.23.2#0.0",
+  "typer-4f6b46bd@0.25.0#0.0",
+  "typer-4f6b46bd@0.25.1#0.0",
+  "typer-4f6b46bd@0.26.2#0.0",
+  "typer-4f6b46bd@0.26.5#0.0",
+  "typer-4f6b46bd@0.26.8#0.0",
+  "typer-4f6b46bd@0.26.8#0.1",
+  "uvicorn-9342337b@0.45.0#0.4",
+  "uvicorn-9342337b@0.45.0#0.5",
+  "uvicorn-9342337b@0.48.0#0.1",
+  "uvicorn-9342337b@0.49.0#0.0",
+  "uvicorn-9342337b@0.50.0#0.5",
+  "uvicorn-9342337b@0.53.0#0.5",
+  "zod-6ac59393:catch~2",
+  "zod-6ac59393:croatian-locale",
+  "zod-6ac59393:french-locale",
+  "zod-6ac59393:locales",
+  "zod-6ac59393:looserecord",
+  "zod-6ac59393:multipleof~2",
+  "zod-6ac59393:proto~3",
+  "zod-6ac59393:proto~4",
+  "zod-6ac59393:tojsonschema~3",
+  "zod-6ac59393:tuple-parsing",
+  "zod-6ac59393:uzbek-locale",
+  "zod-6ac59393:z.base64",
+  "zod-6ac59393:z.base64~2",
+  "zod-6ac59393:z.deeppartial",
+  "zod-6ac59393:z.iban",
+  "zod-6ac59393:z.implement",
+  "zod-6ac59393:z.iso.datetime",
+  "zod-6ac59393:z.parse",
+  "zod-6ac59393:z.stringbool-truthy",
+  "zod-6ac59393:z.tojsonschema",
+  "zod-6ac59393:z.tojsonschema-defs",
+  "zod-6ac59393:zod-tuple"
+ ],
+ "usage": {
+  "cell": "labels-set1-choice",
+  "items_in": 233,
+  "lines_out": 233,
+  "complete": true,
+  "deferred": [],
+  "calls": 233,
+  "input": 378560,
+  "cached": 0,
+  "output": 24025,
+  "reasoning": 11186,
+  "wall_s": 284,
+  "gateway_balance_before": 2.750603232,
+  "gateway_balance_after": 2.558279192,
+  "dollars_list": 0.0498685,
+  "gateway_balance_change": 0.192324
+ }
+}

@@ -1,0 +1,101 @@
+# The labelling service and Codex, the labelling service down
+# keys: several-keys · Codex: codex · run: terminal · repo config: --inference jev+codex · client: fresh · provider: provider down
+
+$ unstale init --wait 0 --no-animation
+How should unstale read new release notes?
+
+  ○ Jev + Vercel AI Gateway key
+    ≈ $0.11 a year · the best option
+  ● Jev + Codex plan
+    ≈ $0.053 a year · your Codex plan, up to the limit you set · suggested by this repo
+  ○ Vercel AI Gateway key
+    ≈ $0.16 a year · ≈ 3% less precise labels
+  ○ Codex plan
+    no extra cost · your Codex plan, up to the limit you set
+  ○ Anthropic key
+    ≈ $0.23 a year · ≈ 90% of the best option's changes
+  ○ Not now
+    free · ≈ 25% of a full report's findings
+
+    Jev: a labelling service, used beside the provider that reads the notes.
+
+↑↓ to move · Enter to choose · d for details
+Saved for you: Jev + Codex plan (JEV_API_KEY) reads release notes.
+  ✓ shop · Shared setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal
+  --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
+unstale <newer version> available: npm install -g @unstale/cli@latest
+Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
+
+$ unstale sync
+next: 2 upstream changes on file, nothing new
+react: 1 upstream change on file, nothing new
+
+$ unstale session-sync
+Syncing the catalog, then reading new release notes with your provider. Ctrl-C stops it; the next run resumes.
+  Reading 1 release note of react
+warning: the provider is not answering, so new release notes wait. The next sync tries again.
+
+$ unstale status --wait 0 --no-animation
+warning: the provider is not answering, so new release notes wait. The next sync tries again.
+  ✓ shop · Shared setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  Reviews and decisions can be committed to Git. Keep personal: unstale init --mode personal
+  --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Release notes         Jev + Codex plan (JEV_API_KEY), your user config
+Tokens                24 of 48M this month (the default limit; `unstale setup --limit` changes it)
+Cache                 under 1 MB of 100 MB
+
+# contacted
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   model provider: POST /v1/systemone (4 requests)
+#   codex: --version, login status, --version, login status, exec --json, exec --json
+#   through the proxy: nothing

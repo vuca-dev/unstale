@@ -57,6 +57,10 @@ export function groundedApis(answer: unknown, text: string, packageNames: readon
   return out;
 }
 
+/** The call's usage-line attribution (llm.ts): its own stage, so `provider-usage` no longer counts it as "unknown".
+ * Metadata only: never part of the request or its cache key. The technology comes from the slice's usage phase. */
+export const ATTRIBUTION = { stage: "advisory_apis", source: "security advisory" } as const;
+
 /** One advisory's affected APIs: one cached extraction-model call; [] when the advisory names none; undefined when extraction fails. */
 export async function advisoryApis(a: Advisory, packageNames: readonly string[], ask: typeof extractLlm = extractLlm, others: readonly string[] = []): Promise<string[] | undefined> {
   const text = advisoryText(a, others);
@@ -65,7 +69,7 @@ export async function advisoryApis(a: Advisory, packageNames: readonly string[],
   const answer = await ask(prompt, (t) => {
     const v = parseJson(t, "array");
     return Array.isArray(v) ? v : undefined;
-  });
+  }, { attribution: ATTRIBUTION });
   return answer === undefined ? undefined : groundedApis(answer, text, packageNames);
 }
 

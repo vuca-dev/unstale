@@ -34,7 +34,9 @@ const ExtractFile = z
     piece_line: Text,
     docs_preamble: Text,
     docs_preamble_marked: Text,
-    variants: z.object({ one_call: z.array(Edit), one_call_schema: z.array(Edit), evidence_ids: z.array(Edit), diet_full: z.array(Edit), diet_compact: z.array(Edit) }).strict(),
+    variants: z.object({ one_call: z.array(Edit), one_call_schema: z.array(Edit), evidence_ids: z.array(Edit), diet_full: z.array(Edit), diet_compact: z.array(Edit), batch: z.array(Edit) }).strict(),
+    /** One chunk of a batch (the client's Codex route): `%ID%`, `%TECH%`, `%VERSION%`, `%DATE%`, `%NOTES%`. */
+    batch_chunk: Text,
     one_call_schema_response_format: z
       .object({
         type: z.literal("json_schema"),
@@ -74,6 +76,8 @@ const JudgeFile = z
   .strict();
 
 const PromptFile = z.object({ version: Version, prompt: Text }).strict();
+/** The choice prompt, and its batched form (the client's Codex route: several records, answered by record id). */
+const ChoiceFile = z.object({ version: Version, prompt: Text, batch: z.array(Edit) }).strict();
 
 const Probability = z.number().min(0).max(1);
 const ThresholdsFile = z
@@ -109,7 +113,7 @@ export const PROMPT_FILES = ["extract.json", "labels.json", "judge.json", "choic
 export const extractText = load("extract.json", ExtractFile);
 export const labelsText = load("labels.json", LabelsFile);
 export const judgeText = load("judge.json", JudgeFile);
-export const choiceText = load("choice.json", PromptFile);
+export const choiceText = load("choice.json", ChoiceFile);
 export const advisoryApisText = load("advisory-apis.json", PromptFile);
 export const thresholdsData = load("thresholds.json", ThresholdsFile);
 

@@ -1,0 +1,173 @@
+# An OpenAI key in the shell and Codex logged in, Codex installs it through a terminal; set up earlier, then the client upgraded
+# keys: shell-key · Codex: codex · run: agent-pty-codex · repo config: none · client: upgraded · provider: answers
+
+# earlier: set up by the client then installed (this build; the previous release's binary is not built here)
+$ unstale init --yes --wait 0 --no-animation  (no terminal)
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
+  ✓ shop · Personal setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local
+  references.
+  
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+  
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and
+  keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply
+  changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to
+  this brief.
+  
+  
+  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode
+  shared --wait 0
+  Details: .unstale/onboarding-report.md
+  
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+  
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades
+  and capabilities by likely impact. Recommend what to do first, with affected
+  files and trade-offs. Return proposals only; do not edit files.
+  
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+unstale notice, act by 30 November: Upgrade unstale; this version stops receiving new changes then.
+unstale <newer version> available: npm install -g @unstale/cli@latest
+Codex: to let unstale sync at session start, trust its hook once: run /hooks in Codex.
+
+# earlier: set up by the client then installed (this build; the previous release's binary is not built here)
+$ unstale sync  (no terminal)
+next: 2 upstream changes on file, nothing new
+react: 1 upstream change on file, nothing new
+
+# the user upgrades the client; the catalog now names this version the newest and the oldest it serves
+
+$ unstale init --wait 0 --no-animation
+Choice pending: how unstale reads new release notes. Run `unstale setup` and ask the user.
+  ✓ shop · Personal setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode shared --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+$ unstale status --wait 0 --no-animation
+  ✓ shop · Personal setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.1.0 picks up 1 advisory (affected path not found)
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode shared --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Release notes         not read: no provider chosen · `unstale setup` shows the options
+Cache                 under 1 MB of 100 MB
+
+$ unstale setup
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them.
+
+     Read with    Key              Cost a year, this repo   Compared with the best option
+  1  OpenAI       OPENAI_API_KEY   ≈ $0.16                  ≈ 3% less precise labels
+  2  Codex plan                    ≈ 2.3M Codex tokens      ≈ 80% of its changes; rest not measured
+  3  Not now                       free                     ≈ 25% of a full report's findings
+
+Record their answer with the matching command:
+  1  unstale setup --inference env:OPENAI_API_KEY
+  2  unstale setup --inference codex
+  3  unstale setup --inference none
+Full costs: unstale setup --details
+
+# the agent showed the options and asked; the user chose option 1
+$ unstale setup --inference env:OPENAI_API_KEY
+Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.
+
+$ unstale sync
+next: 2 upstream changes on file, nothing new
+react: 1 upstream change on file, nothing new
+
+# Codex starts a session and runs its session-start hook; the background stage it starts runs to its end
+$ "unstale" notify  (no terminal)
+
+# Codex starts a session and runs its session-start hook; the background stage it starts runs to its end
+$ "unstale" notify  (no terminal)
+
+$ unstale status --wait 0 --no-animation
+unstale reads release notes on your OpenAI key (≈ $0.16 a year), chosen through your agent on 10 November. Undo: `unstale setup --inference none`
+  ✓ shop · Personal setup ready
+  Next: run unstale-review in your coding agent · copyable prompt below.
+  Mapped 3 direct dependencies from declared package ranges and checked local references.
+
+  Upgrades to review · 1 shortlisted
+  Upstream change counts, not confirmed issues in your code.
+  1. next 16.0.0 → 16.3.0 picks up 1 advisory (affected path not found), 1 behaviour change
+
+  Capabilities to explore · 1 shortlisted
+  1. react · upgrade 19.0.0 → 19.1.0 — Activity hides part of the tree and keeps its state.
+  Dependency match only · repository benefit has not been established.
+  These are review candidates, not confirmed benefits or safe-to-apply changes.
+  Coverage · no shared coverage acknowledged yet. unstale status later adds to this brief.
+
+
+  .unstale/ is Git-ignored. Share reviews and decisions: unstale init --mode shared --wait 0
+  Details: .unstale/onboarding-report.md
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NEXT · Review with unstale-review · paste into your coding agent
+
+  Use .unstale/skills/review/SKILL.md to review this repository. Rank upgrades and capabilities by
+  likely impact. Recommend what to do first, with affected files and trade-offs. Return proposals
+  only; do not edit files.
+
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Release notes         OpenAI (OPENAI_API_KEY), your user config
+Tokens                84 of 4.8M this month (a tenth of the limit until you run unstale at a terminal)
+Cache                 under 1 MB of 100 MB
+
+# contacted
+#   catalog host: GET /health, GET /v1/root.json, GET /v1/shards/next/16.7745374e4470.jsonl.gz, GET /v1/shards/next/16.events.74bcaa014f93.jsonl.gz, GET /v1/shards/react/19.b7c40e95232c.jsonl.gz, GET /v1/shards/react/19.events.04962169f41c.jsonl.gz, GET /v1/tech/next.json, GET /v1/tech/react-dom.json, GET /v1/tech/react.json, GET /v1/technologies.json
+#   model provider: POST /v1/chat/completions (7 requests)
+#   codex: --version, login status
+#   through the proxy: nothing

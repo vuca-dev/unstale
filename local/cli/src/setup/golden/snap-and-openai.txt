@@ -1,0 +1,8 @@
+How should unstale read new release notes?
+
+  ● Snap + OpenAI key   ≈ $1.44 a year   ≈ 3% less precise labels
+  ○ OpenAI key          ≈ $1.98 a year   ≈ 3% less precise labels
+  ○ Not now             free             ≈ 25% of a full report's findings
+    Snap: a matching service, used beside the provider; fewer changes listed twice.
+
+↑↓ to move · Enter to choose · d for details

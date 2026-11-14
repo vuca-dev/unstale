@@ -81,9 +81,46 @@ publish_tree() {
   [ "$big" -eq 0 ] || { echo "::error::$big files over the 25 MiB static asset limit"; return 1; }
 }
 
+# A deploy is idempotent (unchanged assets are not uploaded again), so a failed one is tried again, DEPLOY_ATTEMPTS
+# in all: after the wait the API asked for ("wait N second(s)", a throttled call), at most DEPLOY_MAX_WAIT_SECONDS,
+# else after DEPLOY_PAUSE_SECONDS; the longest stated wait when there are several, never under DEPLOY_MIN_WAIT_SECONDS.
+# An attempt that runs past DEPLOY_TIMEOUT_SECONDS (a normal deploy takes about 30 s, the slowest seen about 75 s) is
+# stopped, with its child processes, and counts as failed. In run 43010822551 the custom domains call was throttled
+# after the Worker was uploaded (code 971); in run 42641451160 the version upload timed out (504). One that still fails
+# fails the cycle. Worst case added to a cycle: three attempts stopped at the timeout and two capped waits, about 21
+# minutes; for failures like those two runs', two waits and two more deploys, about 6.
+#
+# The attempt's output, kept to read the wait from, holds the account id unmasked (GitHub masks only the log): it is
+# removed whenever deploy returns and must never be uploaded or added to an artifact.
+: "${DEPLOY_TIMEOUT_SECONDS:=300}"
+DEPLOY_ATTEMPTS=3 DEPLOY_PAUSE_SECONDS=30 DEPLOY_MIN_WAIT_SECONDS=5 DEPLOY_MAX_WAIT_SECONDS=120
 deploy() {
-  (cd gateway && "${publish_env[@]}" CLOUDFLARE_API_TOKEN="$SECRET_CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$SECRET_CLOUDFLARE_ACCOUNT_ID" \
-    WRANGLER_SEND_METRICS=false npx wrangler deploy --assets "$SITE_DIR")
+  local attempt=1 out="$RUNNER_TEMP/deploy.log" pause code
+  while :; do
+    code=0
+    (cd gateway && "${publish_env[@]}" CLOUDFLARE_API_TOKEN="$SECRET_CLOUDFLARE_API_TOKEN" CLOUDFLARE_ACCOUNT_ID="$SECRET_CLOUDFLARE_ACCOUNT_ID" \
+      WRANGLER_SEND_METRICS=false timeout -k 30 "$DEPLOY_TIMEOUT_SECONDS" npx wrangler deploy --assets "$SITE_DIR") 2>&1 | tee "$out" || code=$?
+    [ "$code" -ne 0 ] || { rm -f "$out"; return 0; }
+    [ "$code" -ne 124 ] || echo "::warning title=Deploy timed out::attempt $attempt stopped after ${DEPLOY_TIMEOUT_SECONDS}s"
+    if [ "$attempt" -ge "$DEPLOY_ATTEMPTS" ]; then
+      rm -f "$out"
+      echo "::error title=Deploy failed::$attempt attempts"
+      return 1
+    fi
+    # The largest stated wait, leading zeros dropped, ordered by length then value: a number too long for the shell's
+    # arithmetic is only compared by its length (over 3 digits is over the cap).
+    pause="$(grep -oE 'wait [0-9]+ second' "$out" | grep -oE '[0-9]+' | sed 's/^0*//; s/^$/0/' | awk '{ print length, $0 }' | sort -n -k1,1 -k2,2 | tail -n 1 | cut -d' ' -f2 || true)"
+    if [ -z "$pause" ]; then
+      pause=$DEPLOY_PAUSE_SECONDS
+    elif [ "${#pause}" -gt 3 ] || [ "$pause" -gt "$DEPLOY_MAX_WAIT_SECONDS" ]; then
+      pause=$DEPLOY_MAX_WAIT_SECONDS
+    elif [ "$pause" -lt "$DEPLOY_MIN_WAIT_SECONDS" ]; then
+      pause=$DEPLOY_MIN_WAIT_SECONDS
+    fi
+    attempt=$((attempt + 1))
+    echo "::warning title=Deploy retried::attempt $((attempt - 1)) failed (exit $code); attempt $attempt of $DEPLOY_ATTEMPTS in ${pause}s"
+    sleep "$pause"
+  done
 }
 
 # One generation a save (central/src/state/snapshot.ts): the members this cycle changed, in one new segment, then the

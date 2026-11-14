@@ -5,8 +5,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { FetchFailure } from "../src/collector/http.ts";
-import { CoverageService, logName, sameStream, type Job } from "../src/onboarding/service.ts";
+import { CoverageService, logName, REFRESH_MS, sameStream, type Job } from "../src/onboarding/service.ts";
 import { DailyBudget, nextPeriod, periodKey, quarterKey, Voters, type Limits } from "../src/onboarding/limits.ts";
 import { deprecationOf } from "../src/onboarding/notices.ts";
 import { servedIndex } from "../src/pipeline/export.ts";
@@ -83,6 +84,8 @@ test("drain order: admitted work first, then new technologies by demand with no 
   overflow.admitted = "maintained and used";
   overflow.demand = 1_000;
   overflow.overflow = quarterKey();
+  // Its releases read in its last slice: no check due, only its remaining history waits, behind everything.
+  overflow.refresh_checked = new Date().toISOString();
   const parked = service.submit("pkg:npm/parked");
   parked.state = "blocked";
   parked.retry_at = new Date(Date.now() + 86_400_000).toISOString();
@@ -514,4 +517,381 @@ test("a registry rate limit stops polling across cycles without pausing the inde
   expect(paused.attempted).toBe(0);
   expect(Date.parse(paused.paused_until!)).toBeGreaterThan(Date.now() + 3500_000);
   expect(read.mock.calls.length).toBeLessThanOrEqual(2);
+});
+
+test("a monitored technology past its quarterly cap is still checked for new releases on time, and that check extracts no note", async () => {
+  const service = new CoverageService(1, { limits: limits() }).hold();
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const admitted = (name: string) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    job.admitted = "used";
+    return job;
+  };
+  const backlog = admitted("backlog");
+  backlog.demand = 1000;
+  // Past its cap with history left (requeued by its last slice), last checked a day ago: its refresh is due.
+  const capped = admitted("capped");
+  Object.assign(capped, { monitored: ago(48), overflow: quarterKey(), refresh_checked: ago(24), completed: ["v1:x:audience-v1"] });
+  // Past its cap and checked an hour ago: only its remaining history waits, behind every other technology.
+  const checked = admitted("checked");
+  Object.assign(checked, { monitored: ago(48), overflow: quarterKey(), refresh_checked: ago(1), completed: ["v1:x:audience-v1"] });
+  // Admitted, past its cap before its first coverage finished (never monitored), releases last read 60 hours ago.
+  const first = admitted("first");
+  Object.assign(first, { overflow: quarterKey(), completed: ["v1:x:audience-v1"], release_checked: ago(60), refresh_checked: ago(30) });
+  const fresh = service.submit("pkg:npm/new");
+  fresh.demand = 50;
+  expect(service.queue().map((j) => j.purl.slice(8))).toEqual(["backlog", "capped", "first", "new", "checked"]);
+  const started: string[] = [];
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (job) => {
+    started.push(job.purl.slice(8));
+    job.state = "monitoring";
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  await service.drain(Date.now() + 1000, 0, 1);
+  // The kept slot takes the due checks by their last upstream read (first: 60 h, capped: 48 h), then demand order.
+  expect(started).toEqual(["first", "capped", "backlog", "new", "checked"]);
+  // The stamp orders the line; it is never public.
+  expect(service.publicStatus(capped)).not.toHaveProperty("refresh_checked");
+  expect(service.statuses().filter((x) => "refresh_checked" in x)).toEqual([]);
+});
+
+test("the release check of a technology past its cap reads its releases without extracting; its history then drains behind", async () => {
+  const { synth } = await mockWork({ "pkg:npm/verbose": { repo: "ex/verbose", tags: ["v1.0.3", "v1.0.2", "v1.0.1"], size: 60 } });
+  const fetching = await import("../src/pipeline/fetch.ts");
+  const events: string[] = [];
+  const read = vi.mocked(fetching.fetchReleases).getMockImplementation()!;
+  // Every read comes from the 12-hour cache, last refreshed upstream 10 hours ago.
+  const cached = new Date(Date.now() - 10 * 3600_000).toISOString();
+  vi.mocked(fetching.fetchReleases).mockImplementation(async (...a) => (events.push("releases"), { ...(await read(...a)), checked: cached }));
+  synth.mockImplementation(async () => (events.push("synthesize"), 1));
+  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const job = service.submit("pkg:npm/verbose");
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  Object.assign(job, { admitted: "used", monitored: day, refresh_checked: day, overflow: quarterKey(), quarter: { key: quarterKey(), tokens: 200 } });
+  await service.drain(Date.now() + 2000, 0, 1);
+  // First the due check (releases read, no note extracted), then the history, as tier 2 work from the period's budget:
+  // a read from the cache counts toward the interval, so the check does not run again at once.
+  expect(events.slice(0, 3)).toEqual(["releases", "releases", "synthesize"]);
+  expect(Date.parse(job.refresh_checked!)).toBeGreaterThan(Date.parse(day));
+  // The order of due checks keeps the upstream read, not the cached one's time.
+  expect(job.release_checked).toBe(cached);
+});
+
+test("a release check past the cap makes no model call and spends no token, and starts under a spent budget", async () => {
+  const tags = ["v1.0.2", "v1.0.1"];
+  const { synth } = await mockWork({
+    "pkg:npm/verbose": { repo: "ex/verbose", tags, size: 60 },
+    "pkg:npm/backlog": { repo: "ex/backlog", tags: ["v2.0.0"] },
+  });
+  const fetching = await import("../src/pipeline/fetch.ts");
+  const docs = await import("../src/docs/extract.ts");
+  const match = await import("../src/pipeline/match.ts");
+  vi.mocked(fetching.fetchGuides).mockResolvedValue([{ keyTag: "guide-v1", version: "1.0.0", notes: "y".repeat(400) }] as never);
+  const admitted: boolean[] = [];
+  vi.mocked(docs.extract).mockImplementation(async (_t, _l, _log, admit) => (admitted.push(admit!("z".repeat(400))), {} as never));
+  const judge = vi.spyOn(match, "mergeChunkDuplicates");
+  const read = vi.spyOn(fetching, "fetchReleases");
+  const advisories = await import("../src/pipeline/advisories.ts");
+  vi.spyOn(fetching, "advisoryReleases").mockResolvedValue([{}] as never);
+  const judgeAdvisories = vi.spyOn(advisories, "advisoryStage").mockResolvedValue(undefined as never);
+  const service = new CoverageService(1, { limits: limits({ techQuarterTokens: 100, tokensPerPeriod: 0 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const job = service.submit("pkg:npm/verbose");
+  Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, overflow: quarterKey(),
+    quarter: { key: quarterKey(), tokens: 200 }, completed: tags.map((t, i) => `${t}:sha256:${String(i).padStart(64, "0")}:audience-v1`) });
+  const backlog = service.submit("pkg:npm/backlog");
+  Object.assign(backlog, { admitted: "used", demand: 1000 });
+  await service.drain(Date.now() + 2000, 0, 1);
+  expect(read.mock.calls.map(([t]) => t.id)).toEqual(["verbose"]);
+  expect(job.state).toBe("monitoring");
+  expect(job.quarter).toEqual({ key: quarterKey(), tokens: 200 });
+  expect(synth).not.toHaveBeenCalled();
+  expect(judge).not.toHaveBeenCalled();
+  expect(judgeAdvisories).not.toHaveBeenCalled();
+  expect(admitted).toEqual([false]);
+  // Work that may call a model still waits for the next period.
+  expect(backlog.state).toBe("queued");
+  expect(backlog.stage).toMatch(/coverage budget for this day spent/i);
+});
+
+test("while a popular refresh runs, the oldest-checked due refresh (by its upstream read) still takes the next slot", async () => {
+  const service = new CoverageService(2, { limits: limits() }).hold();
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const monitored = (name: string, demand: number, hours: number, retry: number) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", admitted: "used", demand, release_checked: ago(hours), retry_at: ago(retry) });
+    return job;
+  };
+  // Due in the opposite order to their last check (a failure backoff, a change detected): the check decides.
+  monitored("popular", 100, 7, 1);
+  // Read from the cache an hour ago, but last read upstream 72 hours ago: still the oldest check.
+  monitored("oldest", 0, 72, 0.2).refresh_checked = ago(1);
+  monitored("recent", 5, 24, 5);
+  monitored("older", 0, 48, 3);
+  const started: string[] = [];
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (job) => {
+    started.push(job.purl.slice(8));
+    if (job.purl.endsWith("popular")) await new Promise((r) => setTimeout(r, 100));
+    job.state = "monitoring";
+    job.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  await service.drain(Date.now() + 1000, 0, 1);
+  expect(started).toEqual(["oldest", "popular", "older", "recent"]);
+});
+
+test("the refresh interval is 12 hours: a finished refresh is due 12 hours on, a yielded one 12 hours after its read; a detected version is due at once", async () => {
+  expect(REFRESH_MS).toBe(12 * 3600_000);
+  await mockWork({ "pkg:npm/twelve": { repo: "ex/twelve", tags: ["v1.0.0"] } });
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const job = service.submit("pkg:npm/twelve");
+  Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day,
+    completed: ["v1.0.0:sha256:" + "0".repeat(64) + ":audience-v1"] });
+  const before = Date.now();
+  await service.drain(Date.now() + 2000, 0, 1);
+  expect(job.state).toBe("monitoring");
+  expect(Date.parse(job.retry_at!) - before).toBeGreaterThanOrEqual(12 * 3600_000);
+  expect(Date.parse(job.retry_at!) - Date.now()).toBeLessThanOrEqual(12 * 3600_000);
+  // A refresh that yielded (queued) is due by its last read: not 8 hours on, 13 hours on.
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000).toISOString();
+  const yielded = (name: string, hours: number) =>
+    Object.assign(service.submit(`pkg:npm/${name}`), { state: "queued", admitted: "used", monitored: day, refresh_checked: ago(hours), completed: ["v1:x:audience-v1"] });
+  const recent = yielded("eight", 8), old = yielded("thirteen", 13);
+  const due = (j: Job) => (service as unknown as { refreshDue(job: Job): boolean }).refreshDue(j);
+  expect([due(recent), due(old)]).toEqual([false, true]);
+  // The next cycle's registry poll sees a new version: the technology is due now, whatever its retry time.
+  const next = new CoverageService(0, { limits: limits() }).hold();
+  const polled = next.jobs.get("pkg:npm/twelve")!;
+  expect(Date.parse(polled.retry_at!)).toBeGreaterThan(Date.now() + 11 * 3600_000);
+  expect(await next.pollChanges({ read: async (purl) => (purl === polled.purl ? "1.1.0" : "1.0.0") })).toMatchObject({ changed: 1 });
+  expect(Date.parse(polled.retry_at!)).toBeLessThanOrEqual(Date.now());
+  expect(next.queue()[0]?.purl).toBe(polled.purl);
+});
+
+test("the failure estimate and the interval's past-due count follow the 12-hour interval", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  for (const [name, hours] of [["eight", 8], ["thirteen", 13]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    // Failed since its last read, saved long after it.
+    Object.assign(job, { state: "monitoring", admitted: "used", descriptor: { repo: `ex/${name}` }, release_checked: ago(hours), refresh_checked: ago(hours),
+      retry_at: ago(0.1), failures: 1, updated: ago(0.5) });
+  }
+  expect(service.freshness(at)).toMatchObject({ unimprovable: { failing_before_read_estimate: 1 } });
+  expect((service as unknown as { dueRefreshes(at?: number): { overdue: number } }).dueRefreshes(at).overdue).toBe(1);
+});
+
+test("a due refresh under its cap is no release check: it extracts, judges advisories and charges its tokens", async () => {
+  const tags = ["v1.0.2", "v1.0.1"];
+  const { synth } = await mockWork({ "pkg:npm/light": { repo: "ex/light", tags, size: 10 } });
+  const fetching = await import("../src/pipeline/fetch.ts");
+  const advisories = await import("../src/pipeline/advisories.ts");
+  vi.spyOn(fetching, "advisoryReleases").mockResolvedValue([{}] as never);
+  const judgeAdvisories = vi.spyOn(advisories, "advisoryStage").mockResolvedValue(undefined as never);
+  const service = new CoverageService(1, { limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const job = service.submit("pkg:npm/light");
+  // One release read before; the newer one is new. 20 of 100 tokens used this quarter.
+  Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day,
+    quarter: { key: quarterKey(), tokens: 20 }, completed: [`v1.0.1:sha256:${"1".padStart(64, "0")}:audience-v1`] });
+  await service.drain(Date.now() + 2000, 0, 1);
+  expect(synth).toHaveBeenCalledTimes(1);
+  expect(judgeAdvisories).toHaveBeenCalled();
+  expect(job.quarter).toEqual({ key: quarterKey(), tokens: 30 });
+  expect(job.state).toBe("monitoring");
+});
+
+test("a refresh for a detected version asks OSV again since the detection; an ordinary refresh does not", async () => {
+  for (const detected of [true, false]) {
+    vi.restoreAllMocks();
+    const name = detected ? "detected" : "ordinary";
+    await mockWork({ [`pkg:npm/${name}`]: { repo: `ex/${name}`, tags: ["v1.0.1"], size: 10 } });
+    const fetching = await import("../src/pipeline/fetch.ts");
+    const advisories = await import("../src/pipeline/advisories.ts");
+    vi.spyOn(fetching, "advisoryReleases").mockResolvedValue([{}] as never);
+    const stage = vi.spyOn(advisories, "advisoryStage").mockResolvedValue(undefined as never);
+    const service = new CoverageService(1, { limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+    const day = new Date(Date.now() - 86_400_000).toISOString();
+    const job = service.submit(`pkg:npm/${name}`);
+    const at = new Date(Date.now() - 60_000).toISOString();
+    Object.assign(job, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, ...(detected ? { change_detected: at } : {}) });
+    await service.drain(Date.now() + 2000, 0, 1);
+    expect(stage).toHaveBeenCalled();
+    const opts = stage.mock.calls[0]![4]!;
+    if (detected) expect(opts).toMatchObject({ since: at });
+    else expect(opts).not.toHaveProperty("since");
+    expect(opts).not.toHaveProperty("refresh");
+  }
+});
+
+test("under a spent budget every slot may take a release check past the cap, and nothing that can call a model starts", async () => {
+  const service = new CoverageService(3, { limits: limits({ tokensPerPeriod: 0 }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const old = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const job = (name: string, fields: Partial<Job>) => Object.assign(service.submit(`pkg:npm/${name}`), { admitted: "used", ...fields });
+  // Ahead of the checks by demand, and by the oldest read: neither may start.
+  job("backlog", { demand: 1000 });
+  job("refresh", { state: "monitoring", monitored: old, release_checked: old, retry_at: old, demand: 500 });
+  for (const name of ["check-a", "check-b"])
+    job(name, { state: "monitoring", monitored: day, release_checked: day, retry_at: day, overflow: quarterKey() });
+  const started: string[] = [];
+  let running = 0, most = 0;
+  vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockImplementation(async (j) => {
+    started.push(j.purl.slice(8));
+    most = Math.max(most, ++running);
+    await new Promise((r) => setTimeout(r, 50));
+    running--;
+    j.retry_at = new Date(Date.now() + 6 * 3600_000).toISOString();
+  });
+  await service.drain(Date.now() + 1000, 0, 1);
+  expect(started.sort()).toEqual(["check-a", "check-b"]);
+  // Both at once: the kept slot is not the only one a check may take.
+  expect(most).toBe(2);
+});
+
+const events = (log: { mock: { calls: unknown[][] } }, name: string) =>
+  log.mock.calls.map(([line]) => (typeof line === "string" && line.startsWith("{") ? JSON.parse(line) : undefined)).filter((e) => e?.event === name);
+
+test("freshness counts the old tail by day and three days, and what cannot get younger now, without changing earlier fields", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  const monitored = (name: string, hours: number | undefined, extra: Partial<Job> = {}) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", descriptor: { repo: `ex/${name}` }, ...extra });
+    if (hours !== undefined) job.release_checked = ago(hours);
+    return job;
+  };
+  monitored("fresh", 1);
+  monitored("day", 30);
+  monitored("week", 24 * 7);
+  // Failed since its last read, which a slice reaching the read would have renewed: it cannot improve now.
+  monitored("failing", 24 * 9, { failures: 3, updated: ago(1) });
+  // Failed after its read (the read is within the slice): it is checked, its failure is later.
+  monitored("late-failure", 2, { failures: 1, updated: ago(1.9) });
+  // Failed after its read, then saved again later (the estimate's false positive): its check is younger than the
+  // refresh interval, so it is never counted and stays in the checkable ages.
+  monitored("saved-later", 5, { failures: 1, updated: ago(0.5) });
+  // No repository: `release_checked` is never set.
+  monitored("homepage", undefined, { descriptor: { homepage: "https://example.org" } as never });
+  const f = service.freshness(at);
+  expect(f).toMatchObject({ monitored: 7, release_check_unknown: 1, release_checks_over_6h: 3,
+    release_check_age_s: { max: 24 * 9 * 3600 } });
+  expect(f).toMatchObject({ release_checks_over_24h: 3, release_checks_over_3d: 2,
+    unimprovable: { no_repository: 1, failing_before_read_estimate: 1 },
+    release_check_age_s_checkable: { p95: 24 * 7 * 3600, max: 24 * 7 * 3600 } });
+});
+
+test("a yielded check slice of the kept slot logs one line, is counted in kept_slot, and adds nothing to public status", async () => {
+  await mockWork({ "pkg:npm/verbose": { repo: "ex/verbose", tags: ["v1.0.3", "v1.0.2", "v1.0.1"], size: 60 } });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const job = service.submit("pkg:npm/verbose");
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  Object.assign(job, { admitted: "used", monitored: day, refresh_checked: day, overflow: quarterKey(), quarter: { key: quarterKey(), tokens: 200 } });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const yielded = events(log, "slice_yielded");
+  // The check (no model call) yields its history to tier 2; the history slices after it are no check and no kept slot.
+  expect(yielded[0]).toEqual({ event: "slice_yielded", job: "pkg:npm/verbose", kind: "other", check: true, kept_slot: true, ms: expect.any(Number) });
+  expect(yielded.slice(1).every((e) => !e.check && !e.kept_slot)).toBe(true);
+  expect(service.metrics()!.kept_slot).toMatchObject({ started: 1, yielded: 1, finished: 0, failed: 0, due_before: 1, overdue_before: 1,
+    oldest_overdue_age_s_before: expect.any(Number), due_after: 0, overdue_after: 0, oldest_overdue_age_s_after: null });
+  expect(service.metrics()!.kept_slot.oldest_overdue_age_s_before).toBeGreaterThanOrEqual(86_400);
+  // Logging only: public status carries none of it (and no operator-only field).
+  for (const s of [service.publicStatus(job), ...service.statuses()])
+    for (const k of ["kept_slot", "check", "oldest", "unimprovable", "release_checked", "refresh_checked", "monitored", "failures_before_read"]) expect(s).not.toHaveProperty(k);
+});
+
+test("the per-slice timing line marks a check slice and a kept-slot slice", async () => {
+  await mockWork({ "pkg:npm/capped": { repo: "ex/capped", tags: ["v1.0.0"] }, "pkg:npm/plain": { repo: "ex/plain", tags: ["v1.0.0"] } });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits(), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  const capped = service.submit("pkg:npm/capped");
+  Object.assign(capped, { state: "monitoring", admitted: "used", monitored: day, release_checked: day, retry_at: day, overflow: quarterKey(),
+    completed: ["v1.0.0:sha256:" + "0".repeat(64) + ":audience-v1"] });
+  const plain = service.submit("pkg:npm/plain");
+  Object.assign(plain, { admitted: "used", demand: 5 });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const stages = Object.fromEntries(events(log, "coverage_stages").map((e) => [e.technology, e]));
+  expect(stages.capped).toMatchObject({ check: true, kept_slot: true });
+  expect(stages.plain).toMatchObject({ check: false, kept_slot: false });
+});
+
+test("the day and three-day counts are strictly older than their bound", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  for (const [name, s] of [["h12", 12 * 3600], ["h24", 24 * 3600], ["h24s", 24 * 3600 + 1], ["d2", 2 * 86_400], ["d3", 3 * 86_400], ["d3s", 3 * 86_400 + 1]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", release_checked: new Date(at - s * 1000).toISOString() });
+  }
+  expect(service.freshness(at)).toMatchObject({ release_checks_over_24h: 4, release_checks_over_3d: 1 });
+});
+
+test("the 12-hour count is strictly older than the interval, next to the 6-hour count kept as it was", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  for (const [name, s] of [["h5", 5 * 3600], ["h7", 7 * 3600], ["h12", 12 * 3600], ["h12s", 12 * 3600 + 1], ["d2", 2 * 86_400]] as const) {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", release_checked: new Date(at - s * 1000).toISOString() });
+  }
+  expect(service.freshness(at)).toMatchObject({ release_checks_over_6h: 4, release_checks_over_12h: 2, release_checks_over_24h: 1 });
+});
+
+type Internals = { running: Set<string>; dueRefreshes(at?: number): { due: number; overdue: number; oldest_overdue_age_s: number | null } };
+
+test("the oldest overdue age is the oldest read past its interval, paused or backing off included, running excluded", () => {
+  const service = new CoverageService(0, { limits: limits() });
+  const at = Date.now();
+  const ago = (hours: number) => new Date(at - hours * 3600_000).toISOString();
+  const monitored = (name: string, hours: number, extra: Partial<Job> = {}) => {
+    const job = service.submit(`pkg:npm/${name}`);
+    Object.assign(job, { state: "monitoring", admitted: "used", release_checked: ago(hours), refresh_checked: ago(hours), retry_at: ago(0.1), ...extra });
+    return job;
+  };
+  monitored("day", 24);
+  // The oldest is rate-limited (its 429 paused it): not pickable now, still the age.
+  monitored("nine-days", 24 * 9, { paused_until: new Date(at + 60_000).toISOString() });
+  monitored("backing-off", 48, { failures: 2, retry_at: new Date(at + 3600_000).toISOString() });
+  // Running now: not a candidate, not in the age.
+  monitored("running", 24 * 30);
+  monitored("fresh", 1, { retry_at: new Date(at + 5 * 3600_000).toISOString() });
+  (service as unknown as Internals).running.add("pkg:npm/running");
+  expect((service as unknown as Internals).dueRefreshes(at)).toEqual({ due: 1, overdue: 3, oldest_overdue_age_s: 24 * 9 * 3600 });
+});
+
+test("kept_slot counts a rate-limited and a failed kept slice", async () => {
+  for (const [error, counter] of [[new FetchFailure("http_status", "HTTP 429", 429), "rate_limited"], [new FetchFailure("http_status", "HTTP 500", 500), "failed"]] as const) {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const service = new CoverageService(1, { limits: limits() }).hold();
+    const job = service.submit(`pkg:npm/${counter}`);
+    const day = new Date(Date.now() - 86_400_000).toISOString();
+    Object.assign(job, { state: "monitoring", admitted: "used", release_checked: day, retry_at: day });
+    vi.spyOn(service as unknown as { work(job: Job): Promise<void> }, "work").mockRejectedValue(error);
+    await service.drain(Date.now() + 200, 0, 1);
+    expect(service.metrics()!.kept_slot).toMatchObject({ started: 1, finished: 0, yielded: 0, [counter]: 1, [counter === "failed" ? "rate_limited" : "failed"]: 0 });
+    // A 429 leaves the 1-day job overdue (paused, not pickable): its age stays.
+    if (counter === "rate_limited") expect(service.metrics()!.kept_slot).toMatchObject({ due_after: 0, overdue_after: 1, oldest_overdue_age_s_after: expect.any(Number) });
+    vi.restoreAllMocks();
+  }
+});
+
+test("a drain adds no persisted job field: a saved job's keys are the Job interface's", async () => {
+  await mockWork({ "pkg:npm/verbose": { repo: "ex/verbose", tags: ["v1.0.3", "v1.0.2", "v1.0.1"], size: 60 } });
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const service = new CoverageService(1, { advisories: false, limits: limits({ techQuarterTokens: 100 }), admission: async () => ({ admit: true, why: "test" }) }).hold();
+  const job = service.submit("pkg:npm/verbose");
+  const day = new Date(Date.now() - 86_400_000).toISOString();
+  Object.assign(job, { admitted: "used", monitored: day, refresh_checked: day, overflow: quarterKey(), quarter: { key: quarterKey(), tokens: 200 } });
+  await service.drain(Date.now() + 2000, 0, 1);
+  const saved = Object.keys(JSON.parse(readFileSync(join(dir, "central", "onboarding", "jobs", `${createHash("sha256").update(job.purl).digest("hex")}.json`), "utf8")));
+  // Every field of the Job interface (service.ts); a new one fails here until it is added on purpose.
+  const known = ["schema", "purl", "technology", "name", "state", "stage", "updated", "retry_at", "descriptor", "records", "releases_done", "releases_total",
+    "docs_done", "docs_total", "docs_failed", "enumeration", "failures", "completed", "guides_done", "docs_completed", "docs_checked", "next_task", "admitted",
+    "demand", "downloads", "quarter", "overflow", "stream", "merged_into", "siblings", "deprecation_notice", "archived", "lifecycle_checked", "lifecycle_rules",
+    "advisories_first", "interrupted", "paused_until", "monitored", "release_checked", "refresh_completed", "registry_polled", "registry_version",
+    "registry_checked", "change_detected", "refresh_checked"];
+  expect(saved.filter((k) => !known.includes(k))).toEqual([]);
+  expect(saved).toEqual(expect.arrayContaining(["release_checked", "refresh_checked"]));
 });

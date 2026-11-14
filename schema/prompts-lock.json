@@ -1,0 +1,53 @@
+{
+  "comment": [
+    "Each data file's content hash per version. A test on both sides fails when a file's bytes are not its latest",
+    "entry's, or when versions do not rise: changing a prompt, question or threshold means raising its version and",
+    "adding an entry here (sha256 of the file's bytes), so the change is deliberate and caches keyed on the version empty."
+  ],
+  "files": {
+    "extract.json": [
+      {
+        "version": 1,
+        "sha256": "b6928601995c28a811976dc248a49f510d99564b51258db4ae095f598bf25dd7"
+      },
+      {
+        "version": 2,
+        "sha256": "3ee69c47bfd5b77efc20d8c362babbabb77b455b0bb7af83e353fd59e9e21999"
+      }
+    ],
+    "labels.json": [
+      {
+        "version": 1,
+        "sha256": "8545066be865c39846fa5f367a394189dde393076e2963550cc7b96cf187fcc5"
+      }
+    ],
+    "judge.json": [
+      {
+        "version": 1,
+        "sha256": "3980fb5d612fcb6a376cf7dd3f9bf287b734fbbc9d7a8b3ba31899fdff26593f"
+      }
+    ],
+    "choice.json": [
+      {
+        "version": 1,
+        "sha256": "1010c8c7512894577f01be6922a725725a7d28df0a6fa0d3e1904cff049a3202"
+      },
+      {
+        "version": 2,
+        "sha256": "3bc356f1bb5bdc5c024aa13a23f0ab4c5a200389c27442e0d566d2ddcbe8062c"
+      }
+    ],
+    "advisory-apis.json": [
+      {
+        "version": 1,
+        "sha256": "20633362c36845f4774129c1b75c85f21e8a51ad8dd3f3b6107c2bc69417b5a7"
+      }
+    ],
+    "thresholds.json": [
+      {
+        "version": 1,
+        "sha256": "4f5b1c1ea5a62323e91c57c76f162fd1d5477a5ec15b9bfb57ba6d613c1e51bb"
+      }
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "extract": [
     "You extract change records from official release notes. Output only a JSON array, no prose.",
     "",
@@ -285,8 +285,50 @@
           "or line breaks, no prose."
         ]
       }
+    ],
+    "batch": [
+      {
+        "find": "Output only a JSON array, no prose.",
+        "replace": "Output only a JSON object mapping each chunk id to that chunk's JSON array of records, no prose."
+      },
+      {
+        "find": [
+          "Technology: %TECH%",
+          "Release: %VERSION% (%DATE%)%PART%",
+          "",
+          ""
+        ],
+        "replace": [
+          "Each chunk below is one release's notes; its technology and release are given on the chunk.",
+          "",
+          ""
+        ]
+      },
+      {
+        "find": "If nothing qualifies, output [].",
+        "replace": "If nothing in a chunk qualifies, its array is []."
+      },
+      {
+        "find": [
+          "Release notes:",
+          "<notes>",
+          "%NOTES%",
+          "</notes>",
+          ""
+        ],
+        "replace": [
+          "Chunks:",
+          "%CHUNKS%",
+          ""
+        ]
+      }
     ]
   },
+  "batch_chunk": [
+    "<chunk id=\"%ID%\" technology=\"%TECH%\" release=\"%VERSION% (%DATE%)\">",
+    "%NOTES%",
+    "</chunk>"
+  ],
   "one_call_schema_response_format": {
     "type": "json_schema",
     "json_schema": {

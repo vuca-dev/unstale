@@ -15,9 +15,11 @@
 
 mod codex;
 mod http;
-/// The bytes of one Jev request (tests compare them with central's).
-#[cfg(test)]
+/// The bytes of one Jev request (the result cache keys on them; tests compare them with central's).
 pub(crate) use http::jev_request_body;
+/// The bytes of one OpenAI-compatible request (tests compare them with central's).
+#[cfg(test)]
+pub(crate) use http::openai_request_body;
 pub mod ledger;
 pub mod lock;
 #[cfg(test)]
@@ -152,6 +154,18 @@ impl ProviderConfig {
         )
     }
 
+    /// SubQ Snap 1.2, a decision model with Jev's request and answer (`POST /v1/systemone`); it judges same-or-new
+    /// only (`pipeline::matching::match_request_snap`).
+    pub fn subq() -> ProviderConfig {
+        Self::http(
+            Kind::Jev,
+            "subq",
+            "https://api.subq.ai",
+            "subq-snap-1.2",
+            "SUBQ_API_KEY",
+        )
+    }
+
     pub fn codex() -> ProviderConfig {
         ProviderConfig {
             kind: Kind::Codex,
@@ -170,6 +184,9 @@ impl ProviderConfig {
 pub enum Deferred {
     /// This month's token budget is spent.
     Budget,
+    /// This month's token budget is spent, and it is a tenth of the usual one because the choice in effect was made
+    /// by an agent (`agent`) or a script and no person has seen it yet (`setup::Mark`).
+    BudgetUnseen { agent: bool },
     /// The key's environment variable is unset or empty.
     NoKey(String),
     /// 401 or 403: the key was refused.
@@ -192,6 +209,8 @@ pub enum Deferred {
     Malformed,
     /// The usage ledger or worker lock beside the cache cannot be read or written, so spend cannot be counted.
     Storage,
+    /// This month's usage ledger does not parse, so spend cannot be counted until the file is removed.
+    StorageCorrupt,
     /// The provider answered with a redirect, which is never followed (the key would go to another address).
     Redirected,
     /// The provider address is not https (plain http is allowed only on this machine).
@@ -207,35 +226,101 @@ pub enum Deferred {
 }
 
 impl Deferred {
-    /// One line for the terminal: what happened and, where the user can act, what to do.
-    pub fn line(&self) -> String {
-        let why = match self {
-            Deferred::Budget => {
-                "this month's token budget is used up; the rest runs next month".into()
-            }
-            Deferred::NoKey(var) => format!("{var} is not set"),
-            Deferred::Auth => "the provider did not accept the key".into(),
-            Deferred::Billing => "the provider account has no credit left".into(),
-            Deferred::RateLimited => "the provider is rate limiting; it runs next time".into(),
-            Deferred::Unavailable => "the provider is not answering; it runs next time".into(),
-            Deferred::Timeout => "the provider took too long; it runs next time".into(),
-            Deferred::ModelNotOnPlan(m) => format!("{m} is not available on this key or plan"),
-            Deferred::Rejected => "the provider refused the request".into(),
-            Deferred::TooLong => "the answer was too long; it runs in smaller pieces".into(),
-            Deferred::Malformed => {
-                "the provider's answer could not be read; it runs next time".into()
-            }
-            Deferred::Storage => "unstale's usage record cannot be read or written".into(),
-            Deferred::Redirected => "the provider address redirects elsewhere; check it".into(),
-            Deferred::InsecureUrl => "the provider address must start with https://".into(),
-            Deferred::BatchTooLarge => format!("more than {BATCH} items in one request"),
+    /// The storage problem an error reading or writing the token count stands for: a file that does not parse is
+    /// corrupt (the fix is to remove it), anything else is a folder that cannot be written.
+    pub fn storage(e: &std::io::Error) -> Deferred {
+        if e.kind() == std::io::ErrorKind::InvalidData {
+            Deferred::StorageCorrupt
+        } else {
+            Deferred::Storage
+        }
+    }
+
+    /// What happened, in the user's words, as a clause: `Codex is not logged in`.
+    pub fn what(&self) -> String {
+        match self {
+            Deferred::Budget => "monthly token limit reached".into(),
+            Deferred::BudgetUnseen { .. } => "a tenth of the monthly token limit reached".into(),
+            Deferred::NoKey(var) => format!("{var} is not set here"),
+            Deferred::Auth => "the provider rejected the key".into(),
+            Deferred::Billing => "the provider account is out of credit".into(),
+            Deferred::RateLimited => "the provider is rate limiting".into(),
+            Deferred::Unavailable => "the provider is not answering".into(),
+            Deferred::Timeout => "the provider took too long".into(),
+            Deferred::ModelNotOnPlan(m) => format!("this key or plan lacks {m}"),
+            Deferred::Rejected => "the provider refused a request".into(),
+            Deferred::TooLong => "an answer was too long".into(),
+            Deferred::Malformed => "the provider gave an unreadable answer".into(),
+            Deferred::Storage => "unstale cannot save its token count".into(),
+            Deferred::StorageCorrupt => "unstale's token count is corrupt".into(),
+            Deferred::Redirected => "the provider address redirects".into(),
+            Deferred::InsecureUrl => "the provider address is not https".into(),
+            Deferred::BatchTooLarge => format!("a request held more than {BATCH} release notes"),
             Deferred::CodexMissing => "Codex is not installed".into(),
-            Deferred::CodexTooOld => {
-                format!("Codex is older than {}; update it", codex::MIN_VERSION)
-            }
-            Deferred::CodexLoggedOut => "Codex is not logged in; run `codex login`".into(),
-        };
-        format!("deferred: {why}")
+            Deferred::CodexTooOld => format!("Codex is older than {}", codex::MIN_VERSION),
+            Deferred::CodexLoggedOut => "Codex is not logged in".into(),
+        }
+    }
+
+    /// What it costs the user: the work they chose that did not happen.
+    fn cost(&self) -> &'static str {
+        match self {
+            // Tried again by itself: late, not lost.
+            Deferred::Budget
+            | Deferred::BudgetUnseen { .. }
+            | Deferred::RateLimited
+            | Deferred::Unavailable
+            | Deferred::Timeout
+            | Deferred::Malformed
+            | Deferred::Rejected => "new release notes wait",
+            Deferred::TooLong => "that release note is read again in smaller pieces",
+            Deferred::BatchTooLarge => "it was not sent",
+            _ => "new release notes are not read",
+        }
+    }
+
+    /// The one thing to do about it, as a sentence; empty when there is nothing to do.
+    pub fn fix(&self) -> String {
+        match self {
+            Deferred::Budget => "Change it: `unstale setup --limit`.".into(),
+            Deferred::BudgetUnseen { .. } => "Run unstale at a terminal to lift it.".into(),
+            Deferred::NoKey(_) => "Set it.".into(),
+            Deferred::Auth => "Check the key.".into(),
+            Deferred::Billing => "Add credit.".into(),
+            Deferred::RateLimited
+            | Deferred::Unavailable
+            | Deferred::Timeout
+            | Deferred::Malformed
+            | Deferred::Rejected => "The next sync tries again.".into(),
+            Deferred::TooLong => String::new(),
+            Deferred::ModelNotOnPlan(_) | Deferred::CodexMissing => "Run `unstale setup`.".into(),
+            // Which file, and what to do with it, needs a path: `unstale status` has it.
+            Deferred::Storage | Deferred::StorageCorrupt => "See `unstale status`.".into(),
+            Deferred::Redirected | Deferred::InsecureUrl => "Check the address.".into(),
+            Deferred::BatchTooLarge => "Please report this.".into(),
+            Deferred::CodexTooOld => "Update Codex.".into(),
+            Deferred::CodexLoggedOut => "Run `codex login`.".into(),
+        }
+    }
+
+    /// One line for the terminal, a warning: what happened, what it costs, the one thing to do. Never an error: the
+    /// command that prints it still exits 0.
+    pub fn line(&self) -> String {
+        // Why the limit is a tenth needs the clause the general shape has no room for.
+        if let Deferred::BudgetUnseen { agent } = self {
+            let whose = if *agent { "your agent's choice" } else { "a scripted choice" };
+            return format!(
+                "warning: release notes wait: {whose} gets a tenth of the token limit until you run unstale at a terminal."
+            );
+        }
+        format!(
+            "warning: {}, so {}. {}",
+            self.what(),
+            self.cost(),
+            self.fix()
+        )
+        .trim_end()
+        .to_string()
     }
 
     /// Worth retrying within the same call (with backoff).
@@ -261,6 +346,8 @@ pub struct Prompt {
     /// first JSON object or array in the answer is taken.
     pub schema: Option<Value>,
     pub max_tokens: u32,
+    /// Return the answer's text unread, as a JSON string, for a step that reads it with its own rule (central's).
+    pub raw: bool,
 }
 
 impl Prompt {
@@ -269,7 +356,13 @@ impl Prompt {
             text: text.into(),
             schema: None,
             max_tokens: 16_000,
+            raw: false,
         }
+    }
+    /// The answer's text unread ([`Prompt::raw`]).
+    pub fn raw(mut self) -> Prompt {
+        self.raw = true;
+        self
     }
     pub fn schema(mut self, schema: Value) -> Prompt {
         self.schema = Some(schema);
@@ -357,9 +450,11 @@ pub struct Inference {
     pub ledger: Ledger,
     /// Tokens per calendar month (UTC) across every provider.
     pub monthly_budget: u64,
+    /// `Some(agent)` when `monthly_budget` is the tenth that applies to an unseen choice (`setup::Mark`).
+    pub budget_unseen: Option<bool>,
     pub limits: Limits,
     env: Box<EnvFn>,
-    codex_ready: std::sync::OnceLock<Result<(), Deferred>>,
+    codex: codex::State,
     /// Set when a call's usage could not be recorded: no further call runs in this process.
     pub(crate) ledger_failed: std::sync::atomic::AtomicBool,
 }
@@ -370,15 +465,16 @@ impl Inference {
             provider,
             ledger: Ledger::default_location(),
             monthly_budget: ledger::DEFAULT_MONTHLY_TOKENS,
+            budget_unseen: None,
             limits: Limits::default(),
             env: Box::new(|k| std::env::var(k).ok()),
-            codex_ready: std::sync::OnceLock::new(),
+            codex: codex::State::default(),
             ledger_failed: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
-    /// Where keys and Codex's environment are read from (tests).
-    #[cfg(test)]
+    /// Where keys and Codex's environment are read from: the pipeline adds this repository's `.env` for the one
+    /// variable the stored choice names (`pipeline::keys`); tests use a fixed map.
     pub fn with_env(
         mut self,
         env: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
@@ -470,8 +566,11 @@ impl Inference {
             return Err(Deferred::Storage);
         }
         match self.ledger.spent(&month) {
-            Err(_) => Err(Deferred::Storage),
-            Ok(n) if n >= self.monthly_budget => Err(Deferred::Budget),
+            Err(e) => Err(Deferred::storage(&e)),
+            Ok(n) if n >= self.monthly_budget => Err(match self.budget_unseen {
+                Some(agent) => Deferred::BudgetUnseen { agent },
+                None => Deferred::Budget,
+            }),
             Ok(_) => Ok(()),
         }
     }
@@ -520,6 +619,7 @@ fn batch_prompt(b: &Batch) -> Prompt {
             "additionalProperties": false,
         })),
         max_tokens: b.max_tokens,
+        raw: false,
     }
 }
 

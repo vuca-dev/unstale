@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { DocsNote } from "../pipeline/extract.ts";
 import type { GuideNote } from "../pipeline/fetch.ts";
 import type { HttpClient } from "../collector/http.ts";
-import { recordNotesLocked } from "../pipeline/events.ts";
+import { markRecorded, recordNotesLocked } from "../pipeline/events.ts";
 import { withTechLock } from "../pipeline/lock.ts";
 import { readJson, writeAtomic } from "../pipeline/util.ts";
 import { TECHNOLOGIES, type Technology } from "../pipeline/technologies.ts";
@@ -69,7 +69,10 @@ const days = (v: string | undefined, fallback: number) => {
 /**
  * When a pass runs (user, 16 October 2026: on a new release, until shown otherwise). Docs changes that matter land with
  * releases, so a technology's docs are checked when one of its packages publishes a new version, once more `followupMs`
- * later (docs often follow the release by days), and until a pass cut short by the page budget has covered the rest.
+ * later (docs often follow the release by days), and until a pass cut short by the page budget has covered the rest:
+ * the passes that follow take the least recently checked pages, and stop once every page has been checked since the
+ * pass that was cut short (`since`). A site larger than the budget is then left alone until the next release or
+ * follow-up, like any other; until 12 November 2026 it was crawled again at every refresh, with no end.
  * `maxAgeMs` (0: off) re-checks a technology with no release for that long.
  */
 export const DOCS_GATE = {
@@ -85,6 +88,8 @@ export interface DocsGate {
   release?: string;
   followupAt?: string;
   incomplete?: boolean;
+  /** While `incomplete`: when the pass that was cut short ran. Pages checked since then are covered. */
+  since?: string;
   unlistedAt?: string;
 }
 const gatePath = (tech: string) => join(docsDir(tech), "gate.json");
@@ -106,8 +111,16 @@ export function passDue(gate: DocsGate | undefined, release: string | undefined,
   return undefined;
 }
 
-/** The gate after a pass for `reason` that checked `checked` pages under `budget`; `unlisted`: a site listed no page. */
-export function nextGate(gate: DocsGate | undefined, reason: PassReason, release: string | undefined, checked: number, budget: number, now = Date.now(), g = DOCS_GATE, unlisted = false): DocsGate {
+/** When the rotation a pass for `reason` belongs to began: the cut-short pass a "continue" follows, else this pass
+ * (`at`). A gate written before `since` was kept starts its rotation at the pass that reads it. */
+export const rotationSince = (gate: DocsGate | undefined, reason: PassReason, at: string): string => (reason === "continue" && gate?.since) || at;
+
+/**
+ * The gate after a pass for `reason` that checked `checked` pages under `budget`; `unlisted`: a site listed no page.
+ * `rotation`: the pass's time and the pages no pass has checked since the rotation began (monitor.ts `left`); a pass
+ * at its budget with none left has covered the site and is not continued. Without it, a pass at its budget continues.
+ */
+export function nextGate(gate: DocsGate | undefined, reason: PassReason, release: string | undefined, checked: number, budget: number, now = Date.now(), g = DOCS_GATE, unlisted = false, rotation?: { at: string; left: number }): DocsGate {
   const out: DocsGate = { ...gate };
   if (release !== undefined) out.release = release;
   if (reason === "release") {
@@ -115,8 +128,13 @@ export function nextGate(gate: DocsGate | undefined, reason: PassReason, release
     else delete out.followupAt;
   }
   if (reason === "followup" || reason === "baseline") delete out.followupAt;
-  if (checked >= budget) out.incomplete = true;
-  else delete out.incomplete;
+  if (checked >= budget && (rotation?.left ?? 1) > 0) {
+    out.incomplete = true;
+    if (rotation) out.since = rotationSince(gate, reason, rotation.at);
+  } else {
+    delete out.incomplete;
+    delete out.since;
+  }
   if (unlisted) out.unlistedAt = new Date(now).toISOString();
   else delete out.unlistedAt;
   return out;
@@ -136,7 +154,7 @@ export const lastPass = (tech: string): string | undefined => readJson<{ at?: st
 export async function dailyPass(
   t: Pick<Technology, "id" | "components">,
   opts: { http: HttpClient; force?: boolean; budget?: number; progress?: (done: number, total: number) => void; log?: (s: string) => void },
-): Promise<(RefreshReport & { reason?: PassReason }) | undefined> {
+): Promise<(RefreshReport & { reason?: PassReason; rotation?: "continues" | "covered" }) | undefined> {
   const purls = t.components.map((p) => p.replace("%40", "@"));
   const release = await currentRelease(opts.http, purls);
   const budget = opts.budget ?? DOCS_PASS.pages;
@@ -148,10 +166,13 @@ export async function dailyPass(
     opts.log?.(`docs pass: ${reason}`);
     const report = await refresh(
       { technology: t.id, purls },
-      { http: opts.http, budget, ...(opts.progress ? { progress: opts.progress } : {}), ...(opts.log ? { log: opts.log } : {}) },
+      { http: opts.http, budget, ...(reason === "continue" && gate?.since ? { since: gate.since } : {}), ...(opts.progress ? { progress: opts.progress } : {}), ...(opts.log ? { log: opts.log } : {}) },
     );
-    writeAtomic(gatePath(t.id), JSON.stringify(nextGate(gate, reason, release, report.checked, budget, Date.now(), DOCS_GATE, report.sites.some((s) => s.listingFailed)), null, 1) + "\n");
-    return { ...report, reason };
+    const next = nextGate(gate, reason, release, report.checked, budget, Date.now(), DOCS_GATE, report.sites.some((s) => s.listingFailed), { at: report.at, left: report.left });
+    writeAtomic(gatePath(t.id), JSON.stringify(next, null, 1) + "\n");
+    // A pass at its budget: the rotation goes on, or this pass covered the last of the site.
+    const rotation = report.checked >= budget ? (next.incomplete ? "continues" : "covered") : undefined;
+    return { ...report, reason, ...(rotation ? { rotation } : {}) };
   });
 }
 
@@ -162,6 +183,18 @@ export function markExtracted(tech: string, events: Iterable<string>): void {
   let n = 0;
   for (const e of events) if (!done[e]) (done[e] = at), n++;
   if (n) writeAtomic(ledgerPath(tech), JSON.stringify(done, null, 1) + "\n");
+}
+
+/**
+ * Marks the change events of docs events this ledger lists as extracted (events.ts `markProcessed`), for work done before
+ * marks existed: a docs event's notes carry `+docs.<8 hex>` or `+guide.sec.<8 hex>` of its key. Call it under the
+ * technology lock. No model call.
+ */
+export function markDocsProcessed(tech: string): number {
+  const done = Object.keys(readJson<Record<string, string>>(ledgerPath(tech)) ?? {});
+  if (!done.length) return 0;
+  const tags = new Set(done.flatMap((k) => [`+docs.${k.slice(0, 8)}`, `+guide.sec.${k.slice(0, 8)}`]));
+  return markRecorded(tech, (e) => e.source === "docs" && tags.has(e.id.slice(`${e.technology}@${e.version}`.length)));
 }
 
 /** Events whose every planned note succeeded, from the planned notes and the events that had a failed note. */

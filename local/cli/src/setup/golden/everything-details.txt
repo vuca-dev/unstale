@@ -1,0 +1,45 @@
+Costs are estimates from evaluation runs, billed by the provider to your key or plan.
+This repo has 38 packages unstale follows.
+
+1  Jev labelling API + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY)
+   per package, per year  $0.036
+   this repo, a year      ≈ $1.36
+   first sync, once       ≈ $1.36
+   results                the best option: the most complete
+
+2  Jev labelling API + Codex plan (JEV_API_KEY)
+   per package, per year  $0.018 + 170k Codex tokens ($0.015 at API prices)
+   this repo, a year      ≈ $0.68 + 6.3M Codex tokens
+   first sync, once       ≈ $0.68 + 6.3M Codex tokens
+   results                somewhat less complete: ≈ 80% of the best option's changes
+                          its changes are right as often as the best option's
+
+3  Vercel AI Gateway (AI_GATEWAY_API_KEY)
+   per package, per year  $0.052
+   this repo, a year      ≈ $1.98
+   first sync, once       ≈ $1.98
+   results                as many breaking changes found as the best option; ≈ 3% less precise
+                          ≈ 89% of breaking-change flags right, against 92%
+                          on short release notes ≈ 62%, against 75% (42 flags)
+                          on upgrade guides ≈ 93%, against 95% (228 flags)
+   repeats                ≈ 4 more changes listed twice per package, per year
+
+4  Codex plan
+   per package, per year  750k Codex tokens ($0.057 at API prices)
+   this repo, a year      ≈ 29M Codex tokens
+   first sync, once       ≈ 29M Codex tokens
+   results                somewhat less complete: ≈ 80% of the best option's changes
+                          its changes are right as often as the best option's
+                          breaking-change flags and repeats through Codex: not measured yet
+
+5  Anthropic (ANTHROPIC_API_KEY)
+   per package, per year  $0.075
+   this repo, a year      ≈ $2.86
+   first sync, once       ≈ $2.86
+   results                somewhat less complete: ≈ 90% of the best option's changes
+                          fewer from upgrade guides
+   repeats                ≈ 23 more changes listed twice per package, per year
+
+6  Not now
+   cost     free: no model is called
+   results  deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings

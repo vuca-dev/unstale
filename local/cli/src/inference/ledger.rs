@@ -10,11 +10,12 @@ use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::PathBuf;
 
-/// The default monthly token budget, across every provider: twice the estimated first sync of a 40-technology repo.
+/// The default monthly token budget, across every provider: about one and a half times the first sync of a
+/// 40-technology repo on the costliest supported route.
 ///
-/// Estimate (until the client's own first-sync measurement replaces it): one mean technology-year per technology on
-/// the costliest supported route, Codex with the lean flags at 8 items per call, about 0.6M tokens (0.14M harness
-/// overhead, 0.39M payload in, 61k out; `eval/edge-cli/RESULTS.md`). 40 × 0.6M = 24M; twice that is 48M.
+/// First sync: one mean technology-year per technology. On Codex alone that measures about 0.75M tokens
+/// (`eval/edge-port/RESULTS.md`, addendum 4), 30M for 40 technologies. It was set at twice an estimate of 0.6M; the
+/// measurement puts it 20% under twice the measured figure (60M), within the 25% that would change it.
 pub const DEFAULT_MONTHLY_TOKENS: u64 = 48_000_000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +97,11 @@ impl Ledger {
         self.dir.join(format!("usage-{month}.jsonl"))
     }
 
+    /// Where a month's usage is kept, to name in a message.
+    pub fn path(&self, month: &str) -> PathBuf {
+        self.file(month)
+    }
+
     /// Appends one call. An error means the spend went unrecorded; the caller stops making calls.
     pub fn record(&self, provider: &str, model: &str, usage: &Usage) -> std::io::Result<()> {
         let day = crate::util::today();
@@ -175,21 +181,20 @@ impl Ledger {
     }
 }
 
-/// Tokens as a short figure: `850`, `12k`, `1.2M`, `48M`.
+/// Tokens as a short figure: `850`, `1.5k`, `12k`, `1.2M`, `48M`. Rounded down to one decimal, never up past a
+/// limit.
 pub fn short_tokens(n: u64) -> String {
+    let scaled = |unit: u64, letter: char| {
+        let tenths = n / (unit / 10);
+        if tenths.is_multiple_of(10) || tenths >= 1_000 {
+            format!("{}{letter}", tenths / 10)
+        } else {
+            format!("{}.{}{letter}", tenths / 10, tenths % 10)
+        }
+    };
     match n {
         0..=999 => n.to_string(),
-        1_000..=999_999 => format!("{}k", n / 1_000),
-        _ if n.is_multiple_of(1_000_000) || n >= 100_000_000 => format!("{}M", n / 1_000_000),
-        _ => format!("{:.1}M", n as f64 / 1_000_000.0),
+        1_000..=999_999 => scaled(1_000, 'k'),
+        _ => scaled(1_000_000, 'M'),
     }
-}
-
-/// The budget line for `unstale status` and the picker.
-pub fn budget_line(used: u64, budget: u64) -> String {
-    format!(
-        "Model tokens this month: {} of {} (monthly budget; past it, work waits for next month)",
-        short_tokens(used),
-        short_tokens(budget)
-    )
 }

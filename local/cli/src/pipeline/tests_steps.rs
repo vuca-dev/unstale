@@ -1,0 +1,1640 @@
+//! Labels, matching and the local store: request bytes against central's snapshot with every state built here from a
+//! record, the guards and the combine rule, and whole passes against a mock labelling service.
+
+use super::Routes;
+use super::extract::Incoming;
+use super::labels::{chat_prompt, record_state};
+use super::matching;
+use super::run::run;
+use super::store::{LocalStore, overlay};
+use super::tests::{Router, inference, snapshot};
+use crate::inference::{Ledger, Limits, ProviderConfig};
+use crate::util::sha256_hex;
+use serde_json::{Value, json};
+use std::io::{Read, Write};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use unstale_schema::catalog::{
+    Benefit, CapabilityRecord, ChangeType, Classification, Classifier, EvidenceKind, Surface,
+};
+
+/// Central's test record (`prompt-snapshot.test.ts` `incoming`), with overrides.
+fn incoming(over: Value) -> Incoming {
+    let mut v = json!({
+        "key": "next@16.3.2#0.0", "technology": "next", "version": "16.3.2", "date": "2026-08-21", "line": "16",
+        "url": "https://github.com/vercel/next.js/releases/tag/v16.3.2", "snapshot": "sha256:aaa",
+        "subject": "images.minimumCacheTTL", "subject_kind": "literal",
+        "summary": "The default minimum cache TTL for optimized images is now four hours.", "introduces": [],
+        "quote": "minimumCacheTTL default is now 4 hours", "grounded": true, "terms": ["images", "minimumCacheTTL"],
+        "replaces": [], "requires": [], "prerequisites": [], "conditions": []
+    });
+    for (k, x) in over.as_object().unwrap() {
+        v[k] = x.clone();
+    }
+    serde_json::from_value(v).unwrap()
+}
+
+fn labels_of() -> super::labels::Labels {
+    super::labels::Labels {
+        change_type: ChangeType::DefaultChange,
+        surface: Surface::Configuration,
+        breaking: false,
+        benefit: vec![Benefit::None],
+        classifier: Classification {
+            classifier: Classifier::Jev,
+            model: "jev-test".into(),
+            change_type: 0.9,
+            surface: 0.9,
+            breaking: 0.1,
+            benefit: vec![],
+            borderline: vec![],
+        },
+    }
+}
+
+/// Central's `stored`: a record created from an incoming one (evidence of `kind` when given).
+fn stored(over: Value, kind: Option<EvidenceKind>) -> CapabilityRecord {
+    let mut r = matching::create(
+        &incoming(over),
+        &labels_of(),
+        &["pkg:npm/next".to_string()],
+        &|v| super::js::release_line(v),
+        &|_| false,
+    );
+    if let Some(k) = kind {
+        for e in &mut r.evidence {
+            e.kind = k;
+        }
+    }
+    r
+}
+
+fn jev_bytes(
+    state: &serde_json::value::RawValue,
+    qs: &[(String, crate::inference::ChoiceQuestion)],
+) -> String {
+    String::from_utf8(crate::inference::jev_request_body("jev-latest", state, qs)).unwrap()
+}
+
+/// The label state, built here from the record, gives central's request bytes.
+#[test]
+fn label_requests_built_from_a_record_equal_centrals_bytes() {
+    let snap = snapshot();
+    let p = crate::prompts::prompts();
+    let qs = p.labels.questions();
+    for (case, inc) in [
+        ("labels.release-notes", incoming(json!({}))),
+        (
+            "labels.facet-section",
+            incoming(
+                json!({"key": "next@16.3.2#0.1", "subject": "next build", "facet": "--turbopack", "section": "CLI", "introduces": ["--turbopack"], "replaces": ["--turbo"]}),
+            ),
+        ),
+        (
+            "labels.upgrade-guide",
+            incoming(
+                json!({"key": "next@16.0.0+guide.0123abcd#0.0", "kind": "upgrade_guide", "version": "16.0.0", "subject": "middleware.ts", "replaces": ["middleware.ts"], "introduces": ["proxy.ts"], "quote": "Rename middleware.ts to proxy.ts"}),
+            ),
+        ),
+        (
+            "labels.docs",
+            incoming(json!({"key": "next@16.3.2+docs.0123abcd#0.0", "kind": "docs"})),
+        ),
+    ] {
+        let state = record_state(p, "Next.js", &inc);
+        assert_eq!(jev_bytes(&state, &qs), snap[case][0], "{case}");
+    }
+}
+
+/// The judge's state and questions, built here from records, give central's bytes: one candidate and several, the
+/// question floor, cross-source, lineage, docs and advisory forms.
+/// A judge case: name, incoming, candidates, retrieval scores, breaking.
+type JudgeCase = (
+    &'static str,
+    Incoming,
+    Vec<CapabilityRecord>,
+    Option<Vec<f64>>,
+    bool,
+);
+
+#[test]
+fn judge_requests_built_from_records_equal_centrals_bytes() {
+    let snap = snapshot();
+    let p = crate::prompts::prompts();
+    let cases: Vec<JudgeCase> = vec![
+        (
+            "judge.release-notes.short-rules-floor",
+            incoming(json!({})),
+            vec![
+                stored(
+                    json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1"}),
+                    None,
+                ),
+                stored(
+                    json!({"key": "next@16.3.1#0.1", "version": "16.3.1", "snapshot": "sha256:b1", "subject": "images.qualities"}),
+                    None,
+                ),
+            ],
+            Some(vec![1.9, 0.2]),
+            false,
+        ),
+        (
+            "judge.release-notes.short-rules-all",
+            incoming(json!({"facet": "minimumCacheTTL", "subject": "images"})),
+            vec![stored(
+                json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1"}),
+                None,
+            )],
+            None,
+            true,
+        ),
+        (
+            "judge.guide-vs-release-notes",
+            incoming(
+                json!({"key": "next@16.0.0+guide.0123abcd#0.0", "version": "16.0.0", "kind": "upgrade_guide"}),
+            ),
+            vec![stored(
+                json!({"key": "next@16.0.0#0.0", "version": "16.0.0", "snapshot": "sha256:c1"}),
+                None,
+            )],
+            Some(vec![1.5]),
+            false,
+        ),
+        (
+            "judge.guide-lineage",
+            incoming(
+                json!({"key": "next@16.0.0+guide.bbbbbbbb#0.0", "version": "16.0.0", "kind": "upgrade_guide", "snapshot": "sha256:d2"}),
+            ),
+            vec![stored(
+                json!({"key": "next@16.0.0+guide.aaaaaaaa#0.0", "version": "16.0.0", "snapshot": "sha256:d1", "kind": "upgrade_guide"}),
+                Some(EvidenceKind::UpgradeGuide),
+            )],
+            None,
+            false,
+        ),
+        (
+            "judge.docs",
+            incoming(json!({"key": "next@16.3.2+docs.0123abcd#0.0", "kind": "docs"})),
+            vec![stored(
+                json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:e1"}),
+                None,
+            )],
+            None,
+            false,
+        ),
+        (
+            "judge.advisory",
+            incoming(
+                json!({"key": "next@16.3.1+advisory.GHSA-f82v-jwr5-mffw#0.0", "subject": "middleware", "quote": "Authorization bypass in Next.js middleware", "kind": "advisory"}),
+            ),
+            vec![stored(
+                json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:f1", "subject": "middleware", "quote": "Fix authorization bypass in middleware (GHSA-f82v-jwr5-mffw)"}),
+                None,
+            )],
+            None,
+            false,
+        ),
+    ];
+    for (case, inc, cands, scores, breaking) in cases {
+        let refs: Vec<&CapabilityRecord> = cands.iter().collect();
+        let (state, qs) =
+            matching::match_request(p, "Next.js", &inc, breaking, &refs, scores.as_deref());
+        assert!(!qs.is_empty());
+        assert_eq!(jev_bytes(&state, &qs), snap[case][0], "{case}");
+    }
+}
+
+/// Without the labelling service, the chat route's label and judge requests are central's chat-fallback bytes.
+#[test]
+fn chat_label_and_judge_requests_equal_centrals_bytes() {
+    let snap = snapshot();
+    let p = crate::prompts::prompts();
+    let state = record_state(p, "Next.js", &incoming(json!({})));
+    let cand = stored(
+        json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1"}),
+        None,
+    );
+    let (jstate, jqs) = matching::match_request(
+        p,
+        "Next.js",
+        &incoming(json!({})),
+        false,
+        &[&cand],
+        Some(&[1.9]),
+    );
+    let mut cfg = ProviderConfig::vercel();
+    cfg.base_url = "http://127.0.0.1:1".into();
+    for (case, text) in [
+        (
+            "choice-fallback.labels",
+            chat_prompt(p, &state, &p.labels.questions()),
+        ),
+        ("choice-fallback.judge", chat_prompt(p, &jstate, &jqs)),
+    ] {
+        let body = crate::inference::openai_request_body(
+            &cfg,
+            &crate::inference::Prompt {
+                text,
+                schema: None,
+                max_tokens: 16_000,
+                raw: true,
+            },
+        );
+        assert_eq!(body.get(), snap[case][0], "{case}");
+    }
+}
+
+#[test]
+fn guards_block_what_central_blocks_and_the_best_same_wins() {
+    let p = crate::prompts::prompts();
+    let ans = |ps: &[f64], calibrated: bool| super::labels::Answers {
+        classifier: if calibrated {
+            "jev".into()
+        } else {
+            "chat".into()
+        },
+        model: "m".into(),
+        answers: ps
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                (
+                    format!("same_c{}", i + 1),
+                    super::labels::Choice {
+                        choice: if *x >= 0.5 { "yes".into() } else { "no".into() },
+                        confidence: 1.0,
+                        probabilities: [("yes".to_string(), *x), ("no".to_string(), 1.0 - x)]
+                            .into(),
+                    },
+                )
+            })
+            .collect(),
+        calibrated,
+    };
+    let inc = incoming(json!({}));
+    let a = stored(
+        json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1"}),
+        None,
+    );
+    let mut b = stored(
+        json!({"key": "next@16.3.1#0.1", "version": "16.3.1", "snapshot": "sha256:b2", "quote": "something else entirely"}),
+        None,
+    );
+    b.id = "next:other".into();
+    // Short rules: same at 0.82; below the 0.99 quote bar a quote must be near-identical.
+    let (m, j) = matching::pick(p, &inc, false, &[&a, &b], &ans(&[0.9, 0.95], true));
+    assert_eq!(m.map(|x| x.0).as_deref(), Some(a.id.as_str()));
+    assert_eq!(
+        (j[0].outcome.as_str(), j[1].outcome.as_str()),
+        ("same", "guard:quote")
+    );
+    // A breaking change never merges into a non-breaking record.
+    let (m, j) = matching::pick(p, &inc, true, &[&a], &ans(&[0.99], true));
+    assert!(m.is_none() && j[0].outcome == "guard:breaking");
+    // Below the bar.
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&a], &ans(&[0.5], true)).1[0].outcome,
+        "below"
+    );
+    // A text model on its choices: the chat bars (0.82 / 0.97 / 1.01): the quote guard always applies.
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&b], &ans(&[1.0], false)).1[0].outcome,
+        "guard:quote"
+    );
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&a], &ans(&[1.0], false)).1[0].outcome,
+        "same"
+    );
+    assert!(matching::near_identical_quote(p, "Fix `x` (#12)", "fix x"));
+    assert!((matching::similarity("abcd", "abce") - 0.75).abs() < 1e-9);
+    assert_eq!(
+        matching::document_key(
+            "https://github.com/o/r/blob/abc/docs/01-app/02-guides/upgrading/version-16.mdx"
+        ),
+        "upgrading/version-16"
+    );
+    assert_eq!(
+        matching::document_key("https://nextjs.org/docs/app/guides/upgrading/version-16"),
+        "upgrading/version-16"
+    );
+}
+
+#[test]
+fn combine_adds_the_release_and_evidence_and_bumps_the_revision_once() {
+    let mut r = stored(
+        json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1", "line": "16"}),
+        None,
+    );
+    let inc = incoming(
+        json!({"key": "next@17.0.0#0.0", "version": "17.0.0", "line": "17", "url": "https://x/17", "quote": "q17", "terms": ["extra"]}),
+    );
+    matching::combine(
+        &mut r,
+        &inc,
+        &labels_of(),
+        &["pkg:npm/next".to_string()],
+        &|v| super::js::release_line(v),
+    );
+    assert_eq!(
+        r.releases
+            .iter()
+            .map(|x| x.version.as_str())
+            .collect::<Vec<_>>(),
+        ["16.3.1", "17.0.0"]
+    );
+    assert_eq!(r.evidence.len(), 2);
+    assert_eq!((r.revision, r.label_version), (2, 2));
+    assert!(r.terms.iter().any(|t| t.0 == "extra"));
+}
+
+// ---- Whole passes
+
+/// A labelling-service mock: every choice question answered, `no` where it is an option except a same-or-new question
+/// when `same` is set; counts requests.
+fn jev_mock(same: f64) -> (String, Arc<Mutex<usize>>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let n = Arc::new(Mutex::new(0usize));
+    let count = n.clone();
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            *count.lock().unwrap() += 1;
+            let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let mut answers = serde_json::Map::new();
+            for (id, q) in v["questions"].as_object().into_iter().flatten() {
+                let opts: Vec<String> =
+                    q["criteria"].as_object().unwrap().keys().cloned().collect();
+                let (choice, probs) = if id.starts_with("same_") {
+                    (
+                        if same >= 0.5 { "yes" } else { "no" }.to_string(),
+                        json!({"yes": same, "no": 1.0 - same}),
+                    )
+                } else if opts.contains(&"no".to_string()) {
+                    ("no".into(), json!({"yes": 0.05, "no": 0.95}))
+                } else {
+                    let p: serde_json::Map<String, Value> = opts
+                        .iter()
+                        .enumerate()
+                        .map(|(i, o)| {
+                            (
+                                o.clone(),
+                                json!(if i == 0 {
+                                    0.9
+                                } else {
+                                    0.1 / (opts.len() - 1) as f64
+                                }),
+                            )
+                        })
+                        .collect();
+                    (opts[0].clone(), Value::Object(p))
+                };
+                answers.insert(
+                    id.clone(),
+                    json!({"choice": choice, "confidence": 0.9, "probabilities": probs}),
+                );
+            }
+            let reply = json!({"model": "jev-1.14.0", "answers": answers, "usage": {"input_tokens": 10, "output_tokens": 1}}).to_string();
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+        }
+    });
+    (url, n)
+}
+
+struct Fixture {
+    _cat: crate::testcat::FixtureCatalog,
+    cache: tempfile::TempDir,
+    answers: super::tests::Answers,
+}
+
+/// A synced cache for `example`: a catalog record at 2.0.0 (`example:server.port`), and change events for 2.0.0 (the
+/// catalog covers it) and 2.1.0 (it does not); extraction answers for 2.1.0 replayed from central's fixture.
+fn fixture() -> Fixture {
+    fixture_with(json!({}), vec![])
+}
+
+/// [`fixture`], with these fields over the catalog record's and these change events after 2.1.0's.
+fn fixture_with(old_over: Value, more_events: Vec<Value>) -> Fixture {
+    use crate::testcat::{FixtureCatalog, rec, with};
+    let fx: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/js-port/fixtures.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let case = fx["extractions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "release-notes")
+        .unwrap();
+    let mut ev = case["event"].clone();
+    ev["date"] = json!("2026-10-01");
+    let mut covered = ev.clone();
+    covered["id"] = json!("example@2.0.0");
+    covered["version"] = json!("2.0.0");
+    let old = with(
+        rec("example:server.port", "pkg:npm/example", "2.0.0"),
+        json!({"subject": "server.port", "summary": "The default port is now 4000.", "change_type": "default_change", "breaking": false, "evidence": [{"kind": "release_notes", "url": "https://example.org/2.0.0", "quote": "server.port default is now 4000", "snapshot": "sha256:old"}]}),
+    );
+    let old = with(old, old_over);
+    let mut events = vec![covered, ev];
+    events.extend(more_events);
+    let cat = FixtureCatalog::new();
+    cat.tech_events(
+        "example",
+        0,
+        &[("2", vec![old])],
+        &[("2", events)],
+    );
+    let cache = tempfile::tempdir().unwrap();
+    for f in super::tests::walk(cat.dir.path()) {
+        let rel = f
+            .strip_prefix(cat.dir.path())
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let to = cache.path().join(if rel.contains(".events.") {
+            rel.replace("v1/shards/", "v1/events/")
+        } else {
+            rel
+        });
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(&f, &to).unwrap();
+    }
+    let answers = case["exchanges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                e["prompt_sha256"].as_str().unwrap().to_string(),
+                (
+                    e["content"].as_str().unwrap().to_string(),
+                    e["finish"].as_str().unwrap().to_string(),
+                ),
+            )
+        })
+        .collect();
+    Fixture {
+        _cat: cat,
+        cache,
+        answers,
+    }
+}
+
+fn routes(f: &Fixture, main_url: &str, jev_url: Option<&str>) -> Routes {
+    let mut main = inference(ProviderConfig::vercel(), main_url, f.cache.path());
+    main.ledger = Ledger::new(f.cache.path().join("inference"));
+    let labels = jev_url.map(|u| {
+        let mut j = inference(ProviderConfig::jev(), u, f.cache.path());
+        j.limits = Limits {
+            timeout: Duration::from_secs(5),
+            retries: 0,
+            backoff: Duration::ZERO,
+        };
+        j
+    });
+    Routes {
+        main,
+        labels,
+        matching: None,
+    }
+}
+
+fn set(items: &[&str]) -> std::collections::BTreeSet<String> {
+    items.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn a_pass_writes_records_the_report_reads_and_a_second_repo_makes_no_call() {
+    let f = fixture();
+    let m = Router::new(f.answers.clone(), vec![]);
+    let (jev, jn) = jev_mock(0.1);
+    let s = run(
+        f.cache.path(),
+        &routes(&f, &m.url, Some(&jev)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert_eq!(s.deferred, None);
+    // Only 2.1.0 is extracted: the catalog covers 2.0.0.
+    assert_eq!(
+        m.count(),
+        2,
+        "two extraction calls for the one uncovered release"
+    );
+    assert_eq!((s.created, s.matched), (4, 0));
+    assert!(*jn.lock().unwrap() > 0);
+    // The report's reader: the catalog's record and the client's, in the same schema, the client's with provenance.
+    let mut td = crate::cache::load_catalog_tech(f.cache.path(), "example")
+        .unwrap()
+        .unwrap();
+    let c = super::store::Cover::new(&td, Default::default());
+    overlay(&mut td, &LocalStore::load(f.cache.path(), "example"), &c);
+    assert_eq!(td.records.len(), 5);
+    let made: Vec<&str> = td
+        .records
+        .iter()
+        .filter(|r| td.provenance.contains_key(&r.r.id))
+        .map(|r| r.r.id.as_str())
+        .collect();
+    assert_eq!(made.len(), 4);
+    assert!(made.contains(&"example:defineconfig"), "{made:?}");
+    let prov = &td.provenance["example:defineconfig"];
+    assert_eq!(
+        (
+            prov.extraction.provider.as_str(),
+            prov.labels.provider.as_str(),
+            prov.labels.model_version.as_deref()
+        ),
+        ("vercel", "jev", Some("jev-1.14.0"))
+    );
+    let r = &td
+        .records
+        .iter()
+        .find(|r| r.r.id == "example:defineconfig")
+        .unwrap()
+        .r;
+    assert_eq!(
+        (
+            r.releases[0].version.as_str(),
+            r.releases[0].component.as_str()
+        ),
+        ("2.1.0", "pkg:npm/example")
+    );
+    assert_eq!(r.classifier.as_ref().unwrap().classifier, Classifier::Jev);
+    // Another repository with the same technology: nothing new to ask.
+    let m2 = Router::new(f.answers.clone(), vec![]);
+    let (jev2, jn2) = jev_mock(0.1);
+    let s2 = run(
+        f.cache.path(),
+        &routes(&f, &m2.url, Some(&jev2)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert_eq!(
+        (m2.count(), *jn2.lock().unwrap(), s2.calls, s2.created),
+        (0, 0, 0, 0)
+    );
+    // Even with the local store gone, the result cache answers every call.
+    std::fs::remove_file(super::store::path(f.cache.path(), "example")).unwrap();
+    let s3 = run(
+        f.cache.path(),
+        &routes(&f, &m2.url, Some(&jev2)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert_eq!((m2.count(), *jn2.lock().unwrap(), s3.created), (0, 0, 4));
+}
+
+#[test]
+fn a_change_judged_the_same_extends_the_catalog_record_and_catalog_records_win_later() {
+    let f = fixture();
+    let m = Router::new(f.answers.clone(), vec![]);
+    let (jev, _) = jev_mock(0.99);
+    let s = run(
+        f.cache.path(),
+        &routes(&f, &m.url, Some(&jev)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert!(s.matched >= 1, "{s:?}");
+    let mut td = crate::cache::load_catalog_tech(f.cache.path(), "example")
+        .unwrap()
+        .unwrap();
+    let store = LocalStore::load(f.cache.path(), "example");
+    assert!(
+        store
+            .amendments
+            .iter()
+            .any(|a| a.into == "example:server.port")
+    );
+    let c = super::store::Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
+    let port = &td
+        .records
+        .iter()
+        .find(|r| r.r.id == "example:server.port")
+        .unwrap()
+        .r;
+    assert_eq!(
+        port.releases
+            .iter()
+            .map(|x| x.version.as_str())
+            .collect::<Vec<_>>(),
+        ["2.0.0"],
+        "one release per line: the earliest"
+    );
+    assert_eq!(
+        port.evidence.len(),
+        2,
+        "the new release's evidence joins the record"
+    );
+    assert!(
+        td.provenance.contains_key("example:server.port"),
+        "the report can say the client extended it"
+    );
+    // When the catalog later has records for 2.1.0, the client's contributions for it are left out.
+    let mut td = crate::cache::load_catalog_tech(f.cache.path(), "example")
+        .unwrap()
+        .unwrap();
+    td.records[0]
+        .r
+        .releases
+        .push(unstale_schema::catalog::Release {
+            component: "pkg:npm/example".into(),
+            version: "2.1.0".into(),
+            date: "2026-10-01".into(),
+            line: "2".into(),
+            no_later_than: None,
+        });
+    let c = super::store::Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
+    assert_eq!(td.records.len(), 1);
+    assert!(td.provenance.is_empty());
+}
+
+#[test]
+fn with_an_anthropic_key_only_matching_is_off_and_every_record_is_new() {
+    let f = fixture();
+    // Labels on the same chat route: answered with the first option of every question, read on its choices.
+    let qs = crate::prompts::prompts().labels.questions();
+    let pick: serde_json::Map<String, Value> = qs
+        .iter()
+        .map(|(id, q)| (id.clone(), json!(q.options.last().unwrap().0)))
+        .collect();
+    let reply = serde_json::to_string(&Value::Object(pick)).unwrap();
+    // The Anthropic route needs its own mock; a Messages answer per request, recording each prompt.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let prompts = Arc::new(Mutex::new(Vec::<String>::new()));
+    let seen = prompts.clone();
+    let answers = f.answers.clone();
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let prompt = v["messages"][0]["content"]
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            seen.lock().unwrap().push(prompt.clone());
+            let text = answers
+                .get(&sha256_hex(prompt.as_bytes()))
+                .map(|a| a.0.clone())
+                .unwrap_or_else(|| reply.clone());
+            let out = json!({"model": "claude-haiku-5-5", "stop_reason": "end_turn", "content": [{"type": "text", "text": text}], "usage": {"input_tokens": 10, "output_tokens": 2}}).to_string();
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                out.len()
+            );
+        }
+    });
+    let main = inference(ProviderConfig::anthropic(), &url, f.cache.path());
+    let s = run(
+        f.cache.path(),
+        &Routes {
+            main,
+            labels: None,
+            matching: None,
+        },
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert_eq!(
+        (s.created, s.matched, s.deferred.clone()),
+        (4, 0, None),
+        "{s:?}"
+    );
+    let sent = prompts.lock().unwrap();
+    assert!(
+        !sent.iter().any(|p| p.contains("same_c1")),
+        "no same-or-new question is asked"
+    );
+    // An Anthropic key takes one record a call: batching was measured on an OpenAI-compatible key only.
+    assert!(!sent.iter().any(|p| p.contains("Questions (the same for every record):")));
+    let store = LocalStore::load(f.cache.path(), "example");
+    let r = store.records.values().next().unwrap();
+    assert_eq!(
+        (
+            r.provenance.extraction.provider.as_str(),
+            r.provenance.judge.is_none()
+        ),
+        ("anthropic", true)
+    );
+    assert_eq!(
+        r.record.classifier.as_ref().unwrap().classifier,
+        Classifier::Chat
+    );
+}
+
+#[test]
+fn a_provider_problem_defers_with_one_line_and_keeps_completed_work() {
+    let f = fixture();
+    let m = Router::new(f.answers.clone(), vec![]);
+    // The labelling service refuses the key: the extraction answers stay cached, no record is written.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let jev = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let mut buf = [0u8; 65536];
+            let _ = s.read(&mut buf);
+            let _ = write!(
+                s,
+                "HTTP/1.1 401 X\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+            );
+        }
+    });
+    let s = run(
+        f.cache.path(),
+        &routes(&f, &m.url, Some(&jev)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert_eq!(s.deferred, Some(crate::inference::Deferred::Auth));
+    assert_eq!(
+        s.line().unwrap(),
+        "warning: the provider rejected the key, so new release notes are not read. Check the key."
+    );
+    assert_eq!(s.created, 0);
+    // The next pass with the service back pays only for labels.
+    let (ok, _) = jev_mock(0.1);
+    let before = m.count();
+    let s = run(
+        f.cache.path(),
+        &routes(&f, &m.url, Some(&ok)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    assert_eq!((s.created, m.count()), (4, before));
+}
+
+/// A text model's "yes" counts as 0 in every probability-gated guard (central's rule): it merges only on a
+/// near-identical quote of the same kind, never across kinds or by lineage.
+#[test]
+fn an_uncalibrated_yes_never_merges_across_kinds_or_by_lineage() {
+    let p = crate::prompts::prompts();
+    let yes = |calibrated: bool| super::labels::Answers {
+        classifier: "chat".into(),
+        model: "m".into(),
+        answers: [(
+            "same_c1".to_string(),
+            super::labels::Choice {
+                choice: "yes".into(),
+                confidence: 1.0,
+                probabilities: [("yes".to_string(), 1.0), ("no".to_string(), 0.0)].into(),
+            },
+        )]
+        .into(),
+        calibrated,
+    };
+    // An upgrade-guide item against a release-notes record: a cross-kind pair.
+    let inc = incoming(
+        json!({"key": "next@16.0.0+guide.0123abcd#0.0", "version": "16.0.0", "kind": "upgrade_guide", "quote": "worded differently in the guide"}),
+    );
+    let c = stored(
+        json!({"key": "next@16.0.0#0.0", "version": "16.0.0", "snapshot": "sha256:c1"}),
+        None,
+    );
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&c], &yes(false)).1[0].outcome,
+        "guard:cross"
+    );
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&c], &yes(true)).1[0].outcome,
+        "same",
+        "the labelling service's 1.0 clears the bar"
+    );
+    // A later version of the same guide: lineage.
+    let inc = incoming(
+        json!({"key": "next@16.0.0+guide.bbbbbbbb#0.0", "version": "16.0.0", "kind": "upgrade_guide", "snapshot": "sha256:d2", "quote": "another wording"}),
+    );
+    let c = stored(
+        json!({"key": "next@16.0.0+guide.aaaaaaaa#0.0", "version": "16.0.0", "snapshot": "sha256:d1", "kind": "upgrade_guide"}),
+        Some(EvidenceKind::UpgradeGuide),
+    );
+    assert_eq!(
+        matching::pick(p, &inc, false, &[&c], &yes(false)).1[0].outcome,
+        "guard:lineage"
+    );
+}
+
+#[test]
+fn a_route_can_be_moved_only_to_this_machine() {
+    let choice = crate::setup::Choice {
+        provider: "openai".into(),
+        key_env: Some("OPENAI_API_KEY".into()),
+        labels: None,
+        matching: None,
+    };
+    let codex = crate::setup::Choice {
+        provider: "codex".into(),
+        key_env: None,
+        labels: None,
+        matching: None,
+    };
+    let route = |choice: &crate::setup::Choice, url: &str| {
+        // SAFETY of the test: the variable is this test's own and read by `routes` in this thread only.
+        unsafe { std::env::set_var("UNSTALE_INFERENCE_BASE_URL", url) };
+        let r = super::routes_with(choice, None, |_| None)
+            .unwrap()
+            .main
+            .provider
+            .base_url;
+        unsafe { std::env::remove_var("UNSTALE_INFERENCE_BASE_URL") };
+        r
+    };
+    let base = |url: &str| route(&choice, url);
+    assert_eq!(base("http://127.0.0.1:9/v1"), "http://127.0.0.1:9/v1");
+    assert_eq!(base("http://localhost:9"), "http://localhost:9");
+    assert_eq!(base("https://evil.example/v1"), "https://api.openai.com/v1");
+    assert_eq!(
+        base("http://127.0.0.1@evil.example/"),
+        "https://api.openai.com/v1"
+    );
+    // Codex's route has no address: the variable, set for an HTTP route or a local proxy, leaves it running `codex`.
+    assert_eq!(route(&codex, "http://127.0.0.1:9/v1"), "codex");
+}
+
+/// Labels the service refuses (a 400) fail those records for this pass only: nothing marks them done, and the next pass
+/// after the retry date asks again. A route that refuses every request stops the pass after a few in a row, with one
+/// line, instead of failing each item alone and silently.
+#[test]
+fn records_whose_labels_fail_are_not_marked_done_and_a_route_refusing_all_stops_the_pass() {
+    let f = fixture();
+    let m = Router::new(f.answers.clone(), vec![]);
+    // The labelling service answers 400 to every request; the fixture has four records to label.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let jev = format!("http://{}", listener.local_addr().unwrap());
+    let asked = Arc::new(Mutex::new(0usize));
+    let n = asked.clone();
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let mut buf = [0u8; 65536];
+            let _ = s.read(&mut buf);
+            *n.lock().unwrap() += 1;
+            let _ = write!(
+                s,
+                "HTTP/1.1 400 X\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+            );
+        }
+    });
+    let s = run(
+        f.cache.path(),
+        &routes(&f, &m.url, Some(&jev)),
+        &set(&["example"]),
+        &set(&["pkg:npm/example"]),
+        "2026-11-10",
+    );
+    let stop = super::REJECTED_IN_A_ROW;
+    assert_eq!(
+        (s.created, s.unlabelled, s.deferred.clone()),
+        (0, stop - 1, Some(crate::inference::Deferred::Rejected)),
+        "{s:?}"
+    );
+    assert_eq!(
+        *asked.lock().unwrap(),
+        stop,
+        "one request per record until the pass stops"
+    );
+    assert!(s.line().is_some_and(|l| !l.contains('\n')));
+    assert!(
+        LocalStore::load(f.cache.path(), "example")
+            .ingested
+            .is_empty()
+    );
+}
+
+#[test]
+fn no_paid_change_leaves_the_report_without_cause() {
+    use super::extract::Provenance;
+    use super::store::{Amendment, Cover, Folded, Local, RecordProvenance};
+    let f = fixture();
+    let catalog = || {
+        crate::cache::load_catalog_tech(f.cache.path(), "example")
+            .unwrap()
+            .unwrap()
+    };
+    let p = Provenance {
+        provider: "openai".into(),
+        model: "gpt-6-luna".into(),
+        model_version: None,
+        prompt_version: 1,
+    };
+    let prov = RecordProvenance {
+        extraction: p.clone(),
+        labels: p,
+        judge: None,
+    };
+    let comps = ["pkg:npm/example".to_string()];
+    let inc = |version: &str, subject: &str| {
+        incoming(json!({
+            "key": format!("example@{version}#0.0"), "technology": "example", "version": version, "line": "2",
+            "url": format!("https://example.org/{version}"), "subject": subject,
+            "quote": format!("{subject} in {version}")
+        }))
+    };
+    let mut first = matching::create(
+        &inc("2.1.0", "cache.mode"),
+        &labels_of(),
+        &comps,
+        &|v: &str| js_line(v),
+        &|_| false,
+    );
+    let later = inc("2.2.0", "cache.mode");
+    matching::combine(&mut first, &later, &labels_of(), &comps, &|v: &str| {
+        js_line(v)
+    });
+    let mut store = LocalStore {
+        technology: "example".into(),
+        ..Default::default()
+    };
+    let first_id = first.id.clone();
+    store.records.insert(
+        first.id.clone(),
+        Local {
+            record: first.clone(),
+            sources: vec!["example@2.1.0#0.0".into(), "example@2.2.0#0.0".into()],
+            version: "2.1.0".into(),
+            provenance: prov.clone(),
+            folded: vec![Folded {
+                incoming: later.clone(),
+                labels: labels_of(),
+                provenance: prov.clone(),
+            }],
+        },
+    );
+    // Matched into a catalog record that central has since retracted.
+    store.amendments.push(Amendment {
+        into: "example:gone".into(),
+        incoming: inc("2.2.0", "server.host"),
+        labels: labels_of(),
+        p: 0.99,
+        provenance: prov.clone(),
+    });
+    let subjects = |td: &crate::cache::TechData| {
+        let mut v: Vec<(String, Vec<String>)> = td
+            .records
+            .iter()
+            .map(|r| {
+                (
+                    r.r.subject.clone(),
+                    r.r.releases.iter().map(|x| x.version.clone()).collect(),
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    // Nothing covered: the client's record whole, and the retracted target's change as a record of its own.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    let c = Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
+    assert_eq!(
+        subjects(&td),
+        [
+            ("cache.mode".to_string(), vec!["2.1.0".to_string()]),
+            ("server.host".into(), vec!["2.2.0".into()]),
+            ("server.port".into(), vec!["2.0.0".into()]),
+        ]
+    );
+    assert!(
+        td.provenance
+            .values()
+            .all(|p| p.extraction.provider == "openai")
+    );
+    // Central processed 2.1.0: the client's record is hidden, and its 2.2.0 change stays as a record of its own.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    let c = Cover::new(&td, ["example@2.1.0".to_string()].into());
+    overlay(&mut td, &store, &c);
+    assert_eq!(
+        subjects(&td),
+        [
+            ("cache.mode".to_string(), vec!["2.2.0".to_string()]),
+            ("server.host".into(), vec!["2.2.0".into()]),
+            ("server.port".into(), vec!["2.0.0".into()]),
+        ]
+    );
+    // The records made on load have the same ids on every load, whatever else the catalog holds.
+    let ids = |td: &crate::cache::TechData| -> Vec<String> {
+        td.records
+            .iter()
+            .filter(|r| r.r.id.contains('~'))
+            .map(|r| r.r.id.clone())
+            .collect()
+    };
+    let first = ids(&td);
+    assert_eq!(first.len(), 2, "{first:?}");
+    let mut again = catalog();
+    again.retracted.push("example:gone".into());
+    again.retracted.push("example:server.host".into());
+    again
+        .merged
+        .insert("example:cache.mode".into(), "example:server.port".into());
+    let c2 = Cover::new(&again, ["example@2.1.0".to_string()].into());
+    overlay(&mut again, &store, &c2);
+    assert_eq!(ids(&again), first);
+    // A client record whose id the catalog has since given to another change, its own change not covered: kept.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    td.retracted.push(first_id.clone());
+    let c = Cover::new(&td, Default::default());
+    overlay(&mut td, &store, &c);
+    assert!(
+        td.records
+            .iter()
+            .any(|r| r.r.subject == "cache.mode"
+                && r.r.releases.iter().any(|x| x.version == "2.1.0")),
+        "{:?}",
+        subjects(&td)
+    );
+    // And once it processed 2.2.0 as well, the catalog has it all: nothing of the client's is shown.
+    let mut td = catalog();
+    td.retracted.push("example:gone".into());
+    let c = Cover::new(
+        &td,
+        ["example@2.1.0".to_string(), "example@2.2.0".to_string()].into(),
+    );
+    overlay(&mut td, &store, &c);
+    assert_eq!(
+        subjects(&td),
+        [("server.port".to_string(), vec!["2.0.0".to_string()])]
+    );
+    assert!(td.provenance.is_empty());
+}
+
+fn js_line(v: &str) -> String {
+    super::js::release_line(v)
+}
+
+/// `run-step --step match` with no candidate at the question floor prints each candidate as unasked, as central's
+/// `pick` does on no answers; an input line that does not parse is skipped, and the rest still run.
+#[test]
+fn run_step_match_lists_unasked_candidates_and_skips_a_line_that_does_not_parse() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = crate::prompts::prompts();
+    let inc = incoming(json!({}));
+    let cand = stored(
+        json!({"key": "next@16.3.1#0.0", "version": "16.3.1", "snapshot": "sha256:b1",
+               "subject": "router.prefetch", "summary": "Prefetching now waits for the viewport.",
+               "terms": ["router", "images"],
+               "url": "https://github.com/vercel/next.js/releases/tag/v16.3.1"}),
+        None,
+    );
+    // Retrieved, but below the floor: nothing is asked.
+    let found = matching::retrieve(
+        &inc,
+        &[matching::Cand {
+            rec: &cand,
+            sources: None,
+        }],
+    );
+    assert_eq!(found.len(), 1);
+    assert!(found[0].1 < p.thresholds.question_floor, "{}", found[0].1);
+    let item = json!({"name": "Next.js", "incoming": inc, "candidates": [cand]});
+    let input = dir.path().join("in.jsonl");
+    std::fs::write(&input, format!("not json\n{item}\n")).unwrap();
+    // No call can be made: the route points nowhere.
+    let inf = super::tests::inference(ProviderConfig::openai(), "http://127.0.0.1:9", dir.path());
+    let mut out = vec![];
+    super::run_step("match", &input, inf, &mut out).unwrap();
+    let lines: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(
+        lines,
+        [json!({"key": "next@16.3.2#0.0", "match": null,
+                "judged": [{"id": cand.id, "p": 0.0, "outcome": "unasked"}]})]
+    );
+}
+
+/// SubQ Snap judges in the one form it passed in: the longer rules for every request, the first four candidates, no
+/// question floor; and its answers are read at its own bars (`eval/select/slice19/RESULTS.md`).
+#[test]
+fn snap_asks_four_candidates_with_the_longer_rules_and_reads_its_own_bars() {
+    let p = crate::prompts::prompts();
+    let inc = incoming(json!({}));
+    let cands: Vec<CapabilityRecord> = (0..6)
+        .map(|i| {
+            let mut c = stored(
+                json!({"key": format!("next@16.3.1#0.{i}"), "version": "16.3.1", "snapshot": format!("sha256:s{i}")}),
+                None,
+            );
+            c.id = format!("next:c{i}");
+            c
+        })
+        .collect();
+    let refs: Vec<&CapabilityRecord> = cands.iter().collect();
+    // Central's form for these: the shorter rules.
+    let (_, short) = matching::match_request(p, "Next.js", &inc, false, &refs, None);
+    assert_eq!(short.len(), 6);
+    assert!(!short[0].1.instructions.contains(&p.judge.rules));
+    let (state, qs) = matching::match_request_snap(p, "Next.js", &inc, false, &refs);
+    assert_eq!(
+        qs.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+        ["same_c1", "same_c2", "same_c3", "same_c4"]
+    );
+    assert!(
+        qs.iter()
+            .all(|(_, q)| q.instructions.contains(&p.judge.rules))
+    );
+    let st: Value = serde_json::from_str(state.get()).unwrap();
+    assert_eq!(st["candidates"].as_object().unwrap().len(), 4);
+
+    let ans = |ps: &[f64]| super::labels::Answers {
+        classifier: "jev".into(),
+        model: "subq-snap-1.2".into(),
+        answers: ps
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                (
+                    format!("same_c{}", i + 1),
+                    super::labels::Choice {
+                        choice: if *x >= 0.5 { "yes".into() } else { "no".into() },
+                        confidence: 1.0,
+                        probabilities: [("yes".to_string(), *x), ("no".to_string(), 1.0 - x)]
+                            .into(),
+                    },
+                )
+            })
+            .collect(),
+        calibrated: true,
+    };
+    let snap = matching::snap_bars(p);
+    // 0.65 is a merge at Snap's 0.61 and below central's longer-rules 0.70.
+    let (m, _) = matching::pick_at(p, &inc, false, &refs, &ans(&[0.65]), snap);
+    assert_eq!(m.map(|x| x.0).as_deref(), Some("next:c0"));
+    let lr = matching::bars(p, false);
+    assert!(
+        matching::pick_at(p, &inc, false, &refs, &ans(&[0.65]), lr)
+            .0
+            .is_none()
+    );
+    // A fifth candidate is never asked, so never merged.
+    let (m, j) = matching::pick_at(p, &inc, false, &refs, &ans(&[0.1, 0.1, 0.1, 0.1]), snap);
+    assert!(m.is_none() && j[4].outcome == "unasked");
+}
+
+// ---- Labels, several records to a call
+
+/// What the chat mock does with a batched label request.
+#[derive(Clone, Copy, PartialEq)]
+enum Batched {
+    /// Every record answered.
+    Answers,
+    /// `r2` left out and `r3` answered with an option that does not exist.
+    Partly,
+    /// Text that is not JSON.
+    Unreadable,
+    /// The answer runs out of room (`finish_reason: length`).
+    CutOff,
+    /// HTTP 400.
+    Refused,
+}
+
+/// Calls the chat mock saw: batched label requests and label requests for one record.
+#[derive(Default)]
+struct Seen {
+    batches: Vec<usize>,
+    alone: usize,
+}
+
+/// An OpenAI-compatible mock for label requests: a request for one record is answered with every question's last
+/// option; a batched one as `how` says. Every answered call reports 100 input and 10 output tokens.
+fn chat_label_mock(how: Batched) -> (String, Arc<Mutex<Seen>>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let seen = Arc::new(Mutex::new(Seen::default()));
+    let log = seen.clone();
+    let qs = crate::prompts::prompts().labels.questions();
+    let pick: serde_json::Map<String, Value> = qs
+        .iter()
+        .map(|(id, q)| (id.clone(), json!(q.options.last().unwrap().0)))
+        .collect();
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let prompt = v["messages"][0]["content"].as_str().unwrap_or("").to_string();
+            let records = prompt
+                .split("Records:\n")
+                .nth(1)
+                .map(|t| t.lines().take_while(|l| !l.is_empty()).count());
+            let (status, content, finish) = match records {
+                None => {
+                    log.lock().unwrap().alone += 1;
+                    (200, Value::Object(pick.clone()).to_string(), "stop")
+                }
+                Some(n) => {
+                    log.lock().unwrap().batches.push(n);
+                    let all: serde_json::Map<String, Value> = (1..=n)
+                        .filter(|i| !(how == Batched::Partly && *i == 2))
+                        .map(|i| {
+                            let mut a = pick.clone();
+                            if how == Batched::Partly && i == 3 {
+                                a.insert("breaking".into(), json!("perhaps"));
+                            }
+                            (format!("r{i}"), Value::Object(a))
+                        })
+                        .collect();
+                    match how {
+                        Batched::Answers | Batched::Partly => {
+                            (200, Value::Object(all).to_string(), "stop")
+                        }
+                        Batched::Unreadable => (200, "I could not decide.".to_string(), "stop"),
+                        Batched::CutOff => (200, "{\"r1\": {".to_string(), "length"),
+                        Batched::Refused => (400, String::new(), "stop"),
+                    }
+                }
+            };
+            let reply = if status == 200 {
+                json!({"model": "gpt-6-luna-test", "choices": [{"finish_reason": finish, "message": {"content": content}}],
+                       "usage": {"prompt_tokens": 100, "completion_tokens": 10}})
+                .to_string()
+            } else {
+                "{}".to_string()
+            };
+            let _ = write!(
+                s,
+                "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+        }
+    });
+    (url, seen)
+}
+
+/// `n` records' label states, each its own record.
+fn label_states(n: usize) -> Vec<Box<serde_json::value::RawValue>> {
+    let p = crate::prompts::prompts();
+    (0..n)
+        .map(|i| {
+            record_state(
+                p,
+                "Next.js",
+                &incoming(json!({"key": format!("next@16.3.2#0.{i}"), "subject": format!("option{i}")})),
+            )
+        })
+        .collect()
+}
+
+/// Tokens the ledger counts this month.
+fn spent(inf: &crate::inference::Inference) -> u64 {
+    inf.ledger
+        .spent(&crate::inference::ledger::this_month())
+        .unwrap()
+}
+
+/// On a key, label requests go several records to a call, answered by record id; a record with no companion is asked
+/// alone; a second pass, or another repository, finds every answer cached. The labelling service takes one record a
+/// request and is never batched.
+#[test]
+fn on_a_key_labels_go_several_records_to_a_call_and_are_cached_by_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = crate::prompts::prompts();
+    let qs = p.labels.questions();
+    let (url, seen) = chat_label_mock(Batched::Answers);
+    let inf = inference(ProviderConfig::openai(), &url, dir.path());
+    let results = super::results::Results::at(dir.path());
+    let ch = super::labels::Chooser::new(&inf, &results);
+    // Two full calls and a part one; later, one record on its own.
+    let b = super::labels::LABEL_BATCH;
+    let states = label_states(2 * b + 3);
+    ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    assert_eq!(seen.lock().unwrap().batches, [b, b, 3]);
+    for s in &states {
+        let a = ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().unwrap();
+        assert!(!a.calibrated && super::labels::interpret(p, &a).is_some());
+    }
+    assert_eq!((seen.lock().unwrap().alone, ch.calls.get()), (0, 3));
+    // Three calls, each counted once.
+    assert_eq!(spent(&inf), 3 * 110);
+    // Nothing is asked twice: neither by a batch nor alone.
+    let again = super::labels::Chooser::new(&inf, &results);
+    again.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    for s in &states {
+        again.ask(super::labels::STEP_LABELS, s, &qs).unwrap().unwrap();
+    }
+    assert_eq!((again.calls.get(), spent(&inf)), (0, 3 * 110));
+    // One new record: no batch of one; it is asked alone, in the form measured for one record.
+    let one = label_states(2 * b + 4).pop().unwrap();
+    again
+        .prefetch(super::labels::STEP_LABELS, std::slice::from_ref(&one), &qs)
+        .unwrap();
+    assert_eq!(seen.lock().unwrap().batches.len(), 3);
+    again.ask(super::labels::STEP_LABELS, &one, &qs).unwrap().unwrap();
+    assert_eq!(seen.lock().unwrap().alone, 1);
+    // The labelling service and an Anthropic key: one record a request, so prefetch does nothing.
+    for route in [ProviderConfig::jev(), ProviderConfig::anthropic()] {
+        let other = inference(route, "http://127.0.0.1:9", dir.path());
+        let och = super::labels::Chooser::new(&other, &results);
+        och.prefetch(super::labels::STEP_LABELS, &label_states(4), &qs).unwrap();
+        assert_eq!(och.calls.get(), 0);
+    }
+}
+
+/// A batch that comes back unreadable, cut off or refused loses no record: each is asked alone. The ledger counts
+/// every call the provider answered exactly once (the failed batch's tokens were spent; a refused request has none).
+#[test]
+fn a_batch_that_fails_falls_back_to_asking_alone_and_no_call_is_counted_twice() {
+    let p = crate::prompts::prompts();
+    let qs = p.labels.questions();
+    for (how, batch_counted) in [
+        (Batched::Unreadable, 1),
+        (Batched::CutOff, 1),
+        (Batched::Refused, 0),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let (url, seen) = chat_label_mock(how);
+        let inf = inference(ProviderConfig::openai(), &url, dir.path());
+        let results = super::results::Results::at(dir.path());
+        let ch = super::labels::Chooser::new(&inf, &results);
+        let states = label_states(4);
+        ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+        assert_eq!(seen.lock().unwrap().batches, [4]);
+        assert_eq!(spent(&inf), batch_counted * 110);
+        let labelled = states
+            .iter()
+            .filter(|s| {
+                ch.ask(super::labels::STEP_LABELS, s, &qs)
+                    .unwrap()
+                    .is_some_and(|a| super::labels::interpret(p, &a).is_some())
+            })
+            .count();
+        assert_eq!((labelled, seen.lock().unwrap().alone), (4, 4));
+        assert_eq!(spent(&inf), (batch_counted + 4) * 110);
+        // The batch is not tried again for records now answered alone.
+        ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+        assert_eq!(seen.lock().unwrap().batches.len(), 1);
+    }
+}
+
+/// A batch that leaves a record out, or answers one with an option that does not exist, keeps the others' answers and
+/// asks only those two alone.
+#[test]
+fn records_a_batch_leaves_out_or_answers_unreadably_are_asked_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let qs = crate::prompts::prompts().labels.questions();
+    let (url, seen) = chat_label_mock(Batched::Partly);
+    let inf = inference(ProviderConfig::openai(), &url, dir.path());
+    let results = super::results::Results::at(dir.path());
+    let ch = super::labels::Chooser::new(&inf, &results);
+    let states = label_states(4);
+    ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    for s in &states {
+        assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([4].as_slice(), 2));
+    assert_eq!(spent(&inf), 3 * 110);
+}
+
+/// The monthly limit stops batching between calls: the batch already answered stays cached and paid for once, and the
+/// next pass (with room again) asks only for the rest.
+#[test]
+fn the_monthly_limit_stops_batches_and_the_next_pass_pays_only_for_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    let qs = crate::prompts::prompts().labels.questions();
+    let (url, seen) = chat_label_mock(Batched::Answers);
+    let mut inf = inference(ProviderConfig::openai(), &url, dir.path());
+    // Room for one call.
+    inf.monthly_budget = 100;
+    let results = super::results::Results::at(dir.path());
+    let b = super::labels::LABEL_BATCH;
+    let states = label_states(2 * b);
+    let ch = super::labels::Chooser::new(&inf, &results);
+    assert_eq!(
+        ch.prefetch(super::labels::STEP_LABELS, &states, &qs),
+        Err(crate::inference::Deferred::Budget)
+    );
+    assert_eq!((seen.lock().unwrap().batches.len(), spent(&inf)), (1, 110));
+    // The first call's records are answered from the cache even with the limit reached; the next record defers.
+    for s in &states[..b] {
+        assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
+    }
+    assert_eq!(
+        ch.ask(super::labels::STEP_LABELS, &states[b], &qs),
+        Err(crate::inference::Deferred::Budget)
+    );
+    inf.monthly_budget = 1_000_000;
+    let ch = super::labels::Chooser::new(&inf, &results);
+    ch.prefetch(super::labels::STEP_LABELS, &states, &qs).unwrap();
+    for s in &states {
+        assert!(ch.ask(super::labels::STEP_LABELS, s, &qs).unwrap().is_some());
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([b, b].as_slice(), 0));
+    assert_eq!(spent(&inf), 2 * 110);
+}
+
+/// A pass on a key whose monthly limit is reached between two label calls writes the records the first call paid
+/// for: two release notes, eight new records, room for the first call of four. The second note's records wait; a pass
+/// under the same limit asks nothing and writes nothing; with room again only the second call is paid for.
+#[test]
+fn a_pass_stopped_by_the_limit_between_label_calls_writes_the_records_already_paid_for() {
+    let notes = "- Adds `alphaMode`\n- Adds `betaMode`\n- Adds `gammaMode`\n- Adds `deltaMode`";
+    let sha = format!("sha256:{}", sha256_hex(notes.as_bytes()));
+    let later = json!({
+        "id": "example@2.2.0", "technology": "example", "name": "Example.js", "kind": "release_notes",
+        "version": "2.2.0", "line": "2", "date": "2026-10-20",
+        "url": "https://github.com/example/example/releases/tag/v2.2.0", "snapshot": sha,
+        "chunks": [{"id": "example@2.2.0#0", "sha256": sha.trim_start_matches("sha256:"), "text": notes}],
+        "freshness": {"first_seen": "2026-10-20T00:00:00.000Z", "first_published": "2026-10-20T00:00:00.000Z"}
+    });
+    // A catalog record no new change resembles, so no same-or-new question is asked and every call is a label call.
+    let f = fixture_with(
+        json!({"subject": "telemetry", "summary": "Usage reporting can be switched off.",
+               "evidence": [{"kind": "release_notes", "url": "https://example.org/2.0.0", "quote": "usage reporting can be switched off", "snapshot": "sha256:old"}]}),
+        vec![later],
+    );
+    // The mock: the fixture's extraction answers for 2.1.0, four records for 2.2.0, and labels as `chat_label_mock`.
+    let (labels_url, seen) = chat_label_mock(Batched::Answers);
+    let answers = f.answers.clone();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for mut s in listener.incoming().flatten() {
+            let (mut got, mut buf) = (Vec::new(), [0u8; 65536]);
+            let body = loop {
+                let k = s.read(&mut buf).unwrap_or(0);
+                got.extend_from_slice(&buf[..k]);
+                let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    if k == 0 {
+                        break String::new();
+                    }
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&got[..end]).to_ascii_lowercase();
+                let len = head
+                    .lines()
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                    })
+                    .unwrap_or(0);
+                if k == 0 || got.len() >= end + 4 + len {
+                    break String::from_utf8_lossy(&got[end + 4..]).to_string();
+                }
+            };
+            let v: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+            let prompt = v["messages"][0]["content"].as_str().unwrap_or("");
+            let content = if let Some((c, _)) = answers.get(&sha256_hex(prompt.as_bytes())) {
+                Some(c.clone())
+            } else if prompt.starts_with("You extract change records") {
+                let recs: Vec<Value> = ["alphaMode", "betaMode", "gammaMode", "deltaMode"]
+                    .iter()
+                    .map(|n| json!({"subject": n, "subject_kind": "literal", "facet": null, "change_type": "new_option",
+                                    "surface": "configuration", "summary": format!("Adds {n}."), "audience": "application",
+                                    "introduces": [], "evidence": format!("Adds `{n}`")}))
+                    .collect();
+                Some(Value::Array(recs).to_string())
+            } else if prompt.starts_with("You write search terms") {
+                Some("{}".to_string())
+            } else if prompt.contains("\"same_c1\"") {
+                // Same-or-new, once the second note's records have the first's as candidates: none is the same.
+                let no: serde_json::Map<String, Value> = (1..=8)
+                    .filter(|i| prompt.contains(&format!("\"same_c{i}\"")))
+                    .map(|i| (format!("same_c{i}"), json!("no")))
+                    .collect();
+                Some(Value::Object(no).to_string())
+            } else {
+                None
+            };
+            let reply = match content {
+                Some(c) => json!({"model": "gpt-6-luna-test", "choices": [{"finish_reason": "stop", "message": {"content": c}}],
+                                  "usage": {"prompt_tokens": 100, "completion_tokens": 10}})
+                .to_string(),
+                // A label request: passed on to the label mock, which counts it.
+                None => {
+                    let mut r = ureq::post(&format!("{labels_url}/chat/completions"))
+                        .header("Content-Type", "application/json")
+                        .send(body.as_bytes())
+                        .unwrap();
+                    r.body_mut().read_to_string().unwrap()
+                }
+            };
+            let _ = write!(
+                s,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                reply.len()
+            );
+        }
+    });
+    let pass = |limit: u64| {
+        let mut r = routes(&f, &url, None);
+        r.main.monthly_budget = limit;
+        run(
+            f.cache.path(),
+            &r,
+            &set(&["example"]),
+            &set(&["pkg:npm/example"]),
+            "2026-11-10",
+        )
+    };
+    // Four extraction calls (two a note) and the first label call fit; the second label call does not.
+    let limit = 5 * 110;
+    let s = pass(limit);
+    assert_eq!(
+        (s.created, s.deferred.clone()),
+        (4, Some(crate::inference::Deferred::Budget)),
+        "{s:?}"
+    );
+    assert_eq!(seen.lock().unwrap().batches, [4]);
+    let store = LocalStore::load(f.cache.path(), "example");
+    assert!(store.records.values().all(|l| l.version == "2.1.0"));
+    // Under the same limit: no request reaches the provider, nothing new, the same warning.
+    let s = pass(limit);
+    assert_eq!((s.created, s.deferred.clone()), (0, Some(crate::inference::Deferred::Budget)));
+    {
+        let seen = seen.lock().unwrap();
+        assert_eq!((seen.batches.len(), seen.alone), (1, 0));
+    }
+    // With room again, only the second note's labels are paid for.
+    let s = pass(1_000_000);
+    assert_eq!((s.created, s.deferred.clone()), (4, None), "{s:?}");
+    let seen = seen.lock().unwrap();
+    assert_eq!((seen.batches.as_slice(), seen.alone), ([4, 4].as_slice(), 0));
+}
