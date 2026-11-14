@@ -32,8 +32,10 @@ jobs:
       - name: cargo test
         run: cargo test --manifest-path local/Cargo.toml --locked
 
-  # Whether the change can affect the client build: local/**, npm/build.sh or this file. Workflow-level `paths` would
-  # filter every job, so the filter is this job and windows-link is skipped (which passes) when it says no.
+  # Whether a pull request can affect the client build: local/**, npm/build.sh, release.yml (tool versions) or this
+  # file. Workflow-level `paths` would filter every job, so the filter is this job and windows-link is skipped (which
+  # passes) when it says no. A push to main always links: with cancel-in-progress, a later docs-only push can cancel
+  # the run of an earlier client change, so a filter there could leave main never linked.
   client-changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -41,24 +43,24 @@ jobs:
       client: ${{ steps.diff.outputs.client }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
         with:
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
       - name: Changed paths
         id: diff
         env:
           EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          # A pull request is checked out as its merge commit: the first parent is the base it merges into.
-          if [ "$EVENT" = pull_request ]; then base=HEAD^1; else base="$BEFORE"; fi
-          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
-            echo "no base commit ($base): building"; echo "client=true" >> "$GITHUB_OUTPUT"; exit 0
+          if [ "$EVENT" != pull_request ]; then
+            echo "push: always linking"; echo "client=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          changed="$(git diff --name-only "$base" HEAD)"
+          # A pull request is checked out as its merge commit: the first parent is the base it merges into.
+          # --no-renames lists both sides of a move; quotePath=false keeps non-ASCII names unquoted.
+          changed="$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)"
           echo "$changed"
-          if grep -qE '^(local/|npm/build\.sh$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+          if grep -qE '^(local/|npm/build\.sh$|\.github/workflows/(ci|release)\.yml$)' <<<"$changed"; then
             echo "client=true" >> "$GITHUB_OUTPUT"
           else
             echo "client=false" >> "$GITHUB_OUTPUT"
