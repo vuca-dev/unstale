@@ -31,6 +31,94 @@ jobs:
           workspaces: local
       - name: cargo test
         run: cargo test --manifest-path local/Cargo.toml --locked
+        env:
+          # Also writes the scenario matrix's playback page (local/cli/tests/matrix/README.md, "Playback").
+          MATRIX_GALLERY: "1"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: matrix-gallery
+          path: local/cli/tests/matrix/gallery.html
+          if-no-files-found: ignore
+
+  # Whether a pull request can affect the client build: local/**, npm/build.sh, release.yml (tool versions) or this
+  # file. Workflow-level `paths` would filter every job, so the filter is this job and windows-link is skipped (which
+  # passes) when it says no. A push to main always links: with cancel-in-progress, a later docs-only push can cancel
+  # the run of an earlier client change, so a filter there could leave main never linked.
+  client-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      client: ${{ steps.diff.outputs.client }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Changed paths
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            echo "push: always linking"; echo "client=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # A pull request is checked out as its merge commit: the first parent is the base it merges into.
+          # --no-renames lists both sides of a move; quotePath=false keeps non-ASCII names unquoted.
+          changed="$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)"
+          echo "$changed"
+          if grep -qE '^(local/|npm/build\.sh$|\.github/workflows/(ci|release)\.yml$)' <<<"$changed"; then
+            echo "client=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "client=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Links the Windows client the way release.yml builds win32-x64 (npm/build.sh: cargo-zigbuild, mingw), in the debug
+  # profile: pull requests otherwise build only Linux, and a Windows link failure would first show at release time.
+  windows-link:
+    needs: client-changes
+    if: needs.client-changes.outputs.client == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: local
+      # The same pinned versions and checksums as release.yml's "Install zig and cargo-zigbuild"; keep them in step.
+      - name: Install zig and cargo-zigbuild
+        env:
+          ZIG_VERSION: 0.17.0
+          ZIG_SHA256: 1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026
+          ZIGBUILD_VERSION: 0.23.4
+          ZIGBUILD_SHA256: 9e3cf73485edbd45905c8aadbc0fdf869c7ddc3848f0c898229f2680db52e44b
+        run: |
+          set -euo pipefail
+          zig_dir="$RUNNER_TEMP/zig"; zb_dir="$RUNNER_TEMP/cargo-zigbuild"
+          mkdir -p "$zig_dir" "$zb_dir"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/zig.tar.xz" \
+            "https://ziglang.org/download/$ZIG_VERSION/zig-x86_64-linux-$ZIG_VERSION.tar.xz"
+          echo "$ZIG_SHA256  $RUNNER_TEMP/zig.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$zig_dir" --strip-components=1
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/zigbuild.tar.xz" \
+            "https://github.com/rust-cross/cargo-zigbuild/releases/download/v$ZIGBUILD_VERSION/cargo-zigbuild-x86_64-unknown-linux-musl.tar.xz"
+          echo "$ZIGBUILD_SHA256  $RUNNER_TEMP/zigbuild.tar.xz" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/zigbuild.tar.xz" -C "$zb_dir" --strip-components=1
+          echo "$zig_dir" >> "$GITHUB_PATH"
+          echo "$zb_dir" >> "$GITHUB_PATH"
+      - name: Link unstale.exe (x86_64-pc-windows-gnu)
+        working-directory: local
+        run: |
+          cargo zigbuild -p unstale --target x86_64-pc-windows-gnu --locked
+          file target/x86_64-pc-windows-gnu/debug/unstale.exe
 
   central:
     runs-on: ubuntu-latest

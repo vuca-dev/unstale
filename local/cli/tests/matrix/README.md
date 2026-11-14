@@ -97,10 +97,14 @@ provider both were read.
   `CLIENTS`). The pairs are recomputed.
 - A critical path run in full: one line in `CRITICAL`, with its title in plain words.
 
-Then `UPDATE_GOLDEN=1 cargo test --test matrix` writes its transcript (`golden/`), its recording (`recordings/`,
-asciicast v2) and the gallery. Review the diff before committing; a changed transcript is a changed user experience.
+Then `UPDATE_GOLDEN=1 cargo test --test matrix` writes its transcript (`golden/`). Review the diff before
+committing; a changed transcript is a changed user experience.
 
 ## Playback
+
+`MATRIX_GALLERY=1 cargo test --test matrix` (in `local/`) also writes each scenario's recording (`recordings/`,
+asciicast v2) and `gallery.html`, from the same run as the transcripts. Neither is committed or compared: the
+transcripts are the test. CI's `rust` job uploads the gallery as the `matrix-gallery` artifact of each run.
 
 Open `local/cli/tests/matrix/gallery.html` in a browser (from the file; it needs no network). Scenarios are grouped
 by what the user did (installs at a terminal, through an agent, in CI; meets a provider problem or the monthly
