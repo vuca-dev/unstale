@@ -455,3 +455,15 @@ OpenRouter parity, repeat eval runs.
 - The quoted no-provider share is 25%, not 27%: 39 of 154 real findings of a full report have a line in a section that needs no model (22 publisher deprecations, 9 unmaintained, 8 lockfile advisories; `eval/no-key/deterministic_share.py`). It is not a share of changes in new releases. Released 0.3.0 says "≈ 27% of changes in new releases" in the picker. Draft #270 (head `ff2df85`) corrects client, README, npm README, site and docs; held for the CEO; the picker changes only with the next client release.
 - npm refuses the unscoped name `unstale` as too similar to `install`; not claimable without npm support. Nobody else can claim it either.
 - Open: CEO review of #270 and whether to cut 0.3.1; Windows link check in CI (awaiting CEO); day-0 notice (CEO); ingest re-check after 15:00 UTC 13 November; merge this branch and final report.
+
+### 13 November 2026: Windows link check, recordings removed, 0.3.1
+
+- #271 merged (`1a81c8b`): CI job `windows-link` builds the Windows client with the release's recipe on every push to
+  `main` and on pull requests touching `local/**`, `npm/build.sh`, `release.yml` or `ci.yml`. Reproduced failing on
+  `0eec841`. Review found three wrong-skip cases (moved files, non-ASCII names, quick successive pushes); all closed
+  before merge.
+- #272 merged (`bfb3206`): matrix recordings and gallery no longer committed (4.4 MB); transcripts remain the test.
+  `MATRIX_GALLERY=1 cargo test --test matrix` regenerates them; CI uploads the gallery as an artifact.
+- #270 merged (`4762df2`): "≈ 25% of a full report's findings" replaces "≈ 27% of changes in new releases".
+- #273 merged (`0409720`): client 0.3.1. Windows release build run locally before tagging. Tag `v0.3.1` pushed.
+- Known, left alone: `cargo fmt --check` fails on `main` across about 45 files; CI does not run it.
