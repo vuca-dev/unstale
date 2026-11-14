@@ -467,3 +467,11 @@ OpenRouter parity, repeat eval runs.
 - #270 merged (`4762df2`): "≈ 25% of a full report's findings" replaces "≈ 27% of changes in new releases".
 - #273 merged (`0409720`): client 0.3.1. Windows release build run locally before tagging. Tag `v0.3.1` pushed.
 - Known, left alone: `cargo fmt --check` fails on `main` across about 45 files; CI does not run it.
+- 0.3.1 released: run 43559217968 green (5 builds, 5 smoke runs, npm, Homebrew); all seven npm packages show 0.3.1.
+- Ingest re-check (12 runs, 12 November 17:38 UTC to 14 November 03:13 UTC):
+  - Docs pass fix (#253) works in part: 73 sites marked covered; `continues` 34 down to 2–12 a run. Long docs stages
+    not clearly down (36, then 7–27): large sites leave the rotation but re-enter at each release and follow-up.
+  - Listing cache held through expiry: 15 rate-limit pauses, 108 minutes over 8 runs (about 9% of run time).
+  - One failed run (43431437897, 13 November 13:10 UTC): deploy call failed on all three attempts; ingest idle 4.4
+    hours; checks older than 12 hours rose from about 130 to 2,224, recovering (709 at last read). Fourth such stall
+    in ten days. Open decision for the CEO: continue after a failed run (not approved so far).
