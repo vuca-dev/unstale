@@ -49,8 +49,16 @@ react: 1 upstream change on file, nothing new
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-  ● OpenAI key   ≈ $0.16 a year   ≈ 3% less precise labels            suggested by this repo
-  ○ Not now      free             ≈ 25% of a full report's findings
+  Found installed locally
+  ● OpenAI key         ≈ $0.16 a year   ≈ 97% of best results                     this repo's pick
+  ○ Not now            free             ≈ 25% of a full report's findings
+
+  Not found locally
+  ○ Jev + OpenAI key   ≈ $0.11 a year   best results
+  ○ Jev + Codex plan   ≈ $0.053 a year  ≈ 80% of best results
+  ○ Snap + OpenAI key  ≈ $0.11 a year   ≈ 97% of best results
+    ↓ 2 more
+    Jev labels changes and Snap matches them, beside the provider that reads the notes.
 
 ↑↓ to move · Enter to choose · d for details
 [interrupted]

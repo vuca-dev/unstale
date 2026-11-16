@@ -1,18 +1,14 @@
-Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+To read with Jev + OpenAI key, set it up, then run `unstale setup`:
 
-  OPENAI_API_KEY=<key>      OpenAI
-  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
-  OPENROUTER_API_KEY=<key>  OpenRouter
-  ANTHROPIC_API_KEY=<key>   Anthropic
+  add JEV_API_KEY=<key> to your shell profile or this repo's .env
+  add OPENAI_API_KEY=<key> to your shell profile or this repo's .env (or AI_GATEWAY_API_KEY or
+  OPENROUTER_API_KEY)
 
-Or use your Codex plan: install Codex and run `codex login`.
+To read with OpenAI key, set it up, then run `unstale setup`:
 
-Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+  add OPENAI_API_KEY=<key> to your shell profile or this repo's .env (or AI_GATEWAY_API_KEY or
+  OPENROUTER_API_KEY)
 
-  OPENAI_API_KEY=<key>      OpenAI
-  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
-  OPENROUTER_API_KEY=<key>  OpenRouter
-  ANTHROPIC_API_KEY=<key>   Anthropic
+To read with Jev + Codex plan, set it up, then run `unstale setup`:
 
-Or use your Codex plan: Codex is not logged in. Run `codex login`.
-JEV_API_KEY is set, but Jev only labels changes: reading them needs one of the above too.
+  Codex is not logged in. Run `codex login`.

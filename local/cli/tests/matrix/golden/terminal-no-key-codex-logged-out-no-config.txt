@@ -2,24 +2,28 @@
 # keys: no-key · Codex: codex-logged-out · run: terminal · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-unstale reads new release notes with a model, on your own key or your Codex plan.
-None is set up here (Codex is not logged in).
+How should unstale read new release notes?
 
-  ● Set one up
-    shows the one line to add
-  ○ Not now
-    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
+  Found installed locally
+  ○ Not now             free              ≈ 25% of a full report's findings
 
-↑↓ to move · Enter to choose
+  Not found locally
+  ● Jev + OpenAI key    ≈ $0.11 a year    best results
+  ○ Jev + Codex plan    ≈ $0.053 a year   ≈ 80% of best results
+  ○ Snap + OpenAI key   ≈ $0.11 a year    ≈ 97% of best results
+  ○ OpenAI key          ≈ $0.16 a year    ≈ 97% of best results
+    ↓ 2 more
+    Jev labels changes and Snap matches them, beside the provider that reads the notes.
 
-Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+  Needs JEV_API_KEY and OPENAI_API_KEY. Enter shows how to set it up.
 
-  OPENAI_API_KEY=<key>      OpenAI
-  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
-  OPENROUTER_API_KEY=<key>  OpenRouter
-  ANTHROPIC_API_KEY=<key>   Anthropic
+↑↓ to move · Enter to choose · d for details
 
-Or use your Codex plan: Codex is not logged in. Run `codex login`.
+To read with Jev + OpenAI key, set it up, then run `unstale setup`:
+
+  add JEV_API_KEY=<key> to your shell profile or this repo's .env
+  add OPENAI_API_KEY=<key> to your shell profile or this repo's .env (or AI_GATEWAY_API_KEY or
+  OPENROUTER_API_KEY)
 
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.

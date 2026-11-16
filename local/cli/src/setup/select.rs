@@ -73,12 +73,14 @@ pub fn step(key: Key, sel: usize, n: usize, details: bool) -> Step {
     }
 }
 
-/// Whether the menu and its hint can be redrawn in place on a terminal of `rows` and `cols`: no line wider than the
-/// terminal (a wrapped line would leave a copy behind at each redraw) and fewer lines than it has.
+/// Whether the menu and its hint can be redrawn in place on a terminal of `rows` and `cols`, wherever the mark is: no
+/// line wider than the terminal (a wrapped line would leave a copy behind at each redraw) and fewer lines than it has.
 pub fn fits(menu: &Menu, rows: usize, cols: usize) -> bool {
-    let mut lines = menu.lines(menu.default);
-    lines.push(menu.hint().to_string());
-    lines.len() < rows && lines.iter().all(|l| l.chars().count() <= cols)
+    (0..menu.rows.len()).all(|sel| {
+        let mut lines = menu.lines(sel);
+        lines.push(menu.hint().to_string());
+        lines.len() < rows && lines.iter().all(|l| l.chars().count() <= cols)
+    })
 }
 
 /// Reading keys one at a time: the terminal's modes, its size and its signals, all Unix (`stty`, `termios`). Elsewhere

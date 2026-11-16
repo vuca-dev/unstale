@@ -495,6 +495,71 @@ pub fn options(d: &Detected, no_key: bool) -> Vec<Pick> {
     v
 }
 
+/// One row of the picker: an option, and whether this machine can use it now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Entry {
+    pub pick: Pick,
+    pub ready: bool,
+}
+
+/// Every option, so the reader sees the whole choice: first those this machine can use ([`options`], going without
+/// last), then the rest, best first, each with what it still needs ([`needs`]). Options on an OpenAI-compatible key
+/// name the route set here, else OpenAI's.
+pub fn catalog(d: &Detected, no_key: bool) -> Vec<Entry> {
+    let mut ready = options(d, no_key);
+    if !ready.contains(&Pick::None) {
+        ready.push(Pick::None);
+    }
+    let r = d.compatible().unwrap_or(Route::OpenAi);
+    let rest: Vec<Pick> = [
+        Pick::JevKey(r),
+        Pick::JevCodex,
+        Pick::SnapKey(r),
+        Pick::Key(r),
+        Pick::Codex,
+        Pick::Key(Route::Anthropic),
+    ]
+    .into_iter()
+    .filter(|p| !ready.contains(p))
+    .collect();
+    ready
+        .into_iter()
+        .map(|pick| Entry { pick, ready: true })
+        .chain(rest.into_iter().map(|pick| Entry { pick, ready: false }))
+        .collect()
+}
+
+/// The row Enter accepts unless a suggestion is marked: the best option this machine can use; with only going
+/// without, the best option, whose choice says how to set it up.
+pub fn best_ready(entries: &[Entry]) -> usize {
+    entries
+        .iter()
+        .position(|e| e.ready && e.pick != Pick::None)
+        .or_else(|| entries.iter().position(|e| !e.ready))
+        .unwrap_or(0)
+}
+
+/// What is missing here for an option, in the order to set it up: key variables by name, and `Codex` or `codex
+/// login`. Empty when the option is ready.
+pub fn needs(d: &Detected, p: Pick) -> Vec<String> {
+    let key = |r: Route| (!d.has(r)).then(|| default_var(r).to_string());
+    let codex = || match d.codex {
+        CodexState::Ready => None,
+        CodexState::NotReady(_) => Some("`codex login`".to_string()),
+        CodexState::Absent => Some("Codex".to_string()),
+    };
+    let compatible = |r: Route| d.compatible().is_none().then(|| default_var(r).to_string());
+    match p {
+        Pick::JevKey(r) => [key(Route::Jev), compatible(r)].into_iter().flatten().collect(),
+        Pick::JevCodex => [key(Route::Jev), codex()].into_iter().flatten().collect(),
+        Pick::SnapKey(r) => [key(Route::Subq), compatible(r)].into_iter().flatten().collect(),
+        Pick::Key(Route::Anthropic) => key(Route::Anthropic).into_iter().collect(),
+        Pick::Key(r) => compatible(r).into_iter().collect(),
+        Pick::Codex => codex().into_iter().collect(),
+        Pick::None => vec![],
+    }
+}
+
 fn route_name(r: Route) -> &'static str {
     match r {
         Route::Vercel => "Vercel AI Gateway",
@@ -506,9 +571,9 @@ fn route_name(r: Route) -> &'static str {
     }
 }
 
-/// The value of `--inference` that picks an option.
+/// The value of `--inference` that picks an option; for one not set up yet, with its route's usual variable.
 pub fn flag_value(d: &Detected, p: Pick) -> String {
-    let env = |r: Route| format!("env:{}", d.var(r).unwrap_or(""));
+    let env = |r: Route| format!("env:{}", d.var(r).unwrap_or(default_var(r)));
     match p {
         Pick::JevKey(r) => format!("jev+{}", env(r)),
         Pick::JevCodex => "jev+codex".into(),
@@ -1712,7 +1777,9 @@ pub fn run(
             }
             let opts = options(&d, NO_KEY_MODE);
             if let Some(t) = &suggested {
-                let at = opts.iter().position(|p| Choice::of(&d, *p) == *t);
+                let at = catalog(&d, NO_KEY_MODE)
+                    .iter()
+                    .position(|e| e.ready && Choice::of(&d, e.pick) == *t);
                 println!(
                     "{}",
                     view::suggested_line(t, at, !opts.is_empty(), Reader::Agent)
@@ -1723,11 +1790,14 @@ pub fn run(
         Plan::Ask => (detect(&ctx.root, &System), technologies(ctx)),
     };
     let opts = options(&d, NO_KEY_MODE);
+    let entries = catalog(&d, NO_KEY_MODE);
     let width = view::width();
     // The team's suggestion, where this machine can use it: marked first and tagged.
-    let at = suggested
-        .as_ref()
-        .and_then(|t| opts.iter().position(|p| Choice::of(&d, *p) == *t));
+    let at = suggested.as_ref().and_then(|t| {
+        entries
+            .iter()
+            .position(|e| e.ready && Choice::of(&d, e.pick) == *t)
+    });
     let mut menu = view::menu(&d, techs, NO_KEY_MODE, width, at);
     // A suggestion this machine cannot take: said under the options.
     if let Some(t) = suggested.as_ref().filter(|_| at.is_none()) {
@@ -1748,27 +1818,28 @@ pub fn run(
         println!("{}", view::dismissed_line());
         Ok(())
     };
-    if opts.is_empty() {
-        return match select::ask(&menu, &[]) {
-            view::Answered::Option(0) => {
-                println!();
-                for l in view::set_up_lines(&d, Reader::Person, width) {
-                    println!("{l}");
-                }
-                println!();
-                if cur.is_none() {
-                    crate::util::write_atomic(&dismissed_path(ctx), b"asked, setting one up\n")?;
-                }
-                Ok(())
-            }
-            _ => dismiss(ctx),
-        };
-    }
     let details = view::details_lines(&d, techs, NO_KEY_MODE);
-    let pick = match select::ask(&menu, &details) {
-        view::Answered::Option(i) => opts[i],
+    let entry = match select::ask(&menu, &details) {
+        view::Answered::Option(i) => entries[i],
         view::Answered::Nothing => return dismiss(ctx),
     };
+    // An option not set up here: how to set it up; nothing is recorded until it can be used.
+    if !entry.ready {
+        println!();
+        for l in view::set_up_for(&d, entry.pick, width) {
+            println!("{l}");
+        }
+        println!();
+        if cur.is_none() {
+            crate::util::write_atomic(&dismissed_path(ctx), b"asked, setting one up\n")?;
+        }
+        return Ok(());
+    }
+    // Going without, where nothing else is set up: not recorded, as dismissing.
+    if entry.pick == Pick::None && opts.is_empty() {
+        return dismiss(ctx);
+    }
+    let pick = entry.pick;
     let c = Choice::of(&d, pick);
     for l in save(ctx, &c, user, own_only, None)? {
         println!("{l}");

@@ -4,8 +4,16 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-  ● Anthropic key   ≈ $0.23 a year   ≈ 90% of the best option's changes   suggested by this repo
-  ○ Not now         free             ≈ 25% of a full report's findings
+  Found installed locally
+  ● Anthropic key      ≈ $0.23 a year   ≈ 90% of best results                     this repo's pick
+  ○ Not now            free             ≈ 25% of a full report's findings
+
+  Not found locally
+  ○ Jev + OpenAI key   ≈ $0.11 a year   best results
+  ○ Jev + Codex plan   ≈ $0.053 a year  ≈ 80% of best results
+  ○ Snap + OpenAI key  ≈ $0.11 a year   ≈ 97% of best results
+    ↓ 2 more
+    Jev labels changes and Snap matches them, beside the provider that reads the notes.
 
 ↑↓ to move · Enter to choose · d for details
 Saved for you: Anthropic (ANTHROPIC_API_KEY) reads release notes.

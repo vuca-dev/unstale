@@ -1,11 +1,29 @@
-unstale reads new release notes with a
-model, on your own key or your Codex
-plan. None is set up here.
+How should unstale read new release
+notes?
 
-  1  Set one up
-     shows the one line to add
-  2  Not now
-     free · deprecations, unmaintained
-     packages and advisories: ≈ 25% of a
-     full report's findings
+  Found installed locally
+  ○ Not now
+    free · ≈ 25% of a full report's
+    findings
+
+  Not found locally
+  ● Jev + OpenAI key
+    ≈ $1.36 a year · best results
+  ○ Jev + Codex plan
+    ≈ $0.68 a year · ≈ 80% of best
+    results
+  ○ Snap + OpenAI key
+    ≈ $1.44 a year · ≈ 97% of best
+    results
+  ○ OpenAI key
+    ≈ $1.98 a year · ≈ 97% of best
+    results
+    ↓ 2 more
+
+    Jev labels changes and Snap matches
+    them, beside the provider that reads
+    the notes.
+
+  Needs JEV_API_KEY and OPENAI_API_KEY.
+  Enter shows how to set it up.
 

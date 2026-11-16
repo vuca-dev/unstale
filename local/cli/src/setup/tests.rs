@@ -184,6 +184,17 @@ pub(super) fn scenarios() -> Vec<(&'static str, Detected, usize, bool, Reader)> 
             false,
             Reader::Person,
         ),
+        // The site's example (gateway/site/build.ts): the best option set up and marked.
+        (
+            "jev-and-openai",
+            machine(
+                &[("JEV_API_KEY", Shell), ("OPENAI_API_KEY", Shell)],
+                CodexState::Absent,
+            ),
+            38,
+            false,
+            Reader::Person,
+        ),
         (
             "jev-and-openai-in-dotenv",
             machine(
@@ -297,21 +308,19 @@ fn picker_renderings_match_their_goldens() {
             .join("\n")
         ),
     );
+    // What choosing an option not set up here shows.
     let logged_out = machine(
         &[("JEV_API_KEY", Seen::Shell)],
         CodexState::NotReady("Codex is not logged in. Run `codex login`.".into()),
     );
+    let nothing = machine(&[], CodexState::Absent);
     golden(
         "set-one-up",
         &format!(
-            "{}\n\n{}\n",
-            view::set_up_lines(
-                &machine(&[], CodexState::Absent),
-                Reader::Person,
-                view::WIDTH
-            )
-            .join("\n"),
-            view::set_up_lines(&logged_out, Reader::Person, view::WIDTH).join("\n")
+            "{}\n\n{}\n\n{}\n",
+            view::set_up_for(&nothing, Pick::JevKey(Route::OpenAi), view::WIDTH).join("\n"),
+            view::set_up_for(&nothing, Pick::Key(Route::OpenAi), view::WIDTH).join("\n"),
+            view::set_up_for(&logged_out, Pick::JevCodex, view::WIDTH).join("\n")
         ),
     );
     golden(
@@ -327,14 +336,16 @@ fn picker_renderings_match_their_goldens() {
 }
 
 #[test]
-fn the_prompt_with_nothing_usable_narrows_with_the_terminal() {
+fn the_picker_with_nothing_usable_narrows_with_the_terminal() {
     let nothing = machine(
         &[],
         CodexState::NotReady("Codex is not logged in. Run `codex login`.".into()),
     );
     for width in [view::WIDTH, 60, 40] {
-        let mut lines = view::nothing_lines(&nothing, Reader::Person, width);
-        lines.extend(view::set_up_lines(&nothing, Reader::Person, width));
+        let mut lines = view::menu(&nothing, 38, false, width, None).typed_lines();
+        for e in catalog(&nothing, false) {
+            lines.extend(view::set_up_for(&nothing, e.pick, width));
+        }
         for l in &lines {
             assert!(l.chars().count() <= width, "at {width}: {l}");
         }
@@ -343,7 +354,7 @@ fn the_prompt_with_nothing_usable_narrows_with_the_terminal() {
         "nothing-40-columns",
         &format!(
             "{}\n",
-            view::nothing_lines(&machine(&[], CodexState::Absent), Reader::Person, 40).join("\n")
+            view::picker_lines(&machine(&[], CodexState::Absent), 38, false, Reader::Person, 40).join("\n")
         ),
     );
 }
@@ -478,29 +489,22 @@ fn options_follow_the_fixed_order_and_list_only_what_this_machine_can_use() {
 #[test]
 fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_scope() {
     let d = everything();
-    let opts = options(&d, false);
+    let opts: Vec<Pick> = catalog(&d, false).iter().map(|e| e.pick).collect();
     let table = view::table(&d, 38, false, view::WIDTH);
     assert_eq!(
         table.len(),
         opts.len() + 3,
-        "a header, a row an option, what Jev is, and the keys they read"
+        "a header, a row an option, what Jev and Snap are, and the keys they read"
     );
-    // Jev is said once, in a few words, where it is offered; and not where it is not.
+    // Jev and Snap are said once, in a few words: every option is listed, so both always are.
     assert_eq!(
         table[opts.len() + 1],
-        "     Jev: a labelling service, used beside the provider that reads the notes."
+        "     Jev labels changes and Snap matches them, beside the provider that reads the notes."
     );
     assert_eq!(
         table[opts.len() + 2],
         "     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY"
     );
-    let no_jev = view::table(
-        &machine(&[("OPENAI_API_KEY", Seen::Shell)], CodexState::Absent),
-        38,
-        false,
-        view::WIDTH,
-    );
-    assert!(!no_jev.join("\n").contains("Jev"), "{no_jev:?}");
     let details = view::details_lines(&d, 38, false).join("\n");
     for (i, p) in opts.iter().enumerate() {
         let row = &table[i + 1];
@@ -521,16 +525,18 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
                 "{detail:?} belongs in --details: {row}"
             );
         }
-        // Below the best option, the row ends with exactly its one figure, the comparison in it.
+        // The row ends with exactly its one figure, which says what it is measured against.
         let want = match p {
-            Pick::JevKey(_) => "the best option",
-            Pick::JevCodex => "≈ 80% of its changes",
-            Pick::Key(Route::Anthropic) => "≈ 90% of its changes",
-            Pick::Key(_) | Pick::SnapKey(_) => "≈ 3% less precise labels",
-            Pick::Codex => "≈ 80% of its changes; rest not measured",
+            Pick::JevKey(_) => "best results",
+            Pick::JevCodex => "≈ 80% of best results",
+            Pick::Key(Route::Anthropic) => "≈ 90% of best results",
+            Pick::Key(_) | Pick::SnapKey(_) => "≈ 97% of best results",
+            Pick::Codex => "≈ 80% of best results; rest not measured",
             Pick::None => unreachable!(),
         };
-        assert_eq!(row.rsplit("   ").next(), Some(want), "{row}");
+        assert!(row.ends_with(&format!("  {want}")), "{row}");
+        // No bare comparative: "less" or "more" with nothing named to compare with.
+        assert!(!row.contains("less") && !row.contains("more"), "{row}");
     }
     for want in [
         "per package, per year",
@@ -573,15 +579,8 @@ fn going_without_a_provider_states_what_is_left_with_the_measured_share() {
     assert_eq!(NO_PROVIDER_SHARE, Some(25));
     let nothing = machine(&[], CodexState::Absent);
     for reader in [Reader::Person, Reader::Agent] {
-        let text = view::nothing_lines(&nothing, reader, view::WIDTH)
-            .iter()
-            .map(|l| l.trim())
-            .collect::<Vec<_>>()
-            .join(" ");
-        assert!(
-            text.contains(&format!("{}: ≈ 25% of a full report's findings", view::WITHOUT)),
-            "{text}"
-        );
+        let text = view::picker_lines(&nothing, 38, false, reader, view::WIDTH).join("\n");
+        assert!(text.contains("≈ 25% of a full report's findings"), "{text}");
     }
     assert!(view::dismissed_line().contains(view::WITHOUT));
 }
@@ -1232,7 +1231,7 @@ fn through_codex_only_what_was_measured_is_claimed() {
         );
         let says = |text: &str| block.iter().any(|l| l.ends_with(text));
         if *p == Pick::JevCodex {
-            assert!(row.ends_with("   ≈ 80% of its changes"), "{row}");
+            assert!(row.ends_with("  ≈ 80% of best results"), "{row}");
             assert!(!block.iter().any(|l| l.contains("estimate")), "{block:?}");
             continue;
         }
@@ -1240,7 +1239,7 @@ fn through_codex_only_what_was_measured_is_claimed() {
         // measured, so nothing is called an estimate.
         assert!(!block.iter().any(|l| l.contains("estimate")), "{block:?}");
         assert!(
-            row.ends_with("   ≈ 80% of its changes; rest not measured"),
+            row.ends_with("  ≈ 80% of best results; rest not measured"),
             "{row}"
         );
         assert!(
@@ -1320,16 +1319,19 @@ fn the_menu_marks_one_row_tags_the_suggestion_and_fits_the_width() {
     let lines = m.lines(m.default);
     assert_eq!(lines.iter().filter(|l| l.starts_with("  ● ")).count(), 1);
     let marked = lines.iter().find(|l| l.starts_with("  ● ")).unwrap();
-    assert!(marked.starts_with("  ● Codex plan") && marked.ends_with("suggested by this repo"), "{marked}");
+    assert!(marked.starts_with("  ● Codex plan") && marked.ends_with("this repo's pick"), "{marked}");
     // Codex use is the plan's: no token count in the menu.
-    assert!(marked.contains("no extra cost") && !marked.contains("tokens"), "{marked}");
+    assert!(marked.contains("your Codex plan") && !marked.contains("tokens"), "{marked}");
     // Each trade stands on its own: no "its" pointing at a column heading.
     assert!(lines.iter().all(|l| !l.contains(" its ")), "{lines:#?}");
     for (name, d, techs, no_key, _) in scenarios() {
         for width in [view::WIDTH, 80, 60] {
-            for l in view::menu(&d, techs, no_key, width, None).lines(0) {
-                assert!(l.chars().count() <= width, "{name} at {width}: {l}");
-                assert_eq!(l, l.trim_end(), "{name}: trailing blanks");
+            let m = view::menu(&d, techs, no_key, width, None);
+            for sel in 0..m.rows.len() {
+                for l in m.lines(sel) {
+                    assert!(l.chars().count() <= width, "{name} at {width}: {l}");
+                    assert_eq!(l, l.trim_end(), "{name}: trailing blanks");
+                }
             }
         }
     }
@@ -1342,14 +1344,16 @@ fn a_menu_too_big_for_the_terminal_is_asked_by_typing_instead() {
     assert!(fits(&m, 40, 100));
     // The question is wider than 40 columns: redrawn there, each move would leave a copy behind.
     assert!(!fits(&view::menu(&everything(), 38, false, 40, None), 40, 40));
-    // As many lines as the terminal has rows: the top could not be reached to redraw.
-    let n = m.lines(0).len() + 1;
+    // As many lines as the terminal has rows, wherever the mark is: the top could not be reached to redraw.
+    let n = (0..m.rows.len()).map(|sel| m.lines(sel).len()).max().unwrap() + 1;
     assert!(fits(&m, n + 1, 100));
     assert!(!fits(&m, n, 100));
     // Typed instead, the options are numbered as the prompt asks, with no mark the keys could move.
     let typed = m.typed_lines();
     assert!(typed.iter().all(|l| !l.contains('●') && !l.contains('○')), "{typed:#?}");
-    assert_eq!(typed.len(), m.lines(m.default).len());
+    // Every option, not the window the keys scroll through, and what each one not set up here needs.
+    assert!(typed.iter().all(|l| !l.contains(" more")), "{typed:#?}");
+    assert!(typed.contains(&"      needs SUBQ_API_KEY".to_string()), "{typed:#?}");
     for (i, r) in m.rows.iter().enumerate() {
         assert!(typed.contains(&r[0].replacen('○', &(i + 1).to_string(), 1)), "{typed:#?}");
     }

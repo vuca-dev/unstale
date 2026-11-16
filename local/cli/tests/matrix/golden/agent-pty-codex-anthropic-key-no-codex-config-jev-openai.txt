@@ -66,15 +66,27 @@ Cache                 under 1 MB of 100 MB
 
 $ unstale setup
 The user chooses how unstale reads new release notes. Show them these options as printed and ask.
-Never choose for them.
+Never choose for them, and never ask them to paste a key.
 
-     Read with   Key                 Cost a year, this repo   Compared with the best option
-  1  Anthropic   ANTHROPIC_API_KEY   ≈ $0.23                  ≈ 90% of its changes
-  2  Not now                         free                     ≈ 25% of a full report's findings
+     Read with          Cost a year, this repo         Results
+  1  Anthropic          ≈ $0.23                        ≈ 90% of best results
+  2  Not now            free                           ≈ 25% of a full report's findings
+  3  Jev + OpenAI       ≈ $0.11                        best results
+  4  Jev + Codex plan   ≈ $0.053 + 500k Codex tokens   ≈ 80% of best results
+  5  Snap + OpenAI      ≈ $0.11                        ≈ 97% of best results
+  6  OpenAI             ≈ $0.16                        ≈ 97% of best results
+  7  Codex plan         ≈ 2.3M Codex tokens            ≈ 80% of best results; rest not measured
+     Jev labels changes and Snap matches them, beside the provider that reads the notes.
+     Keys: ANTHROPIC_API_KEY
 
 Record their answer with the matching command:
   1  unstale setup --inference env:ANTHROPIC_API_KEY
   2  unstale setup --inference none
+  3  once the user has set up JEV_API_KEY and OPENAI_API_KEY: unstale setup --inference jev+env:OPENAI_API_KEY
+  4  once the user has set up JEV_API_KEY and Codex: unstale setup --inference jev+codex
+  5  once the user has set up SUBQ_API_KEY and OPENAI_API_KEY: unstale setup --inference subq+env:OPENAI_API_KEY
+  6  once the user has set up OPENAI_API_KEY: unstale setup --inference env:OPENAI_API_KEY
+  7  once the user has set up Codex: unstale setup --inference codex
 Full costs: unstale setup --details
 This repo's config suggests Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), which is not one of the options here.
 
