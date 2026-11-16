@@ -4,20 +4,20 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
+  Ready here
   ○ Jev + Vercel AI Gateway key
-    ≈ $0.11 a year · the best option
+    ≈ $0.11 a year · best results
   ● Jev + Codex plan
-    ≈ $0.053 a year · your Codex plan, up to the limit you set · suggested by this repo
+    ≈ $0.053 a year · ≈ 80% of best results · this repo's pick
   ○ Vercel AI Gateway key
-    ≈ $0.16 a year · ≈ 3% less precise labels
+    ≈ $0.16 a year · ≈ 89% of labels right (best: 92%)
   ○ Codex plan
-    no extra cost · your Codex plan, up to the limit you set
+    your Codex plan · ≈ 80% of best results; rest not measured
   ○ Anthropic key
-    ≈ $0.23 a year · ≈ 90% of the best option's changes
-  ○ Not now
-    free · ≈ 25% of a full report's findings
+    ≈ $0.23 a year · ≈ 90% of best results
+    ↓ 2 more
 
-    Jev: a labelling service, used beside the provider that reads the notes.
+    Jev labels changes and Snap matches them, beside the provider that reads the notes.
 
 ↑↓ to move · Enter to choose · d for details
 Saved for you: Jev + Codex plan (JEV_API_KEY) reads release notes.

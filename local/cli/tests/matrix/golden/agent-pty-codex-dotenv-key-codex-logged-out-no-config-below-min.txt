@@ -111,15 +111,27 @@ Cache                 under 1 MB of 100 MB
 
 $ unstale setup
 The user chooses how unstale reads new release notes. Show them these options as printed and ask.
-Never choose for them.
+Never choose for them, and never ask them to paste a key.
 
-     Read with   Key                     Cost a year, this repo   Compared with the best option
-  1  OpenAI      OPENAI_API_KEY (.env)   ≈ $0.16                  ≈ 3% less precise labels
-  2  Not now                             free                     ≈ 25% of a full report's findings
+     Read with          Cost a year, this repo         Results
+  1  OpenAI             ≈ $0.16                        ≈ 89% of labels right (best: 92%)
+  2  Not now            free                           ≈ 25% of a full report's findings
+  3  Jev + OpenAI       ≈ $0.11                        best results
+  4  Jev + Codex plan   ≈ $0.053 + 500k Codex tokens   ≈ 80% of best results
+  5  Snap + OpenAI      ≈ $0.11                        ≈ 89% of labels right (best: 92%)
+  6  Codex plan         ≈ 2.3M Codex tokens            ≈ 80% of best results; rest not measured
+  7  Anthropic          ≈ $0.23                        ≈ 90% of best results
+     Jev labels changes and Snap matches them, beside the provider that reads the notes.
+     Keys: OPENAI_API_KEY (.env)
 
 Record their answer with the matching command:
   1  unstale setup --inference env:OPENAI_API_KEY
   2  unstale setup --inference none
+  3  once the user has set up JEV_API_KEY: unstale setup --inference jev+env:OPENAI_API_KEY
+  4  once the user has set up JEV_API_KEY and `codex login`: unstale setup --inference jev+codex
+  5  once the user has set up SUBQ_API_KEY: unstale setup --inference subq+env:OPENAI_API_KEY
+  6  once the user has set up `codex login`: unstale setup --inference codex
+  7  once the user has set up ANTHROPIC_API_KEY: unstale setup --inference env:ANTHROPIC_API_KEY
 Full costs: unstale setup --details
 
 # the agent showed the options and asked; the user chose option 1

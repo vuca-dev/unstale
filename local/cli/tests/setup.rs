@@ -208,8 +208,10 @@ fn no_canary_reaches_output_config_cache_or_any_written_file() {
         "{listed}"
     );
     assert!(listed.contains("Codex plan"), "{listed}");
+    // Anthropic is listed, as every option is, but as one the user must still set up.
     assert!(
-        !listed.contains("ANTHROPIC_API_KEY"),
+        listed.contains("once the user has set up ANTHROPIC_API_KEY: ")
+            && !listed.contains("  unstale setup --inference env:ANTHROPIC_API_KEY"),
         "another repository's .env was read:\n{listed}"
     );
     out += &w.ok(&["setup", "--inference", "jev+env:OPENAI_API_KEY"], true);
@@ -387,9 +389,11 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     assert!((w.chosen().is_null() && w.config().get("inference").is_none()), "{quiet}");
     let first = w.at_terminal(&init, "\n");
     assert_eq!(first.matches(QUESTION).count(), 1, "one question:\n{first}");
-    // The question on its own line, a blank line, the options with the first marked, a blank line, how to answer.
+    // The question on its own line, a blank line, the options ready here with the best marked, a blank line, how to
+    // answer.
     assert!(
-        first.contains("How should unstale read new release notes?\n\n  ● Jev + OpenAI key   ≈ $0.036 a year ")
+        first.contains("How should unstale read new release notes?\n\n  Ready here\n  ● Jev + OpenAI key ")
+            && first.contains("≈ $0.036 a year ")
             && first.contains("\n  ○ Not now  ")
             && first.contains("\n\n↑↓ to move · Enter to choose · d for details\n"),
         "{first}"

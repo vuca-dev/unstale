@@ -145,8 +145,10 @@ fn cost_cell(q: &Quote, techs: usize) -> String {
     }
 }
 
-/// The one quality figure, against the best option.
-fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
+/// The one quality figure, in terms that stand alone: the best option says so, an option below it gives its own
+/// figure beside the best one's or a share of what the best finds, and going without the share of a full report it
+/// keeps. Never a bare "less" that leaves the reader asking "than what".
+fn results(p: Pick, q: &Quote, no_key: bool) -> String {
     if p == Pick::None && !no_key {
         return match NO_PROVIDER_SHARE {
             Some(n) => without_cell(n),
@@ -154,19 +156,14 @@ fn trade(p: Pick, q: &Quote, no_key: bool) -> String {
         };
     }
     let figure = match q.quality {
-        Quality::Best => "the best option".into(),
-        Quality::Same => "about the same".into(),
+        Quality::Best | Quality::Same => "best results".into(),
         Quality::Unmeasured => "not measured yet".into(),
-        Quality::Share { pct, of, .. } => format!("≈ {pct}% of its {of}"),
-        // Scoped in the row to "labels" though only breaking-change flags are less precise (change type is level or
-        // better, benefits about level, `eval/provider-matrix/RESULTS.md`): true enough for the choice, and it fits.
-        // The details name the flags.
+        Quality::Share { pct, .. } => format!("≈ {pct}% of best results"),
+        // Scoped to "labels" though only breaking-change flags differ (change type is level or better, benefits about
+        // level, `eval/provider-matrix/RESULTS.md`): true enough for the choice, and it fits. The details name the flags.
         Quality::MoreWrong {
             wrong, best_wrong, ..
-        } => format!(
-            "≈ {}% less precise labels",
-            wrong.saturating_sub(best_wrong)
-        ),
+        } => format!("≈ {}% of labels right (best: {}%)", 100 - wrong, 100 - best_wrong),
     };
     if q.labels_and_matching_measured {
         figure
@@ -212,20 +209,21 @@ fn columns(rows: &[(String, Vec<String>)], gutter: usize) -> Vec<String> {
         .collect()
 }
 
-/// The options as a table that fits `width`: provider, key, cost, what is traded. Too narrow for four columns, the key
-/// column goes (the names are in `--details` and in the line that confirms a choice); narrower still, each option
-/// takes two lines.
+/// The options as a table that fits `width`: provider, key (or what it still needs), cost, results. Too narrow for
+/// four columns, the key column goes (the names are in `--details` and in the line that confirms a choice);
+/// narrower still, each option takes two lines.
 pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<String> {
-    let opts = options(d, no_key);
-    let cells: Vec<[String; 4]> = opts
+    let entries = catalog(d, no_key);
+    let picks: Vec<Pick> = entries.iter().map(|e| e.pick).collect();
+    let cells: Vec<[String; 4]> = entries
         .iter()
-        .map(|p| {
-            let q = quote(*p, no_key);
+        .map(|e| {
+            let q = quote(e.pick, no_key);
             [
-                name(*p, no_key),
-                keys(d, *p),
+                name(e.pick, no_key),
+                key_cell(d, *e),
                 cost_cell(&q, techs),
-                trade(*p, &q, no_key),
+                results(e.pick, &q, no_key),
             ]
         })
         .collect();
@@ -234,8 +232,8 @@ pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<Stri
     } else {
         "Cost a year, per package"
     };
-    let head = ["Read with", "Key", per, "Compared with the best option"];
-    let any_key = cells.iter().any(|c| !c[1].is_empty());
+    let head = ["Read with", "Key", per, "Results"];
+    // Without the key column, what an option still needs is said in the command that records it.
     let build = |with_keys: bool, gutter: usize| {
         let pick = |c: &[String; 4]| -> Vec<String> {
             c.iter()
@@ -255,20 +253,17 @@ pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<Stri
     };
     let fits = |t: &[String]| t.iter().all(|l| len(l) <= width);
     for (with_keys, gutter) in [(true, 3), (true, 2), (false, 3), (false, 2)] {
-        if with_keys && !any_key {
-            continue;
-        }
         let mut t = build(with_keys, gutter);
-        t.extend(notes(&opts));
-        // Without the column, the keys the options read are named once, under the table.
-        if !with_keys && let Some(k) = keys_line(d, &opts).filter(|k| len(k) <= width) {
+        t.extend(notes(&picks));
+        // Without the column, the keys the ready options read are named once, under the table.
+        if !with_keys && let Some(k) = keys_line(d, &entries).filter(|k| len(k) <= width) {
             t.push(k);
         }
         if fits(&t) {
             return t;
         }
     }
-    // Two lines an option: its name and key, then its cost and trade; narrower still, a line each.
+    // Two lines an option: its name and key, then its cost and results; narrower still, a line each.
     let mut out = vec![];
     for (i, c) in cells.iter().enumerate() {
         let first = format!("  {}  {}", i + 1, c[0]);
@@ -294,29 +289,43 @@ pub fn table(d: &Detected, techs: usize, no_key: bool, width: usize) -> Vec<Stri
             out.push(format!("     {}", c[3]));
         }
     }
-    for n in notes(&opts) {
+    for n in notes(&picks) {
         out.extend(wrap(n.trim_start(), width, 5));
     }
     out
 }
 
-/// What Jev and Snap are, each said once under a table that offers it: the names alone tell the reader nothing.
+/// The key column: the variables a ready option reads, or what an option still needs here.
+fn key_cell(d: &Detected, e: Entry) -> String {
+    if e.ready {
+        keys(d, e.pick)
+    } else {
+        needs_cell(d, e.pick)
+    }
+}
+
+/// `needs JEV_API_KEY and OPENAI_API_KEY`.
+fn needs_cell(d: &Detected, p: Pick) -> String {
+    format!("needs {}", needs(d, p).join(" and "))
+}
+
+/// What Jev and Snap are, said once under a table that offers them: the names alone tell the reader nothing.
 fn notes(opts: &[Pick]) -> Vec<String> {
-    let mut out = vec![];
-    if opts.iter().any(|p| matches!(p, Pick::JevKey(_) | Pick::JevCodex)) {
-        out.push("     Jev: a labelling service, used beside the provider that reads the notes.".into());
+    let jev = opts.iter().any(|p| matches!(p, Pick::JevKey(_) | Pick::JevCodex));
+    let snap = opts.iter().any(|p| matches!(p, Pick::SnapKey(_)));
+    match (jev, snap) {
+        (true, true) => vec!["     Jev labels changes and Snap matches them, beside the provider that reads the notes.".into()],
+        (true, false) => vec!["     Jev: a labelling service, used beside the provider that reads the notes.".into()],
+        (false, true) => vec!["     Snap: a matching service, used beside the provider that reads the notes.".into()],
+        (false, false) => vec![],
     }
-    if opts.iter().any(|p| matches!(p, Pick::SnapKey(_))) {
-        out.push("     Snap: a matching service, used beside the provider; fewer changes listed twice.".into());
-    }
-    out
 }
 
 /// The key variables the options read, as one line under a table too narrow for a key column.
-fn keys_line(d: &Detected, opts: &[Pick]) -> Option<String> {
+fn keys_line(d: &Detected, entries: &[Entry]) -> Option<String> {
     let mut names: Vec<String> = vec![];
-    for p in opts {
-        for k in keys(d, *p).split(", ").filter(|k| !k.is_empty()) {
+    for e in entries.iter().filter(|e| e.ready) {
+        for k in keys(d, e.pick).split(", ").filter(|k| !k.is_empty()) {
             if !names.iter().any(|n| n == k) {
                 names.push(k.to_string());
             }
@@ -329,8 +338,8 @@ fn keys_line(d: &Detected, opts: &[Pick]) -> Option<String> {
 
 pub const QUESTION: &str = "How should unstale read new release notes?";
 
-/// The picker as printed, up to its prompt: for an agent the question, the table and the command that records each
-/// answer, or without a usable provider the prompt that says so ([`nothing_lines`]); for a person the [`menu`].
+/// The picker as printed, up to its prompt: for an agent the question, every option and the command that records
+/// each answer; for a person the [`menu`].
 pub fn picker_lines(
     d: &Detected,
     techs: usize,
@@ -338,35 +347,28 @@ pub fn picker_lines(
     reader: Reader,
     width: usize,
 ) -> Vec<String> {
-    // A person gets the menu ([`menu`]), marked at the first option.
     if reader == Reader::Person {
-        return menu(d, techs, no_key, width, None).lines(0);
+        let m = menu(d, techs, no_key, width, None);
+        return m.lines(m.default);
     }
-    let opts = options(d, no_key);
-    if opts.is_empty() {
-        return nothing_lines(d, reader, width);
-    }
-    let mut out = match reader {
-        Reader::Person => vec![QUESTION.to_string()],
-        Reader::Agent => vec![
-            "The user chooses how unstale reads new release notes. Show them these options as printed and ask.".into(),
-            "Never choose for them.".into(),
-        ],
-    };
+    let entries = catalog(d, no_key);
+    let mut out: Vec<String> = vec![
+        "The user chooses how unstale reads new release notes. Show them these options as printed and ask.".into(),
+        "Never choose for them, and never ask them to paste a key.".into(),
+    ];
     out.push(String::new());
     out.extend(table(d, techs, no_key, width));
     out.push(String::new());
-    if reader == Reader::Agent {
-        out.push("Record their answer with the matching command:".into());
-        for (i, p) in opts.iter().enumerate() {
-            out.push(format!(
-                "  {}  unstale setup --inference {}",
-                i + 1,
-                flag_value(d, *p)
-            ));
-        }
-        out.push("Full costs: unstale setup --details".into());
+    out.push("Record their answer with the matching command:".into());
+    for (i, e) in entries.iter().enumerate() {
+        let cmd = format!("unstale setup --inference {}", flag_value(d, e.pick));
+        out.push(if e.ready {
+            format!("  {}  {cmd}", i + 1)
+        } else {
+            format!("  {}  once the user has set up {}: {cmd}", i + 1, needs(d, e.pick).join(" and "))
+        });
     }
+    out.push("Full costs: unstale setup --details".into());
     out
 }
 
@@ -391,15 +393,22 @@ pub fn prompt_default(n: usize, default: usize) -> String {
 
 // ------------------------------------------------------------------------------------------------------------ menu
 
-/// A choice as a person sees it at a terminal: the question, one row an option with the marked one shown `●`, notes
-/// under the rows, and the line that says how to answer. The agent's listing ([`picker_lines`] for
-/// [`Reader::Agent`]) stays a numbered table with the command for each answer.
+/// A choice as a person sees it at a terminal: the question, one row an option with the marked one shown `●`, the
+/// options this machine can use apart from those it cannot yet, notes under the rows, and the line that says how to
+/// answer. At most [`VISIBLE`] rows show at once; the mark moving past them scrolls. The agent's listing
+/// ([`picker_lines`] for [`Reader::Agent`]) stays a numbered table with the command for each answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Menu {
     /// The question and the blank line after it.
     pub head: Vec<String>,
     /// Each option's lines; the first starts with `  ○ `, where the mark goes.
     pub rows: Vec<Vec<String>>,
+    /// A heading before the row at this index.
+    pub groups: Vec<(usize, String)>,
+    /// For each option not set up here, what it needs: said under the rows while it is marked.
+    pub needs: Vec<Option<String>>,
+    /// The width the menu is laid out for.
+    pub width: usize,
     /// Under the rows: what Jev is, a suggestion this machine cannot take.
     pub notes: Vec<String>,
     /// The option marked first, which Enter accepts.
@@ -408,25 +417,66 @@ pub struct Menu {
     pub details: bool,
 }
 
+/// How many options show at once; the rest are a key press away, counted on the line under them.
+pub const VISIBLE: usize = 5;
+
 /// How to answer a menu, where the keys can be read one at a time.
 pub const HINT: &str = "↑↓ to move · Enter to choose · d for details";
 /// [`HINT`] with no details to show.
 pub const HINT_SHORT: &str = "↑↓ to move · Enter to choose";
 
 impl Menu {
-    /// Everything above the line that says how to answer, with the option at `sel` marked.
-    pub fn lines(&self, sel: usize) -> Vec<String> {
-        let mut out = self.head.clone();
-        for (i, r) in self.rows.iter().enumerate() {
-            for (j, l) in r.iter().enumerate() {
-                if j == 0 && i == sel {
-                    out.push(l.replacen('○', "●", 1));
-                } else {
-                    out.push(l.clone());
+    /// The first row shown while the mark is at `sel`.
+    fn top(&self, sel: usize) -> usize {
+        let n = self.rows.len();
+        if n <= VISIBLE {
+            0
+        } else {
+            sel.saturating_sub(VISIBLE - 1).min(n - VISIBLE)
+        }
+    }
+
+    /// The rows in `from..to` with their headings, each first line through `first`; with `needs`, what an option not
+    /// set up here needs under it.
+    fn body(&self, from: usize, to: usize, needs: bool, first: impl Fn(usize, &str) -> String) -> Vec<String> {
+        let mut out = vec![];
+        for i in from..to {
+            if let Some((_, g)) = self.groups.iter().find(|(at, _)| *at == i) {
+                if i != from {
+                    out.push(String::new());
                 }
+                out.push(format!("  {g}"));
+            }
+            for (j, l) in self.rows[i].iter().enumerate() {
+                out.push(if j == 0 { first(i, l) } else { l.clone() });
+            }
+            if let (true, Some(Some(need))) = (needs, self.needs.get(i)) {
+                out.extend(wrap(&format!("needs {need}"), self.width, 6));
             }
         }
+        out
+    }
+
+    /// Everything above the line that says how to answer, with the option at `sel` marked and the rows around it.
+    pub fn lines(&self, sel: usize) -> Vec<String> {
+        let n = self.rows.len();
+        let top = self.top(sel);
+        let end = (top + VISIBLE).min(n);
+        let mut out = self.head.clone();
+        if top > 0 {
+            out.push(format!("    ↑ {top} more"));
+        }
+        out.extend(self.body(top, end, false, |i, l| {
+            if i == sel { l.replacen('○', "●", 1) } else { l.to_string() }
+        }));
+        if end < n {
+            out.push(format!("    ↓ {} more", n - end));
+        }
         out.extend(self.notes.iter().cloned());
+        if let Some(Some(need)) = self.needs.get(sel) {
+            out.push(String::new());
+            out.extend(wrap(&format!("Needs {need}. Enter shows how to set it up."), self.width, 2));
+        }
         out.push(String::new());
         out
     }
@@ -440,27 +490,21 @@ impl Menu {
         }
     }
 
-    /// [`Menu::lines`] for a typed answer: each option numbered where the mark would go, as the prompt under it asks
-    /// for a number (a `●` there would read as a mark the keys could move).
+    /// [`Menu::lines`] for a typed answer: every option, numbered where the mark would go, as the prompt under it
+    /// asks for a number (a `●` there would read as a mark the keys could move).
     pub fn typed_lines(&self) -> Vec<String> {
         let mut out = self.head.clone();
-        for (i, r) in self.rows.iter().enumerate() {
-            for (j, l) in r.iter().enumerate() {
-                out.push(if j == 0 { l.replacen('○', &(i + 1).to_string(), 1) } else { l.clone() });
-            }
-        }
+        out.extend(self.body(0, self.rows.len(), true, |i, l| {
+            l.replacen('○', &(i + 1).to_string(), 1)
+        }));
         out.extend(self.notes.iter().cloned());
         out.push(String::new());
         out
     }
 
-    /// The typed answer's prompt, where keys cannot be read one at a time (as before the menu).
+    /// The typed answer's prompt, where keys cannot be read one at a time.
     pub fn typed_prompt(&self) -> String {
-        if self.details {
-            prompt_default(self.rows.len(), self.default)
-        } else {
-            nothing_prompt()
-        }
+        prompt_default(self.rows.len(), self.default)
     }
 }
 
@@ -474,49 +518,19 @@ fn menu_name(p: Pick, no_key: bool) -> String {
     }
 }
 
-/// The one cost, with its unit: `≈ $2.43 a year`. Codex use is the user's plan, not a bill: no extra cost, its
-/// tokens in the details and in `unstale status`.
+/// The one cost, with its unit: `≈ $2.43 a year`. Codex use is the user's plan, not a bill: its tokens are in the
+/// details and in `unstale status`.
 fn menu_cost(q: &Quote, techs: usize) -> String {
     let per = if techs > 0 { "a year" } else { "a year per package" };
     let years = techs.max(1) as f64;
     if q.usd > 0.0 {
         format!("≈ {} {per}", usd(q.usd * years))
     } else if q.codex_tokens > 0 {
-        "no extra cost".into()
+        "your Codex plan".into()
     } else if q.agent_tokens > 0 {
         format!("≈ {} {per}", cost(q, years))
     } else {
         "free".into()
-    }
-}
-
-/// What the option trades, in words that stand without a column heading.
-fn menu_trade(p: Pick, q: &Quote, no_key: bool) -> String {
-    if matches!(p, Pick::Codex | Pick::JevCodex) {
-        return "your Codex plan, up to the limit you set".into();
-    }
-    if p == Pick::None && !no_key {
-        return match NO_PROVIDER_SHARE {
-            Some(n) => without_cell(n),
-            None => WITHOUT.into(),
-        };
-    }
-    let figure = match q.quality {
-        Quality::Best => "the best option".into(),
-        Quality::Same => "about the same as the best option".into(),
-        Quality::Unmeasured => "not measured yet".into(),
-        Quality::Share { pct, of, .. } => format!("≈ {pct}% of the best option's {of}"),
-        Quality::MoreWrong {
-            wrong, best_wrong, ..
-        } => format!(
-            "≈ {}% less precise labels",
-            wrong.saturating_sub(best_wrong)
-        ),
-    };
-    if q.labels_and_matching_measured {
-        figure
-    } else {
-        format!("{figure}; {REST_UNMEASURED}")
     }
 }
 
@@ -552,24 +566,27 @@ fn menu_rows(cells: &[Vec<String>], width: usize) -> Vec<Vec<String>> {
         .collect()
 }
 
-/// The picker for a person: one row an option, `suggested` (this repository's suggestion, where this machine offers
-/// it) marked first and tagged. With nothing usable, the choice between setting one up and going without.
+/// Heading over the options this machine can use.
+pub const READY: &str = "Ready here";
+/// Heading over the options it cannot use yet.
+pub const SET_UP_FIRST: &str = "Set up first";
+
+/// The picker for a person: every option, those this machine can use first, the best of them marked; or
+/// `suggested` (this repository's suggestion, where this machine can use it) marked and tagged. An option not set up
+/// here says what it needs; choosing it shows how ([`set_up_for`]).
 pub fn menu(d: &Detected, techs: usize, no_key: bool, width: usize, suggested: Option<usize>) -> Menu {
-    let opts = options(d, no_key);
-    if opts.is_empty() {
-        return nothing_menu(d, width);
-    }
-    let cells: Vec<Vec<String>> = opts
+    let entries = catalog(d, no_key);
+    let cells: Vec<Vec<String>> = entries
         .iter()
         .enumerate()
-        .map(|(i, p)| {
-            let q = quote(*p, no_key);
+        .map(|(i, e)| {
+            let q = quote(e.pick, no_key);
             vec![
-                menu_name(*p, no_key),
+                menu_name(e.pick, no_key),
                 menu_cost(&q, techs),
-                menu_trade(*p, &q, no_key),
+                results(e.pick, &q, no_key),
                 if suggested == Some(i) {
-                    "suggested by this repo".into()
+                    "this repo's pick".into()
                 } else {
                     String::new()
                 },
@@ -577,7 +594,8 @@ pub fn menu(d: &Detected, techs: usize, no_key: bool, width: usize, suggested: O
         })
         .collect();
     let rows = menu_rows(&cells, width);
-    let mut notes: Vec<String> = notes(&opts)
+    let picks: Vec<Pick> = entries.iter().map(|e| e.pick).collect();
+    let mut notes: Vec<String> = notes(&picks)
         .iter()
         .flat_map(|n| wrap(n.trim_start(), width, 4))
         .collect();
@@ -585,36 +603,24 @@ pub fn menu(d: &Detected, techs: usize, no_key: bool, width: usize, suggested: O
     if !notes.is_empty() && rows.iter().any(|r| r.len() > 1) {
         notes.insert(0, String::new());
     }
-    Menu {
-        head: vec![QUESTION.to_string(), String::new()],
-        rows,
-        notes,
-        default: suggested.unwrap_or(0),
-        details: true,
-    }
-}
-
-/// With no key and no Codex: the choice [`nothing_lines`] gives, as a menu.
-fn nothing_menu(d: &Detected, width: usize) -> Menu {
-    let lines = nothing_lines(d, Reader::Person, width);
-    // The lead, up to the blank line before the options.
-    let blank = lines.iter().position(|l| l.is_empty()).unwrap_or(0);
-    let mut head: Vec<String> = lines[..blank].to_vec();
-    head.push(String::new());
-    let left = match NO_PROVIDER_SHARE {
-        Some(n) => format!("free · {WITHOUT}: {}", without_cell(n)),
-        None => format!("free · {WITHOUT}"),
+    let ready = entries.iter().filter(|e| e.ready).count();
+    let groups = if ready < entries.len() {
+        vec![(0, READY.to_string()), (ready, SET_UP_FIRST.to_string())]
+    } else {
+        vec![]
     };
-    let cells = vec![
-        vec!["Set one up".to_string(), "shows the one line to add".into()],
-        vec!["Not now".to_string(), left],
-    ];
     Menu {
-        head,
-        rows: menu_rows(&cells, width),
-        notes: vec![],
-        default: 0,
-        details: false,
+        head: wrap(QUESTION, width, 0).into_iter().chain([String::new()]).collect(),
+        rows,
+        groups,
+        needs: entries
+            .iter()
+            .map(|e| (!e.ready).then(|| needs(d, e.pick).join(" and ")))
+            .collect(),
+        width,
+        notes,
+        default: suggested.unwrap_or_else(|| best_ready(&entries)),
+        details: true,
     }
 }
 
@@ -756,145 +762,36 @@ pub fn wrap(text: &str, width: usize, indent: usize) -> Vec<String> {
         .collect()
 }
 
-// --------------------------------------------------------------------------------------------------- nothing usable
+// ------------------------------------------------------------------------------------------------------- set up
 
-/// The prompt's question when nothing can read release notes.
-pub fn nothing_prompt() -> String {
-    "Enter for 1, or 2: ".into()
-}
-
-/// Why Codex, though installed, cannot be used, as a clause: ` (Codex is not logged in)`.
-fn codex_aside(d: &Detected) -> String {
-    match &d.codex {
-        CodexState::NotReady(why) => {
-            format!(" ({})", why.split(". ").next().unwrap_or(why))
-        }
-        _ => String::new(),
-    }
-}
-
-/// Numbered rows of a name and what it means, as two columns when every row fits `width`, else the meaning under
-/// the name, wrapped.
-fn choices(rows: &[(&str, String)], width: usize) -> Vec<String> {
-    let table: Vec<(String, Vec<String>)> = rows
-        .iter()
-        .enumerate()
-        .map(|(i, (name, what))| (format!("  {}", i + 1), vec![name.to_string(), what.clone()]))
-        .collect();
-    let side = columns(&table, 3);
-    if side.iter().all(|l| len(l) <= width) {
-        return side;
-    }
-    let mut out = vec![];
-    for (i, (name, what)) in rows.iter().enumerate() {
-        out.push(format!("  {}  {name}", i + 1));
-        out.extend(wrap(what, width, 5));
-    }
-    out
-}
-
-/// With no key and no Codex: a choice between setting one up and going without, with what going without leaves.
-pub fn nothing_lines(d: &Detected, reader: Reader, width: usize) -> Vec<String> {
-    let left = match NO_PROVIDER_SHARE {
-        Some(n) => format!("free · {WITHOUT}: {}", without_cell(n)),
-        None => format!("free · {WITHOUT}"),
-    };
-    let aside = codex_aside(d);
-    let mut out = match reader {
-        Reader::Person => wrap(
-            &format!(
-                "unstale reads new release notes with a model, on your own key or your Codex plan. None is set up here{aside}."
-            ),
-            width.min(82),
-            0,
-        ),
-        Reader::Agent => vec![
-            "unstale reads new release notes with a model, on the user's own key or Codex plan."
-                .to_string(),
-            format!(
-                "None is set up here{aside}. Tell the user and ask which they want. Never ask them to paste a key."
-            ),
-        ],
-    };
-    out.push(String::new());
-    out.extend(choices(
-        &[
-            (
-                "Set one up",
-                match reader {
-                    Reader::Person => "shows the one line to add".into(),
-                    Reader::Agent => "one line to add, listed below".into(),
-                },
-            ),
-            ("Not now", left),
-        ],
-        width,
-    ));
-    out.push(String::new());
-    if reader == Reader::Agent {
-        out.extend(set_up_lines(d, reader, width));
-        out.push(String::new());
-        out.push("For 2: unstale setup --inference none".into());
-    }
-    out
-}
-
-/// How to set a provider up: the one line to add for each, and the command to run after.
-pub fn set_up_lines(d: &Detected, reader: Reader, width: usize) -> Vec<String> {
-    let (lead, whose_plan) = match reader {
-        Reader::Person => (
-            "Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:",
-            "your",
-        ),
-        Reader::Agent => (
-            "For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:",
-            "their",
-        ),
-    };
-    let mut out = wrap(lead, width, 0);
-    out.push(String::new());
-    let rows: Vec<(String, Vec<String>)> = [
-        Route::OpenAi,
-        Route::Vercel,
-        Route::OpenRouter,
-        Route::Anthropic,
-    ]
-    .into_iter()
-    .map(|r| {
-        (
-            format!("  {}=<key>", default_var(r)),
-            vec![route_name(r).to_string()],
-        )
-    })
-    .collect();
-    let named = columns(&rows, 3);
-    if named.iter().all(|l| len(l) <= width) {
-        out.extend(named);
-    } else {
-        // Too narrow for the provider's name beside it: the variable says which.
-        out.extend(rows.into_iter().map(|(line, _)| line));
-    }
-    out.push(String::new());
-    out.extend(wrap(
-        &match &d.codex {
-            CodexState::Ready => format!("Or use {whose_plan} Codex plan: run `unstale setup`."),
-            CodexState::NotReady(why) => format!("Or use {whose_plan} Codex plan: {why}"),
-            CodexState::Absent => {
-                format!("Or use {whose_plan} Codex plan: install Codex and run `codex login`.")
-            }
-        },
+/// After an option this machine cannot use yet is chosen: what to set up for it, a step a line, and the command that
+/// asks again. A key goes in the shell profile or this repository's `.env`; an OpenAI-compatible key may be any of
+/// the three.
+pub fn set_up_for(d: &Detected, p: Pick, width: usize) -> Vec<String> {
+    let mut out = wrap(
+        &format!("To read with {}, set it up, then run `unstale setup`:", menu_name(p, false)),
         width,
         0,
-    ));
-    if d.has(Route::Jev) {
-        out.extend(wrap(
-            &format!(
-                "{} is set, but Jev only labels changes: reading them needs one of the above too.",
-                d.var(Route::Jev).unwrap_or("JEV_API_KEY")
-            ),
-            width,
-            0,
-        ));
+    );
+    out.push(String::new());
+    for need in needs(d, p) {
+        let line = match need.as_str() {
+            "Codex" => "install Codex and run `codex login`".to_string(),
+            "`codex login`" => match &d.codex {
+                CodexState::NotReady(why) => why.clone(),
+                _ => "run `codex login`".to_string(),
+            },
+            var if route_of(var).is_some_and(|r| matches!(r, Route::Vercel | Route::OpenAi | Route::OpenRouter)) => {
+                let others: Vec<&str> = [Route::OpenAi, Route::Vercel, Route::OpenRouter]
+                    .into_iter()
+                    .map(default_var)
+                    .filter(|v| *v != var)
+                    .collect();
+                format!("add {var}=<key> to your shell profile or this repo's .env (or {})", others.join(" or "))
+            }
+            var => format!("add {var}=<key> to your shell profile or this repo's .env"),
+        };
+        out.extend(wrap(&line, width, 2));
     }
     out
 }
@@ -903,7 +800,7 @@ pub fn set_up_lines(d: &Detected, reader: Reader, width: usize) -> Vec<String> {
 
 /// `unstale setup --details`: every figure behind the table, an option at a time.
 pub fn details_lines(d: &Detected, techs: usize, no_key: bool) -> Vec<String> {
-    let opts = options(d, no_key);
+    let entries = catalog(d, no_key);
     let mut out = vec![
         "Costs are estimates from evaluation runs, billed by the provider to your key or plan."
             .to_string(),
@@ -913,22 +810,11 @@ pub fn details_lines(d: &Detected, techs: usize, no_key: bool) -> Vec<String> {
         1 => out.push("This repo has 1 package unstale follows.".into()),
         n => out.push(format!("This repo has {n} packages unstale follows.")),
     }
-    if opts.is_empty() {
-        out.push(String::new());
-        out.extend(nothing_lines(d, Reader::Person, WIDTH));
-        out.extend(set_up_lines(d, Reader::Person, WIDTH));
-        return out;
-    }
-    if !opts.iter().any(|p| matches!(p, Pick::JevKey(_))) {
-        out.push(
-            "The best option, which the others are compared with: Jev, a labelling service (JEV_API_KEY),".into(),
-        );
-        out.push("beside an OpenAI-compatible key.".into());
-    }
-    for (i, p) in opts.iter().enumerate() {
+    for (i, e) in entries.iter().enumerate() {
+        let p = &e.pick;
         let q = quote(*p, no_key);
         out.push(String::new());
-        let k = keys(d, *p);
+        let k = key_cell(d, *e);
         let full = match p {
             Pick::JevKey(r) => format!("{} + {}", route_name(Route::Jev), route_name(*r)),
             Pick::JevCodex => format!("{} + Codex plan", route_name(Route::Jev)),
@@ -1012,15 +898,12 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
         } => {
             out.push((
                 "results",
-                format!(
-                    "as many {found} found as the best option; ≈ {}% less precise",
-                    wrong.saturating_sub(best_wrong)
-                ),
+                format!("as many {found} found as the best option"),
             ));
             out.push((
                 "",
                 format!(
-                    "≈ {}% of {of} right, against {}%",
+                    "≈ {}% of {of} right, against {}% for the best option",
                     100 - wrong,
                     100 - best_wrong
                 ),
@@ -1039,7 +922,7 @@ fn quality_detail(p: Pick, q: &Quote, no_key: bool) -> Vec<(&'static str, String
         out.push((
             "repeats",
             format!(
-                "≈ {} more {} listed twice per package, per year",
+                "≈ {} more {} listed twice per package, per year than the best option",
                 q.more_duplicates,
                 if q.more_duplicates == 1 { "change" } else { "changes" }
             ),

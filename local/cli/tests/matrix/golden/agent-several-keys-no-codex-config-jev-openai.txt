@@ -74,21 +74,32 @@ Cache                 under 1 MB of 100 MB
 
 $ unstale setup  (no terminal)
 The user chooses how unstale reads new release notes. Show them these options as printed and ask.
-Never choose for them.
+Never choose for them, and never ask them to paste a key.
 
-     Read with                 Cost a year, this repo   Compared with the best option
-  1  Jev + Vercel AI Gateway   ≈ $0.11                  the best option
-  2  Vercel AI Gateway         ≈ $0.16                  ≈ 3% less precise labels
-  3  Anthropic                 ≈ $0.23                  ≈ 90% of its changes
-  4  Not now                   free                     ≈ 25% of a full report's findings
-     Jev: a labelling service, used beside the provider that reads the notes.
-     Keys: JEV_API_KEY, AI_GATEWAY_API_KEY, ANTHROPIC_API_KEY
+  1  Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY)
+     ≈ $0.11 a year · best results
+  2  Vercel AI Gateway (AI_GATEWAY_API_KEY)
+     ≈ $0.16 a year · ≈ 89% of labels right (best: 92%)
+  3  Anthropic (ANTHROPIC_API_KEY)
+     ≈ $0.23 a year · ≈ 90% of best results
+  4  Not now
+     free · ≈ 25% of a full report's findings
+  5  Jev + Codex plan (needs Codex)
+     ≈ $0.053 + 500k Codex tokens a year · ≈ 80% of best results
+  6  Snap + Vercel AI Gateway (needs SUBQ_API_KEY)
+     ≈ $0.11 a year · ≈ 89% of labels right (best: 92%)
+  7  Codex plan (needs Codex)
+     ≈ 2.3M Codex tokens a year · ≈ 80% of best results; rest not measured
+     Jev labels changes and Snap matches them, beside the provider that reads the notes.
 
 Record their answer with the matching command:
   1  unstale setup --inference jev+env:AI_GATEWAY_API_KEY
   2  unstale setup --inference env:AI_GATEWAY_API_KEY
   3  unstale setup --inference env:ANTHROPIC_API_KEY
   4  unstale setup --inference none
+  5  once the user has set up Codex: unstale setup --inference jev+codex
+  6  once the user has set up SUBQ_API_KEY: unstale setup --inference subq+env:AI_GATEWAY_API_KEY
+  7  once the user has set up Codex: unstale setup --inference codex
 Full costs: unstale setup --details
 This repo's config suggests Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY), which is not one of the options here.
 

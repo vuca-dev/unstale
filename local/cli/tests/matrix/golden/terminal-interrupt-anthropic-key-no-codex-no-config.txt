@@ -4,8 +4,16 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-  ● Anthropic key   ≈ $0.23 a year   ≈ 90% of the best option's changes
-  ○ Not now         free             ≈ 25% of a full report's findings
+  Ready here
+  ● Anthropic key       ≈ $0.23 a year    ≈ 90% of best results
+  ○ Not now             free              ≈ 25% of a full report's findings
+
+  Set up first
+  ○ Jev + OpenAI key    ≈ $0.11 a year    best results
+  ○ Jev + Codex plan    ≈ $0.053 a year   ≈ 80% of best results
+  ○ Snap + OpenAI key   ≈ $0.11 a year    ≈ 89% of labels right (best: 92%)
+    ↓ 2 more
+    Jev labels changes and Snap matches them, beside the provider that reads the notes.
 
 ↑↓ to move · Enter to choose · d for details
 [interrupted]

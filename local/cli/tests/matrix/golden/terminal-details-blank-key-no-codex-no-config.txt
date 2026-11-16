@@ -2,24 +2,84 @@
 # keys: blank-key · Codex: no-codex · run: terminal-details · repo config: none · client: fresh · provider: answers
 
 $ unstale init --wait 0 --no-animation
-unstale reads new release notes with a model, on your own key or your Codex plan.
-None is set up here.
+Costs are estimates from evaluation runs, billed by the provider to your key or plan.
+This repo has 3 packages unstale follows.
 
-  ● Set one up
-    shows the one line to add
-  ○ Not now
-    free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
+1  Not now
+   cost     free: no model is called
+   results  deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
 
-↑↓ to move · Enter to choose
+2  Jev labelling API + OpenAI (needs JEV_API_KEY and OPENAI_API_KEY)
+   per package, per year  $0.036
+   this repo, a year      ≈ $0.11
+   first sync, once       ≈ $0.11
+   results                the best option: the most complete
 
-Add one of these lines to your shell profile or this repo's .env, then run `unstale setup`:
+3  Jev labelling API + Codex plan (needs JEV_API_KEY and Codex)
+   per package, per year  $0.018 + 170k Codex tokens ($0.015 at API prices)
+   this repo, a year      ≈ $0.053 + 500k Codex tokens
+   first sync, once       ≈ $0.053 + 500k Codex tokens
+   results                somewhat less complete: ≈ 80% of the best option's changes
+                          its changes are right as often as the best option's
 
-  OPENAI_API_KEY=<key>      OpenAI
-  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
-  OPENROUTER_API_KEY=<key>  OpenRouter
-  ANTHROPIC_API_KEY=<key>   Anthropic
+4  Snap + OpenAI (needs SUBQ_API_KEY and OPENAI_API_KEY)
+   per package, per year  $0.038
+   this repo, a year      ≈ $0.11
+   first sync, once       ≈ $0.11
+   results                as many breaking changes found as the best option
+                          ≈ 89% of breaking-change flags right, against 92% for the best option
+                          on short release notes ≈ 62%, against 75% (42 flags)
+                          on upgrade guides ≈ 93%, against 95% (228 flags)
+   repeats                ≈ 1 more change listed twice per package, per year than the best option
 
-Or use your Codex plan: install Codex and run `codex login`.
+5  OpenAI (needs OPENAI_API_KEY)
+   per package, per year  $0.052
+   this repo, a year      ≈ $0.16
+   first sync, once       ≈ $0.16
+   results                as many breaking changes found as the best option
+                          ≈ 89% of breaking-change flags right, against 92% for the best option
+                          on short release notes ≈ 62%, against 75% (42 flags)
+                          on upgrade guides ≈ 93%, against 95% (228 flags)
+   repeats                ≈ 4 more changes listed twice per package, per year than the best option
+
+6  Codex plan (needs Codex)
+   per package, per year  750k Codex tokens ($0.057 at API prices)
+   this repo, a year      ≈ 2.3M Codex tokens
+   first sync, once       ≈ 2.3M Codex tokens
+   results                somewhat less complete: ≈ 80% of the best option's changes
+                          its changes are right as often as the best option's
+                          breaking-change flags and repeats through Codex: not measured yet
+
+7  Anthropic (needs ANTHROPIC_API_KEY)
+   per package, per year  $0.075
+   this repo, a year      ≈ $0.23
+   first sync, once       ≈ $0.23
+   results                somewhat less complete: ≈ 90% of the best option's changes
+                          fewer from upgrade guides
+   repeats                ≈ 23 more changes listed twice per package, per year than the best option
+
+How should unstale read new release notes?
+
+  Ready here
+  ○ Not now             free              ≈ 25% of a full report's findings
+
+  Set up first
+  ● Jev + OpenAI key    ≈ $0.11 a year    best results
+  ○ Jev + Codex plan    ≈ $0.053 a year   ≈ 80% of best results
+  ○ Snap + OpenAI key   ≈ $0.11 a year    ≈ 89% of labels right (best: 92%)
+  ○ OpenAI key          ≈ $0.16 a year    ≈ 89% of labels right (best: 92%)
+    ↓ 2 more
+    Jev labels changes and Snap matches them, beside the provider that reads the notes.
+
+  Needs JEV_API_KEY and OPENAI_API_KEY. Enter shows how to set it up.
+
+↑↓ to move · Enter to choose · d for details
+
+To read with Jev + OpenAI key, set it up, then run `unstale setup`:
+
+  add JEV_API_KEY=<key> to your shell profile or this repo's .env
+  add OPENAI_API_KEY=<key> to your shell profile or this repo's .env (or AI_GATEWAY_API_KEY or
+  OPENROUTER_API_KEY)
 
   ✓ shop · Personal setup ready
   Next: run unstale-review in your coding agent · copyable prompt below.

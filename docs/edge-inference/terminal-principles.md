@@ -48,6 +48,16 @@ less. Quiet and well ordered, not loud: no banners, no "LOOK HERE".
 12. **Elegance is alignment and restraint.** Whitespace, columns and at most one accent do the work. No boxes,
     banners, capitals or emoji. A line that needs more than about 100 characters is carrying detail that belongs
     elsewhere.
+13. **Every figure names what it is measured against.** No bare comparative ("≈ 3% less precise", "free with
+    less"): a first-time reader asks "than what?". Give the option's own figure beside the reference's ("≈ 89% of
+    labels right (best: 92%)"), or a share of a reference that is on screen ("≈ 80% of best results", "≈ 25% of a full
+    report's findings").
+14. **Show the whole choice; mark the best you can take.** A picker lists every option, those this machine can use
+    first and those it cannot yet under their own heading, each with what it still needs. The best usable option is
+    marked by default. A few rows show at once and the rest scroll; choosing one that is not set up shows how to set
+    it up and records nothing.
+15. **Lead with the happy path.** Examples (the site, the README, docs) show the best option set up and chosen, not a
+    fallback and its loss.
 
 ## Applied to this sprint's surfaces
 
@@ -69,26 +79,25 @@ less. Quiet and well ordered, not loud: no banners, no "LOOK HERE".
 | Codex hook trust | Left to Codex's own prompt | One line at install naming the step, since the user must act (1) |
 | `unstale init` after the choice | Confirmation line, then the report | Keep the one confirmation line; the report follows unchanged (2) |
 
-## The picker, as a sketch (wording is the CEO's to refine in the gallery)
+## The picker (15 November 2026)
 
 ```
 How should unstale read new release notes?
 
-  1  OpenAI           OPENAI_API_KEY    about $0.18 a year here    finds ≈ 93% of what the best option finds
-  2  Not now                            free                       security advisories and deprecations only: ≈ N% of changes
+  Ready here
+  ● OpenAI key          ≈ $1.98 a year    ≈ 89% of labels right (best: 92%)
+  ○ Not now             free              ≈ 25% of a full report's findings
 
-Enter for 1, a number to choose, or `unstale setup --details` for the full costs:
+  Set up first
+  ○ Jev + OpenAI key    ≈ $1.36 a year    best results
+  ○ Jev + Codex plan    ≈ $0.68 a year    ≈ 80% of best results
+  ○ Snap + OpenAI key   ≈ $1.44 a year    ≈ 89% of labels right (best: 92%)
+    ↓ 2 more
+
+↑↓ to move · Enter to choose · d for details
 ```
 
-With nothing usable:
-
-```
-unstale reads new release notes with a model, on your own key or your Codex plan. None is set up here.
-
-  1  Set one up       shows the one line to add, then run `unstale setup`
-  2  Not now          free    security advisories and deprecations only: ≈ N% of changes
-
-Enter for 1, or a number to choose:
-```
-
-`N` is measured, not guessed (the no-key eval reports the share of real finds that need no release-note text).
+Five rows show at once. On a row under "Set up first" the line under the list names what it needs
+(`Needs JEV_API_KEY. Enter shows how to set it up.`). The agent's listing has the same rows, numbered, with the command
+for each and, for an option not set up, what the user sets first. Replaced: one row per usable option with an
+unanchored trade ("≈ 3% less precise labels"), and a separate "Set one up / Not now" prompt when nothing was usable.

@@ -44,7 +44,8 @@ npm install -g @unstale/cli      # or: brew install vuca-dev/tap/unstale
 ```
 
 `init` asks once how to read new release notes and shows the cost first: about $0.05 a year per package on your own
-key, nothing extra on a Codex plan, or free with less ([Reading new release notes](#reading-new-release-notes)).
+key, nothing extra on a Codex plan, or free for about 25% of what a full report finds
+([Reading new release notes](#reading-new-release-notes)).
 
 Building from source: [CONTRIBUTING.md](CONTRIBUTING.md).
 

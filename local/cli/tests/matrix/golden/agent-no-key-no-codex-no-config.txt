@@ -73,24 +73,32 @@ Release notes         not read: no provider chosen · `unstale setup` shows the 
 Cache                 under 1 MB of 100 MB
 
 $ unstale setup  (no terminal)
-unstale reads new release notes with a model, on the user's own key or Codex plan.
-None is set up here. Tell the user and ask which they want. Never ask them to paste a key.
+The user chooses how unstale reads new release notes. Show them these options as printed and ask.
+Never choose for them, and never ask them to paste a key.
 
-  1  Set one up
-     one line to add, listed below
-  2  Not now
-     free · deprecations, unmaintained packages and advisories: ≈ 25% of a full report's findings
+     Read with          Cost a year, this repo         Results
+  1  Not now            free                           ≈ 25% of a full report's findings
+  2  Jev + OpenAI       ≈ $0.11                        best results
+  3  Jev + Codex plan   ≈ $0.053 + 500k Codex tokens   ≈ 80% of best results
+  4  Snap + OpenAI      ≈ $0.11                        ≈ 89% of labels right (best: 92%)
+  5  OpenAI             ≈ $0.16                        ≈ 89% of labels right (best: 92%)
+  6  Codex plan         ≈ 2.3M Codex tokens            ≈ 80% of best results; rest not measured
+  7  Anthropic          ≈ $0.23                        ≈ 90% of best results
+     Jev labels changes and Snap matches them, beside the provider that reads the notes.
 
-For 1, they add one line to their shell profile or this repo's .env, then you run `unstale setup`:
+Record their answer with the matching command:
+  1  unstale setup --inference none
+  2  once the user has set up JEV_API_KEY and OPENAI_API_KEY: unstale setup --inference jev+env:OPENAI_API_KEY
+  3  once the user has set up JEV_API_KEY and Codex: unstale setup --inference jev+codex
+  4  once the user has set up SUBQ_API_KEY and OPENAI_API_KEY: unstale setup --inference subq+env:OPENAI_API_KEY
+  5  once the user has set up OPENAI_API_KEY: unstale setup --inference env:OPENAI_API_KEY
+  6  once the user has set up Codex: unstale setup --inference codex
+  7  once the user has set up ANTHROPIC_API_KEY: unstale setup --inference env:ANTHROPIC_API_KEY
+Full costs: unstale setup --details
 
-  OPENAI_API_KEY=<key>      OpenAI
-  AI_GATEWAY_API_KEY=<key>  Vercel AI Gateway
-  OPENROUTER_API_KEY=<key>  OpenRouter
-  ANTHROPIC_API_KEY=<key>   Anthropic
-
-Or use their Codex plan: install Codex and run `codex login`.
-
-For 2: unstale setup --inference none
+# the agent showed the options and asked; the user chose option 1
+$ unstale setup --inference none  (no terminal)
+Saved for you: no release notes read; deprecations, unmaintained packages and advisories only.
 
 $ unstale sync  (no terminal)
 next: 2 upstream changes on file, nothing new
@@ -134,7 +142,7 @@ $ unstale status --wait 0 --no-animation  (no terminal)
   files and trade-offs. Return proposals only; do not edit files.
   
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Release notes         not read: no provider chosen · `unstale setup` shows the options
+Release notes         not read, by your user config · `unstale setup` changes it
 Cache                 under 1 MB of 100 MB
 
 # contacted

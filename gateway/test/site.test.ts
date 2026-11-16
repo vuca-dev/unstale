@@ -57,10 +57,13 @@ test("a package page lists majors newest first, breaking changes before fixes, w
   expect(home).toContain("npx @unstale/cli init");
   // The first run's question, and the trade stated on the page and in its Markdown twin.
   expect(home).toContain("How should unstale read new release notes?");
-  expect(home).toContain("  ● OpenAI key   ≈ $1.98 a year   ≈ 3% less precise labels");
-  expect(home).toContain("  ○ Not now      free             ≈ 25% of a full report&#39;s findings");
+  // The happy path: the best option set up here and marked, every other option listed with its own figures.
+  expect(home).toContain("  ● Jev + OpenAI key    ≈ $1.36 a year    best results");
+  expect(home).toContain("  ○ OpenAI key          ≈ $1.98 a year    ≈ 89% of labels right (best: 92%)");
+  expect(home).toContain("  ○ Not now             free              ≈ 25% of a full report&#39;s findings");
+  expect(home).not.toContain("less precise");
   expect(home).toContain("↑↓ to move · Enter to choose · d for details");
-  expect(home).toContain("Saved for you: OpenAI (OPENAI_API_KEY) reads release notes.");
+  expect(home).toContain("Saved for you: Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY) reads release notes.");
   expect(home).not.toContain("Enter for 1");
   // Found for the need, safe to try, and proof in order: merges by other projects before our own comparison.
   const llms = readFileSync(join(site, "llms.txt"), "utf8");

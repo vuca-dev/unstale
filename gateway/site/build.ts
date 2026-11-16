@@ -309,17 +309,25 @@ export function packageMarkdown(p: Package): string {
 const NO_PROVIDER_SHARE = 25;
 
 // Example `unstale init` output on a Next.js and Prisma app, trimmed, in the CLI's tones. The question is the first
-// run's, as the client prints it with one OpenAI key set and 38 packages followed (the figures of
-// `local/cli/src/setup/golden/openai-only.txt`).
+// run's on the happy path, as the client prints it with the best option's keys set and 38 packages followed (the
+// figures of `local/cli/src/setup/golden/jev-and-openai.txt`).
 const TERMINAL: [string, string][] = [
   ["cmd", "$ npx @unstale/cli init"],
   ["accent", "How should unstale read new release notes?"],
   ["", ""],
-  ["body", "  ● OpenAI key   ≈ $1.98 a year   ≈ 3% less precise labels"],
-  ["body", `  ○ Not now      free             ≈ ${NO_PROVIDER_SHARE}% of a full report's findings`],
+  ["muted", "  Ready here"],
+  ["body", "  ● Jev + OpenAI key    ≈ $1.36 a year    best results"],
+  ["body", "  ○ OpenAI key          ≈ $1.98 a year    ≈ 89% of labels right (best: 92%)"],
+  ["body", `  ○ Not now             free              ≈ ${NO_PROVIDER_SHARE}% of a full report's findings`],
+  ["", ""],
+  ["muted", "  Set up first"],
+  ["body", "  ○ Jev + Codex plan    ≈ $0.68 a year    ≈ 80% of best results"],
+  ["body", "  ○ Snap + OpenAI key   ≈ $1.44 a year    ≈ 89% of labels right (best: 92%)"],
+  ["muted", "    ↓ 2 more"],
+  ["muted", "    Jev labels changes and Snap matches them, beside the provider that reads the notes."],
   ["", ""],
   ["muted", "↑↓ to move · Enter to choose · d for details"],
-  ["muted", "Saved for you: OpenAI (OPENAI_API_KEY) reads release notes."],
+  ["muted", "Saved for you: Jev + OpenAI (JEV_API_KEY, OPENAI_API_KEY) reads release notes."],
   ["", ""],
   ["fresh", "✓ my-app · Personal setup ready"],
   ["accent", "Next: run unstale-review in your coding agent · copyable prompt below."],
