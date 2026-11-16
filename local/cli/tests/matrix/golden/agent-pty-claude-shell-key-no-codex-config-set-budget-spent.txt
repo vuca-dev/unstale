@@ -69,11 +69,11 @@ The user chooses how unstale reads new release notes. Show them these options as
 Never choose for them, and never ask them to paste a key.
 
      Read with          Cost a year, this repo         Results
-  1  OpenAI             ≈ $0.16                        ≈ 89% of labels right (best: 92%)
+  1  OpenAI             ≈ $0.16                        ≈ 97% of best results
   2  Not now            free                           ≈ 25% of a full report's findings
   3  Jev + OpenAI       ≈ $0.11                        best results
   4  Jev + Codex plan   ≈ $0.053 + 500k Codex tokens   ≈ 80% of best results
-  5  Snap + OpenAI      ≈ $0.11                        ≈ 89% of labels right (best: 92%)
+  5  Snap + OpenAI      ≈ $0.11                        ≈ 97% of best results
   6  Codex plan         ≈ 2.3M Codex tokens            ≈ 80% of best results; rest not measured
   7  Anthropic          ≈ $0.23                        ≈ 90% of best results
      Jev labels changes and Snap matches them, beside the provider that reads the notes.

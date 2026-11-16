@@ -1,13 +1,13 @@
 How should unstale read new release notes?
 
-  Ready here
+  Found installed locally
   ● Jev + OpenAI key    ≈ $0.43 a year    best results
-  ○ OpenAI key          ≈ $0.62 a year    ≈ 89% of labels right (best: 92%)
+  ○ OpenAI key          ≈ $0.62 a year    ≈ 97% of best results
   ○ Not now             free              ≈ 25% of a full report's findings
 
-  Set up first
+  Not found locally
   ○ Jev + Codex plan    ≈ $0.21 a year    ≈ 80% of best results
-  ○ Snap + OpenAI key   ≈ $0.45 a year    ≈ 89% of labels right (best: 92%)
+  ○ Snap + OpenAI key   ≈ $0.45 a year    ≈ 97% of best results
     ↓ 2 more
     Jev labels changes and Snap matches them, beside the provider that reads the notes.
 

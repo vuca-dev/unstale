@@ -60,14 +60,14 @@ This repo has 3 packages unstale follows.
 
 How should unstale read new release notes?
 
-  Ready here
+  Found installed locally
   ○ Not now             free              ≈ 25% of a full report's findings
 
-  Set up first
+  Not found locally
   ● Jev + OpenAI key    ≈ $0.11 a year    best results
   ○ Jev + Codex plan    ≈ $0.053 a year   ≈ 80% of best results
-  ○ Snap + OpenAI key   ≈ $0.11 a year    ≈ 89% of labels right (best: 92%)
-  ○ OpenAI key          ≈ $0.16 a year    ≈ 89% of labels right (best: 92%)
+  ○ Snap + OpenAI key   ≈ $0.11 a year    ≈ 97% of best results
+  ○ OpenAI key          ≈ $0.16 a year    ≈ 97% of best results
     ↓ 2 more
     Jev labels changes and Snap matches them, beside the provider that reads the notes.
 

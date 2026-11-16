@@ -145,9 +145,9 @@ fn cost_cell(q: &Quote, techs: usize) -> String {
     }
 }
 
-/// The one quality figure, in terms that stand alone: the best option says so, an option below it gives its own
-/// figure beside the best one's or a share of what the best finds, and going without the share of a full report it
-/// keeps. Never a bare "less" that leaves the reader asking "than what".
+/// The one quality figure, in terms that stand alone: the best option says so, an option below it gives its share of
+/// the best option's results, and going without the share of a full report it keeps. Never a bare "less" that leaves
+/// the reader asking "than what".
 fn results(p: Pick, q: &Quote, no_key: bool) -> String {
     if p == Pick::None && !no_key {
         return match NO_PROVIDER_SHARE {
@@ -159,11 +159,16 @@ fn results(p: Pick, q: &Quote, no_key: bool) -> String {
         Quality::Best | Quality::Same => "best results".into(),
         Quality::Unmeasured => "not measured yet".into(),
         Quality::Share { pct, .. } => format!("≈ {pct}% of best results"),
-        // Scoped to "labels" though only breaking-change flags differ (change type is level or better, benefits about
-        // level, `eval/provider-matrix/RESULTS.md`): true enough for the choice, and it fits. The details name the flags.
+        // The share of the best option's right breaking-change flags (89 against 92: ≈ 97%), the one step that differs
+        // (as many changes found; change type level or better, benefits about level, `eval/provider-matrix/RESULTS.md`).
+        // Framed as a share of the best, not "right"/"wrong": a flag that is off does not break anything. The details
+        // name the flags.
         Quality::MoreWrong {
             wrong, best_wrong, ..
-        } => format!("≈ {}% of labels right (best: {}%)", 100 - wrong, 100 - best_wrong),
+        } => format!(
+            "≈ {}% of best results",
+            ((100 - wrong) as f64 * 100.0 / (100 - best_wrong) as f64).round() as u32
+        ),
     };
     if q.labels_and_matching_measured {
         figure
@@ -567,9 +572,9 @@ fn menu_rows(cells: &[Vec<String>], width: usize) -> Vec<Vec<String>> {
 }
 
 /// Heading over the options this machine can use.
-pub const READY: &str = "Ready here";
+pub const READY: &str = "Found installed locally";
 /// Heading over the options it cannot use yet.
-pub const SET_UP_FIRST: &str = "Set up first";
+pub const SET_UP_FIRST: &str = "Not found locally";
 
 /// The picker for a person: every option, those this machine can use first, the best of them marked; or
 /// `suggested` (this repository's suggestion, where this machine can use it) marked and tagged. An option not set up

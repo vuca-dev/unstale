@@ -4,14 +4,14 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-  Ready here
+  Found installed locally
   ● Codex plan          your Codex plan   ≈ 80% of best results; rest not measured
   ○ Not now             free              ≈ 25% of a full report's findings
 
-  Set up first
+  Not found locally
   ○ Jev + OpenAI key    ≈ $0.11 a year    best results
   ○ Jev + Codex plan    ≈ $0.053 a year   ≈ 80% of best results
-  ○ Snap + OpenAI key   ≈ $0.11 a year    ≈ 89% of labels right (best: 92%)
+  ○ Snap + OpenAI key   ≈ $0.11 a year    ≈ 97% of best results
     ↓ 2 more
     Jev labels changes and Snap matches them, beside the provider that reads the notes.
 

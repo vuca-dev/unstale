@@ -49,9 +49,9 @@ less. Quiet and well ordered, not loud: no banners, no "LOOK HERE".
     banners, capitals or emoji. A line that needs more than about 100 characters is carrying detail that belongs
     elsewhere.
 13. **Every figure names what it is measured against.** No bare comparative ("≈ 3% less precise", "free with
-    less"): a first-time reader asks "than what?". Give the option's own figure beside the reference's ("≈ 89% of
-    labels right (best: 92%)"), or a share of a reference that is on screen ("≈ 80% of best results", "≈ 25% of a full
-    report's findings").
+    less"): a first-time reader asks "than what?". Give a share of a reference that is on screen: "≈ 97% of best
+    results" under the row that says "best results", "≈ 25% of a full report's findings". Not "right" or "wrong": a
+    label that is off breaks nothing, and the words alarm.
 14. **Show the whole choice; mark the best you can take.** A picker lists every option, those this machine can use
     first and those it cannot yet under their own heading, each with what it still needs. The best usable option is
     marked by default. A few rows show at once and the rest scroll; choosing one that is not set up shows how to set
@@ -84,20 +84,20 @@ less. Quiet and well ordered, not loud: no banners, no "LOOK HERE".
 ```
 How should unstale read new release notes?
 
-  Ready here
-  ● OpenAI key          ≈ $1.98 a year    ≈ 89% of labels right (best: 92%)
+  Found installed locally
+  ● OpenAI key          ≈ $1.98 a year    ≈ 97% of best results
   ○ Not now             free              ≈ 25% of a full report's findings
 
-  Set up first
+  Not found locally
   ○ Jev + OpenAI key    ≈ $1.36 a year    best results
   ○ Jev + Codex plan    ≈ $0.68 a year    ≈ 80% of best results
-  ○ Snap + OpenAI key   ≈ $1.44 a year    ≈ 89% of labels right (best: 92%)
+  ○ Snap + OpenAI key   ≈ $1.44 a year    ≈ 97% of best results
     ↓ 2 more
 
 ↑↓ to move · Enter to choose · d for details
 ```
 
-Five rows show at once. On a row under "Set up first" the line under the list names what it needs
+Five rows show at once. On a row under "Not found locally" the line under the list names what it needs
 (`Needs JEV_API_KEY. Enter shows how to set it up.`). The agent's listing has the same rows, numbered, with the command
 for each and, for an option not set up, what the user sets first. Replaced: one row per usable option with an
 unanchored trade ("≈ 3% less precise labels"), and a separate "Set one up / Not now" prompt when nothing was usable.

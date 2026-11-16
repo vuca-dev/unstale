@@ -1,12 +1,12 @@
 How should unstale read new release notes?
 
-  Ready here
+  Found installed locally
   ● Jev + Vercel AI Gateway key
     ≈ $0.036 a year per package · best results
   ○ Jev + Codex plan
     ≈ $0.018 a year per package · ≈ 80% of best results
   ○ Vercel AI Gateway key
-    ≈ $0.052 a year per package · ≈ 89% of labels right (best: 92%)
+    ≈ $0.052 a year per package · ≈ 97% of best results
   ○ Codex plan
     your Codex plan · ≈ 80% of best results; rest not measured
   ○ Anthropic key

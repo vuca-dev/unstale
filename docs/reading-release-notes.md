@@ -20,8 +20,8 @@ provider to your key.
 |---|---|---|---|
 | Jev + an OpenAI-compatible key | `JEV_API_KEY` and a key from the fourth row | $0.036 | Best results |
 | Jev + Codex plan | `JEV_API_KEY`, `codex login` | $0.018 for the labelling service; the reading draws on your plan | ≈ 80% of the best option's changes |
-| Snap + an OpenAI-compatible key | `SUBQ_API_KEY` and a key from the fourth row | About $0.04 | As many breaking changes found; ≈ 89% of breaking-change flags right, against 92% for the best option. ≈ 1 more change listed twice |
-| OpenAI, Vercel AI Gateway or OpenRouter key | `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | About $0.05 | As many breaking changes found; ≈ 89% of breaking-change flags right, against 92% for the best option. ≈ 4 more changes listed twice |
+| Snap + an OpenAI-compatible key | `SUBQ_API_KEY` and a key from the fourth row | About $0.04 | ≈ 97% of best results: as many breaking changes found, ≈ 89% of breaking-change flags as the best option's 92%. ≈ 1 more change listed twice |
+| OpenAI, Vercel AI Gateway or OpenRouter key | `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY` or `OPENROUTER_API_KEY` | About $0.05 | ≈ 97% of best results: as many breaking changes found, ≈ 89% of breaking-change flags as the best option's 92%. ≈ 4 more changes listed twice |
 | Codex plan | `codex login` | Nothing extra: it draws on your plan | ≈ 80% of the best option's changes. Flags and repeats not measured |
 | Anthropic key | `ANTHROPIC_API_KEY` | $0.075, an estimate | ≈ 90% of the best option's changes, fewer from upgrade guides. ≈ 23 more changes listed twice. Estimates |
 | Not now | | Free | Publisher deprecations, unmaintained packages and security advisories: ≈ 25% of a full report's findings |

@@ -392,7 +392,7 @@ fn init_asks_once_at_a_terminal_and_setup_reopens_the_picker() {
     // The question on its own line, a blank line, the options ready here with the best marked, a blank line, how to
     // answer.
     assert!(
-        first.contains("How should unstale read new release notes?\n\n  Ready here\n  ● Jev + OpenAI key ")
+        first.contains("How should unstale read new release notes?\n\n  Found installed locally\n  ● Jev + OpenAI key ")
             && first.contains("≈ $0.036 a year ")
             && first.contains("\n  ○ Not now  ")
             && first.contains("\n\n↑↓ to move · Enter to choose · d for details\n"),

@@ -516,10 +516,9 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
             );
             continue;
         }
-        // One cost, and one quality figure at most, with the best option's beside it: no unit rate, first sync or
-        // second figure in the row.
+        // One cost, and one quality figure at most: no unit rate, first sync or second figure in the row.
         assert!(row.contains("≈ "), "{row}");
-        assert!(row.replace("(best: 92%)", "").matches('%').count() <= 1, "{row}");
+        assert!(row.matches('%').count() <= 1, "{row}");
         for detail in ["per package", "first sync", "listed twice", "at API prices"] {
             assert!(
                 !row.contains(detail),
@@ -531,7 +530,7 @@ fn every_option_states_one_cost_and_its_trade_and_the_details_carry_units_and_sc
             Pick::JevKey(_) => "best results",
             Pick::JevCodex => "≈ 80% of best results",
             Pick::Key(Route::Anthropic) => "≈ 90% of best results",
-            Pick::Key(_) | Pick::SnapKey(_) => "≈ 89% of labels right (best: 92%)",
+            Pick::Key(_) | Pick::SnapKey(_) => "≈ 97% of best results",
             Pick::Codex => "≈ 80% of best results; rest not measured",
             Pick::None => unreachable!(),
         };

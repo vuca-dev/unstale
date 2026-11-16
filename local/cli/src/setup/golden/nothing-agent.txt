@@ -5,8 +5,8 @@ Never choose for them, and never ask them to paste a key.
   1  Not now            free                          ≈ 25% of a full report's findings
   2  Jev + OpenAI       ≈ $1.36                       best results
   3  Jev + Codex plan   ≈ $0.68 + 6.3M Codex tokens   ≈ 80% of best results
-  4  Snap + OpenAI      ≈ $1.44                       ≈ 89% of labels right (best: 92%)
-  5  OpenAI             ≈ $1.98                       ≈ 89% of labels right (best: 92%)
+  4  Snap + OpenAI      ≈ $1.44                       ≈ 97% of best results
+  5  OpenAI             ≈ $1.98                       ≈ 97% of best results
   6  Codex plan         ≈ 29M Codex tokens            ≈ 80% of best results; rest not measured
   7  Anthropic          ≈ $2.86                       ≈ 90% of best results
      Jev labels changes and Snap matches them, beside the provider that reads the notes.

@@ -4,10 +4,10 @@
 $ unstale init --wait 0 --no-animation
 How should unstale read new release notes?
 
-  Ready here
+  Found installed locally
   ● Jev + Vercel AI Gateway key    ≈ $0.11 a year    best results
   ○ Jev + Codex plan               ≈ $0.053 a year   ≈ 80% of best results
-  ○ Vercel AI Gateway key          ≈ $0.16 a year    ≈ 89% of labels right (best: 92%)
+  ○ Vercel AI Gateway key          ≈ $0.16 a year    ≈ 97% of best results
   ○ Codex plan                     your Codex plan   ≈ 80% of best results; rest not measured
   ○ Anthropic key                  ≈ $0.23 a year    ≈ 90% of best results
     ↓ 2 more

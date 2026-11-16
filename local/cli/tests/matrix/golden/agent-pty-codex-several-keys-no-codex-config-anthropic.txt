@@ -71,7 +71,7 @@ Never choose for them, and never ask them to paste a key.
   1  Jev + Vercel AI Gateway (JEV_API_KEY, AI_GATEWAY_API_KEY)
      ≈ $0.11 a year · best results
   2  Vercel AI Gateway (AI_GATEWAY_API_KEY)
-     ≈ $0.16 a year · ≈ 89% of labels right (best: 92%)
+     ≈ $0.16 a year · ≈ 97% of best results
   3  Anthropic (ANTHROPIC_API_KEY)
      ≈ $0.23 a year · ≈ 90% of best results
   4  Not now
@@ -79,7 +79,7 @@ Never choose for them, and never ask them to paste a key.
   5  Jev + Codex plan (needs Codex)
      ≈ $0.053 + 500k Codex tokens a year · ≈ 80% of best results
   6  Snap + Vercel AI Gateway (needs SUBQ_API_KEY)
-     ≈ $0.11 a year · ≈ 89% of labels right (best: 92%)
+     ≈ $0.11 a year · ≈ 97% of best results
   7  Codex plan (needs Codex)
      ≈ 2.3M Codex tokens a year · ≈ 80% of best results; rest not measured
      Jev labels changes and Snap matches them, beside the provider that reads the notes.
