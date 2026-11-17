@@ -1,7 +1,8 @@
 # performance agent log
 
 ## Revisit
-- 2026-11-10: next ingest run after PR #219: compare per-cycle `cpu_s`/`wall_s` (was 85-98 % of a core in 5 of 7 cycles of run 42873865732) and summed `docs_ms` (7,288 s of ~10,090 s); if the drain is still CPU-bound, profile a cycle (`--cpu-prof`) for the next hotspot: candidates are pages.ts pack reads (each get/put reads and scans the whole 1-of-256 pack file) and HTML extraction of MB-scale pages
+- 2026-11-17: next ingest run after PR #277: summed `advisories_ms` (2,375 s in run 44165070416) and the aws-sdk / fontsource outliers; what is left in the stage for them (typeStubDeprecations, mergeChunkDuplicates, publishTechnology, lock wait are all inside `advisories_ms`)
+- 2026-11-17: docs_ms now 2,248 s (posthog-node 194, tanstack-eslint-plugin-query 175, aws-sdk clients 115-154 each): aws-sdk clients share one docs site; check whether each refetches it
 - 2026-11-10: shared docs page cache (docs/pages.ts) keeps only 200s: a 304 to technology A is not kept, so technology B on the same site (langchain-openai 1,045 s then langgraph 782 s docs_ms in the same run, likely both docs.langchain.com) fetches again; keeping the validated etag/last-modified would answer B's matching conditional request locally (unmeasured: needs the same-site share of 304s)
 - 2026-11-03: docs pass outcome mix (not_modified / unchanged / changed per pass) is not logged; adding it to `coverage_stages` would size the PR #207 gain fleet-wide and show which hosts answer 200 to conditional requests (django, expo, builder.io did): those pay a full body per page every pass
 - 2026-11-03: advisories stage is 17% of stage time with outliers (@types/react 299 s, @types/react-dom 119 s in run 41674492178); look at what it fetches for type-stub packages
@@ -9,6 +10,12 @@
 - 2026-10-27: ingest cycles: per-cycle times are in the run log (`[hh:mm:ss] cycle N` lines): ~20 min drain + 66-140 s publish per cycle, 7 cycles a run
 
 ## Entries
+
+### 2026-11-17 · Advisories stage queried OSV one package at a time, siblings included
+- Tried: run 44165070416 (327 coverage_stages): drain cpu_s 52-280 per 1,200 s cycle (was 541-1,519 before PR #219: CPU no longer the bound); stages advisories 2,375 s, docs 2,248, extraction 787; advisories outliers fontsource-libre-barcode-128-text 330 s, 11 aws-sdk clients 89-114 s each, 44 techs >10 s = 2,013 s. OSV query ~130 ms each on this runner; querybatch 60 packages 184 ms. A/B fetchAdvisories(refresh) on real OSV: 846 @aws-sdk/client-* 123.7 s/846 req -> 1.3 s/1; 242 @babel/* 30.4 s/242 -> 1.5 s/8, same 4 GHSA ids.
+- Found: fetchAdvisories looped `await osvQuery(p)` over every package of the repo (@aws-sdk scope 1,067, @fontsource 2,129) every 12 h. querybatch returned the same ids as query for 10 packages (0-324 vulns, npm/PyPI/cargo). In this sandbox curl, env-prefixed commands and `>` redirects are denied; Node scripts in _temp/scripts with top-level await need `.mts`.
+- Chosen: querybatch (1,000 a request) names the due packages with no vulns; the others are queried whole as before; only when >1 package is due; 1 test; 676 central tests pass; $0 model spend. PR #277
+- Outcome: a monorepo technology's OSV refresh costs ~1 request per 1,000 packages plus one per package with advisories
 
 ### 2026-11-10 · Docs page cache compressed every page at Brotli quality 11
 - Tried: summed `coverage_stages` of ingest run 42873865732 (439 events): docs 7,288 s of ~10,090 s (anthropic-ai-sdk 1,207, langchain-openai 1,045, nx-jest 897); drain cycles' cpu_s/wall_s 541/1204, 1066/1206, 1186/1205, 1519/1642, 1031/1204, 733/1203, 276/483 (CPU-bound; 7-12 refresh slices started per cycle in the worst). Gateway quiet (74,639 requests, 156,652 subrequests a week, no errors beyond 14 client disconnects). Benchmarked brotliCompressSync on real pages: q11 184-1,086 ms per 0.3-2.1 MiB HTML page, q6 2.8-14.7 ms, +10-13 % bytes. A/B of `Collector.checkAll` through `SharedPages` (16/2 per host): 80 docs.langchain.com pages 36.4 s wall/36.6 s CPU -> 2.0/1.4 (control rerun 36.3); Expo 60 pages first 9.4 -> 2.1 s, re-check (answers 200) 7.3 -> 1.7 s.
