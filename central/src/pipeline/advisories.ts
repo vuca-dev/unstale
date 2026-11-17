@@ -9,7 +9,8 @@
 //      (ecosystems.ts; npm: same scope and the registry `repository` is the technology's repository). No hook: the
 //      components only;
 //   2. advisories: `POST api.osv.dev/v1/query {package: {purl}}` (all pages, no token), cached under the central
-//      store; withdrawn ones are dropped; the GHSA id is the advisory id where there is one, other ids are aliases;
+//      store (with several packages due, one `POST /v1/querybatch` first names those with none, not queried then);
+//      withdrawn ones are dropped; the GHSA id is the advisory id where there is one, other ids are aliases;
 //   3. resolve: each affected range is resolved against the technology's release index (SEMVER ranges by SemVer,
 //      ECOSYSTEM ranges by the ecosystem's order when it has one, explicit version lists as given; otherwise
 //      unresolved). The record carries the index and, per range, the index versions it affects, so the edge compares
@@ -67,6 +68,7 @@ import { techLocal } from "../state/client.ts";
 
 const FRESH_MS = 12 * 3600 * 1000;
 const OSV = "https://api.osv.dev/v1/query";
+const OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch";
 const OSV_VULN = "https://api.osv.dev/v1/vulns/";
 
 /** Network calls made by this module in this process (OSV pages, registry reads). */
@@ -201,6 +203,29 @@ async function osvQuery(purl: string): Promise<OsvVuln[]> {
   return out;
 }
 
+/** OSV's batch query answers up to this many packages per request. */
+const OSV_BATCH = 1000;
+
+/**
+ * The packages OSV lists no vulnerability for, asked `OSV_BATCH` at a time (`POST /v1/querybatch`, which answers ids
+ * only). A package with any vulnerability, a further page or no answer of its own is left out: the caller queries it
+ * whole (`osvQuery`). A request still failing after retries throws, like a query.
+ */
+async function osvEmpty(purls: readonly string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < purls.length; i += OSV_BATCH) {
+    const chunk = purls.slice(i, i + OSV_BATCH);
+    const res = await osvRequest(OSV_BATCH_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ queries: chunk.map((purl) => ({ package: { purl } })) }) }, `batch of ${chunk.length}`);
+    if (res.json === undefined) throw new Error(`OSV batch of ${chunk.length}: ${res.status}`);
+    const results = (res.json as { results?: unknown } | null)?.results;
+    if (!Array.isArray(results) || results.length !== chunk.length) continue;
+    results.forEach((r: { vulns?: unknown[]; next_page_token?: string } | null, j) => {
+      if (r && !r.vulns?.length && !r.next_page_token) out.add(chunk[j]!);
+    });
+  }
+  return out;
+}
+
 /** The package URL of an OSV `affected` entry, canonical (`%40scope`), without version or qualifiers. */
 function entryPurl(a: NonNullable<OsvVuln["affected"]>[number]): string | undefined {
   const pkg = a.package;
@@ -294,13 +319,21 @@ export async function fetchAdvisories(t: Technology, opts: { refresh?: boolean; 
   const packages = await techPackages(t, { ...(opts.refresh ? { refresh: true } : {}), ...(opts.offline ? { offline: true } : {}) });
   const raw = new Map<string, OsvVuln>();
   const since = Date.parse(opts.since ?? "");
-  for (const p of packages) {
+  const kept = packages.map((p) => {
     const file = join(dir(t), "osv", `${safe(p)}.json`);
-    let cached = readJson<{ checked: string; vulns: OsvVuln[] }>(file);
+    const cached = readJson<{ checked: string; vulns: OsvVuln[] }>(file);
     const fresh = cached && Date.now() - Date.parse(cached.checked) < FRESH_MS && !(Date.parse(cached.checked) < since);
-    if (!cached || (!opts.offline && (!fresh || opts.refresh))) {
+    return { p, file, cached, due: !cached || (!opts.offline && (!fresh || !!opts.refresh)) };
+  });
+  // Most of a monorepo's packages have no advisory (fontsource's 2,000 fonts, aws-sdk's clients): one batch request
+  // per 1,000 names those, and only the others are queried one by one.
+  const asked = opts.offline ? [] : kept.filter((k) => k.due).map((k) => k.p);
+  const none = asked.length > 1 ? await osvEmpty(asked) : new Set<string>();
+  for (const { p, file, due, ...k } of kept) {
+    let cached = k.cached;
+    if (!cached || due) {
       if (opts.offline) continue;
-      const vulns = (await osvQuery(p)).sort((a, b) => a.id.localeCompare(b.id));
+      const vulns = none.has(p) ? [] : (await osvQuery(p)).sort((a, b) => a.id.localeCompare(b.id));
       cached = { checked: stamp(), vulns };
       writeAtomic(file, JSON.stringify(cached, null, 1) + "\n");
     }
