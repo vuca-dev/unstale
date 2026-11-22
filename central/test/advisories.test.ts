@@ -425,6 +425,39 @@ describe("advisories", () => {
     }
   });
 
+  test("several packages due: one batch request names those with no advisory, and only the others are queried", async () => {
+    const t = { ...TECHNOLOGIES.next!, id: "osv-batch", components: ["pkg:pypi/quiet-a", "pkg:pypi/loud", "pkg:pypi/quiet-b", "pkg:pypi/paged"] };
+    const vuln = { id: "GHSA-aaaa-bbbb-dddd", affected: [{ package: { ecosystem: "PyPI", name: "loud", purl: "pkg:pypi/loud" }, ranges: [{ type: "ECOSYSTEM", events: [{ introduced: "0" }, { fixed: "1.0.1" }] }] }] };
+    const asked: string[] = [];
+    let batch: unknown;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { package?: { purl: string }; queries?: Array<{ package: { purl: string } }> };
+      if (url.endsWith("/querybatch")) {
+        asked.push(`batch:${body.queries!.map((q) => q.package.purl.replace("pkg:pypi/", "")).join(",")}`);
+        return Response.json(batch);
+      }
+      asked.push(body.package!.purl.replace("pkg:pypi/", ""));
+      return Response.json({ vulns: body.package!.purl === "pkg:pypi/loud" ? [vuln] : [] });
+    });
+    try {
+      // Sorted packages: loud, paged, quiet-a, quiet-b.
+      batch = { results: [{ vulns: [{ id: vuln.id, modified: "2026-01-01T00:00:00Z" }] }, { next_page_token: "more" }, {}, {}] };
+      expect((await fetchAdvisories(t)).map((a) => a.id)).toEqual(["GHSA-AAAA-BBBB-DDDD"]);
+      expect(asked).toEqual(["batch:loud,paged,quiet-a,quiet-b", "loud", "paged"]);
+      // Every package is cached: nothing is asked within the window.
+      asked.length = 0;
+      expect((await fetchAdvisories(t)).map((a) => a.id)).toEqual(["GHSA-AAAA-BBBB-DDDD"]);
+      expect(asked).toEqual([]);
+      // An answer that does not line up with the request names nothing: each package is queried.
+      batch = { results: [{}] };
+      asked.length = 0;
+      expect((await fetchAdvisories(t, { refresh: true })).map((a) => a.id)).toEqual(["GHSA-AAAA-BBBB-DDDD"]);
+      expect(asked).toEqual(["batch:loud,paged,quiet-a,quiet-b", "loud", "paged", "quiet-a", "quiet-b"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("npm listings: each lives 24 to 30 hours by its URL, so one scope's entries come due in pieces", () => {
     const urls = Array.from({ length: 200 }, (_, i) => `https://registry.npmjs.org/@big%2fp${i}/latest`);
     const lives = urls.map(listingLifetimeMs);
