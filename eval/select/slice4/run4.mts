@@ -23,6 +23,10 @@ const { canonical, pool, sha256 } = await import("../../../central/src/pipeline/
 const { gatewayBalance, spendByProvider } = await import("../budget.ts");
 const S = await import("../states.ts");
 const { SubqClassifier } = await import("../subq.ts");
+// eval/provider-matrix: OpenAI's decision model (gpt-6-luna on /v1/decisions), Jev's answer shape.
+const { DecisionsClassifier } = await import("../../provider-matrix/decisions.ts");
+// eval/provider-matrix PREREG addendum 1: choice:<model> = production's chat fallback (ChatClassifier: choices only).
+const { chatClassifier } = await import("../jev.ts");
 import type { Answer, Classification, Classifier, ChoiceQuestion, Questions } from "../../../central/src/pipeline/classify/adapter.ts";
 
 const { values: a } = parseArgs({
@@ -42,6 +46,7 @@ const { values: a } = parseArgs({
     // SubQ Snap model (subq.ts); a model other than the preview names its runs subq-<version>.
     "subq-model": { type: "string", default: "subq-snap-preview" },
     "subq-cap": { type: "string", default: "1.0" },
+    "decisions-cap": { type: "string", default: "0.6" },
   },
 });
 const cand = a.cand ?? "";
@@ -178,6 +183,9 @@ const EXTRA: Record<string, Record<string, unknown>> = {
   "openai/gpt-oss-120b": { reasoning_effort: "low" },
   "alibaba/qwen3.8-flash": { reasoning_effort: "none" },
   "deepseek/deepseek-v4-flash": { reasoning_effort: "none" },
+  // eval/provider-matrix/PREREG.md: Haiku at reasoning none (the lowest it accepts); gpt-6-luna at production's effort.
+  "anthropic/claude-haiku-5.5": { reasoning_effort: "none" },
+  "openai/gpt-6-luna": { reasoning_effort: "low" },
 };
 const chat = new ChatClient({ provider: PROVIDERS.vercel!, cacheDir: join(OUT4, "cache", runId, "chat"), usageLog: join(OUT4, "chat-usage.jsonl"), concurrency: Number(a.concurrency) });
 // The chat arms' prompt as slice 4 ran them: the pipeline's fallback prompt before 2fa5db0 (choice plus a probability per
@@ -260,17 +268,18 @@ function parseBatch(t: string, n: number): Map<number, Record<string, Answer>> {
 const tok3 = (s: string) => Math.ceil(s.length / 3);
 const isBatch = cand.startsWith("batch:");
 const B = Number(a.batch);
-const sysOne = cand === "jev" || cand === "clef" || cand === "subq";
+const isChoice = cand.startsWith("choice:");
+const sysOne = cand === "jev" || cand === "clef" || cand === "subq" || cand === "decisions";
 let planIn = 0;
 let planOut = 0;
 if (isBatch) for (let i = 0; i < units.length; i += B) (planIn += tok3(batchPrompt(units.slice(i, i + B)))), (planOut += MAX_TOKENS * 2);
-else for (const u of units) (planIn += tok3(sysOne ? JSON.stringify({ state: u.state, questions: q }) : chatPrompt(u.state, q))), (planOut += sysOne ? 0 : MAX_TOKENS);
-const modelOf = cand.replace(/^(vercel|batch):/, "");
-const price = cand === "jev" ? priceOf(prices, "jev", "jev-latest") : cand === "subq" ? priceOf(prices, "subq", SUBQ_MODEL) : cand === "codex" ? priceOf(prices, "codex", "gpt-5.6-luna") : cand === "clef" ? { input: 0.038, output: 0, cached_input: null } as never : priceOf(prices, "vercel", modelOf);
+else for (const u of units) (planIn += tok3(sysOne || isChoice ? JSON.stringify({ state: u.state, questions: q }) : chatPrompt(u.state, q))), (planOut += sysOne ? 0 : MAX_TOKENS);
+const modelOf = cand.replace(/^(vercel|batch|choice):/, "");
+const price = cand === "decisions" ? priceOf(prices, "openai-decisions", "gpt-6-luna") : cand === "jev" ? priceOf(prices, "jev", "jev-latest") : cand === "subq" ? priceOf(prices, "subq", SUBQ_MODEL) : cand === "codex" ? priceOf(prices, "codex", "gpt-5.6-luna") : cand === "clef" ? { input: 0.038, output: 0, cached_input: null } as never : priceOf(prices, "vercel", modelOf);
 const worst = price ? dollars(price, { input_tokens: planIn, cached_input_tokens: 0, output_tokens: planOut, reasoning_tokens: null }) : null;
 console.log(`${runId}: ${units.length} units, worst case ${planIn} input + ${planOut} output tokens = ${worst === null ? "unknown" : `$${worst.toFixed(4)}`} (input chars/3, output = max_tokens per call)`);
 if (a["dry-run"]) process.exit(0);
-if (cand.startsWith("vercel:") || isBatch) {
+if (cand.startsWith("vercel:") || isBatch || isChoice) {
   const mine = Object.values(spendByProvider(join(OUT4, "chat-usage.jsonl"))).reduce((s, x) => s + x.dollars, 0);
   const bal = await gatewayBalance();
   console.log(`gateway: this slice spent $${mine.toFixed(4)} of its $${GATEWAY_CAP}; live balance $${bal.toFixed(4)}`);
@@ -279,6 +288,10 @@ if (cand.startsWith("vercel:") || isBatch) {
 if (cand === "subq") {
   const subqSpent = spendByProvider(USAGE).subq?.dollars ?? 0;
   if (worst === null || subqSpent + worst > Number(a["subq-cap"])) throw new Error(`subq: spent $${subqSpent.toFixed(4)}, this run worst $${worst}, cap $${a["subq-cap"]}`);
+}
+if (cand === "decisions") {
+  const spent = spendByProvider(USAGE)["openai-decisions"]?.dollars ?? 0;
+  if (worst === null || spent + worst > Number(a["decisions-cap"])) throw new Error(`decisions: spent $${spent.toFixed(4)}, this run worst $${worst}, cap $${a["decisions-cap"]}`);
 }
 if (cand === "jev") {
   const jevSpent = spendByProvider(USAGE).jev?.dollars ?? 0;
@@ -294,9 +307,9 @@ const tick = () => {
   if (++done % 25 === 0) console.log(`  ${done}/${units.length} (${((Date.now() - t0) / 1000).toFixed(0)} s)`);
 };
 const conc = Number(a.concurrency);
-if (sysOne) {
+if (sysOne || isChoice) {
   // SubQ Snap (eval/select/subq.ts) takes Jev's request and answer shape at its own endpoint.
-  const cls = cand === "subq" ? new SubqClassifier({ model: SUBQ_MODEL, step: `classify:${runId}`, onUsage: (u, d) => log("subq", SUBQ_MODEL, u, d) }) : systemOne(cand as "jev" | "clef");
+  const cls = isChoice ? chatClassifier(chat, modelOf, `classify:${runId}`, { max_tokens: MAX_TOKENS, ...(EXTRA[modelOf] ?? {}) }) : cand === "decisions" ? new DecisionsClassifier({ onUsage: (u, d) => log("openai-decisions", "gpt-6-luna", u, d) }) : cand === "subq" ? new SubqClassifier({ model: SUBQ_MODEL, step: `classify:${runId}`, onUsage: (u, d) => log("subq", SUBQ_MODEL, u, d) }) : systemOne(cand as "jev" | "clef");
   await pool(units, conc, async (u) => {
     const s = Date.now();
     const hit = cache.get(cls, u.state, q);

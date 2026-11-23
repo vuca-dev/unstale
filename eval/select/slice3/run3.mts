@@ -91,6 +91,10 @@ const EXTRA: Record<string, Record<string, unknown>> = {
   "inception/mercury-2.5": { reasoning_effort: "low" },
   "inclusionai/ling-3.0-flash": {},
   "mistral/mistral-nemo": {},
+  // eval/provider-matrix/PREREG.md: Haiku at reasoning none (the lowest it accepts; --effort low for the second arm),
+  // and gpt-6-luna on the OpenAI API directly at production's effort (the second-route check).
+  "anthropic/claude-haiku-5.5": { reasoning_effort: "none" },
+  "gpt-6-luna": { reasoning_effort: "low" },
 };
 if (a.effort) EXTRA[model] = { reasoning_effort: a.effort };
 const ATTEMPTS = 3;

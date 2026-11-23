@@ -17,7 +17,7 @@ const SELECT = join(import.meta.dirname, "..");
 const OUT5 = join(SELECT, "out", "slice5");
 process.env.UNSTALE_CENTRAL_DIR = join(OUT5, "central");
 const { ChatClient, PROVIDERS, dollars, loadPrices, logUsageLine, priceOf, reportedCost } = await import("../client.ts");
-const { ClassifierCache, CodexClassifier, Jev, keyFromEnvFile } = await import("../../../central/src/pipeline/classify/adapter.ts");
+const { ClassifierCache, Jev, keyFromEnvFile } = await import("../../../central/src/pipeline/classify/adapter.ts");
 const { runCodex } = await import("../../lib/codex.ts");
 const { canonical, pool, sha256 } = await import("../../../central/src/pipeline/util.ts");
 const { gatewayBalance, spendByProvider } = await import("../budget.ts");
@@ -130,10 +130,30 @@ const EXTRA: Record<string, Record<string, unknown>> = {
   "alibaba/qwen3.8-flash": { reasoning_effort: "none" },
   "deepseek/deepseek-v4-flash": { reasoning_effort: "none" },
   "google/gemini-3.1-flash-lite": { reasoning_effort: "none" },
+  // eval/provider-matrix/PREREG.md: Haiku at reasoning none (the lowest it accepts); gpt-6-luna at production's effort.
+  "anthropic/claude-haiku-5.5": { reasoning_effort: "none" },
+  "openai/gpt-6-luna": { reasoning_effort: "low" },
 };
 const MAX_TOKENS = Number(a["max-tokens"]);
 const chat = new ChatClient({ provider: PROVIDERS.vercel!, cacheDir: join(OUT5, "cache", runId, "chat"), usageLog: join(OUT5, "chat-usage.jsonl"), concurrency: Number(a.concurrency) });
-const codexPrompt = new CodexClassifier({ run: async () => ({ text: "", code: 1 }) });
+// The chat arms' prompt as slice 5 ran them: the pipeline's Codex-fallback prompt before 2fa5db0 (a choice plus a
+// probability per option, which parseAll requires; the same text as slice4/run4.mts CHAT_PROMPT). CodexClassifier is
+// gone from adapter.ts, so the text lives here; a qwen smoke re-run hits slice 5's own cache, which checks it.
+const CHAT_PROMPT = `You answer closed-choice questions about a record. Read the state and answer every question by picking
+exactly one of its options and giving a probability for every option (the probabilities of one question sum to 1).
+
+Output only a JSON object, no prose: {"<question id>": {"choice": "<option>", "probabilities": {"<option>": <0..1>, ...}}, ...}
+
+State:
+%STATE%
+
+Questions:
+%QUESTIONS%
+`;
+const codexPrompt = {
+  prompt: (state: Record<string, unknown>, questions: Questions): string =>
+    CHAT_PROMPT.replace("%STATE%", canonical(state)).replace("%QUESTIONS%", JSON.stringify(Object.fromEntries(Object.entries(questions).map(([id, q]) => [id, { instructions: q.instructions, options: q.options }])), null, 1)),
+};
 
 async function chatAsk(model: string, prompt: string, validate: (t: string) => unknown): Promise<string | undefined> {
   const c = await chat.complete({ model, messages: [{ role: "user", content: prompt }], max_tokens: MAX_TOKENS, ...(EXTRA[model] ?? {}) }, (t) => (validate(t) === undefined ? undefined : t), { step: `judge:${runId}` });
