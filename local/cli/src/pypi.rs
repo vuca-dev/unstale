@@ -226,6 +226,11 @@ fn requirement_lines(text: &str) -> Vec<ReqLine> {
     out
 }
 
+/// The files a requirements file includes with `-r` or `-c`, as written (relative to its directory).
+pub(crate) fn requirement_includes(text: &str) -> Vec<String> {
+    requirement_lines(text).into_iter().filter_map(|l| if let ReqLine::Include { file, .. } = l { Some(file) } else { None }).collect()
+}
+
 /// `requirements*.txt` lines: requirements only (no `-r`/`-e`/`-c` options, URLs or local paths).
 #[cfg(test)]
 fn requirements_txt(text: &str) -> Vec<Req> {
