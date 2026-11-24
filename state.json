@@ -1,8 +1,8 @@
 {
   "security": {
-    "sha": "5abe198e8a53dc7eee96a50ec7faaa35beaf2a62",
-    "at": "2026-11-17",
-    "pr": 276
+    "sha": "3cd19dc7a9f1334662d773f21e3f6d6648cffd4f",
+    "at": "2026-11-24",
+    "pr": 278
   },
   "performance": {
     "sha": "5abe198e8a53dc7eee96a50ec7faaa35beaf2a62",
