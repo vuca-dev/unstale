@@ -38,7 +38,8 @@
 //!   `bunfig.toml` and `BUN_CONFIG_REGISTRY`. A scope Yarn or Bun configures with credentials is private.
 //! - PyPI: `pip.conf`/`pip.ini` (user, site, Windows `%APPDATA%`, `%USERPROFILE%` and `%PROGRAMDATA%`,
 //!   `PIP_CONFIG_FILE`, the virtualenv's), `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_FIND_LINKS` (any case),
-//!   requirements files' `--index-url`, `--extra-index-url` and `--find-links`, uv (`[tool.uv]`, `uv.toml`, the user's
+//!   requirements files' (and the files they include with `-r`/`-c`, by any name) `--index-url`, `--extra-index-url`
+//!   and `--find-links`, uv (`[tool.uv]`, `uv.toml`, the user's
 //!   and `%APPDATA%`'s, `UV_CONFIG_FILE` by any name, `UV_INDEX`, `UV_INDEX_URL`, `UV_DEFAULT_INDEX`,
 //!   `UV_EXTRA_INDEX_URL`, `UV_FIND_LINKS`; an `explicit` index serves only the packages pinned to it), Poetry sources,
 //!   PDM sources and Pipfile sources.
@@ -449,7 +450,11 @@ impl Registries {
 
     fn from_files(all: BTreeSet<(PathBuf, Kind)>, env: &Env) -> Registries {
         let mut r = Registries::default();
-        for (p, kind) in all {
+        // The files requirements files include (`-r`, `-c`), whatever their names: pip applies their index options
+        // too. Each is read once, so an include that loops ends.
+        let mut read: BTreeSet<PathBuf> = all.iter().filter(|(_, k)| *k == Kind::Requirements).filter_map(|(p, _)| p.canonicalize().ok()).collect();
+        let mut queue: std::collections::VecDeque<(PathBuf, Kind)> = all.into_iter().collect();
+        while let Some((p, kind)) = queue.pop_front() {
             // Bytes that are not UTF-8 are read as far as they are text, never skipped: a setting must not be lost.
             let bytes = match std::fs::read(&p) {
                 Ok(bytes) => bytes,
@@ -479,7 +484,15 @@ impl Registries {
                 },
                 Kind::Pyproject => r.pyproject(&text),
                 Kind::Pipfile => r.pipfile(&text),
-                Kind::Requirements => r.requirements(&text),
+                Kind::Requirements => {
+                    r.requirements(&text);
+                    for f in crate::pypi::requirement_includes(&text) {
+                        let included = p.parent().unwrap_or(Path::new("")).join(f);
+                        if included.canonicalize().is_ok_and(|c| read.insert(c)) {
+                            queue.push_back((included, Kind::Requirements));
+                        }
+                    }
+                }
                 // TOML configuration must be valid UTF-8. Lossy conversion could turn malformed Cargo config
                 // into a parseable comment/value and accidentally permit disclosure.
                 Kind::CargoConfig => match std::str::from_utf8(&bytes) {
@@ -1718,6 +1731,31 @@ mod tests {
         let (st, urls, osv) = requests(repo.path(), &env(Some(home.path()), &[("PIP_EXTRA_INDEX_URL", "https://pypi.corp.example/simple")]));
         assert!(st.deps.values().all(|d| !d.public_candidate));
         assert!(urls.is_empty() && osv.is_empty(), "{urls:?} {osv:?}");
+    }
+
+    #[test]
+    fn an_included_requirements_files_index_keeps_python_packages_from_pypi_and_osv() {
+        // pip applies an index option from any file it reads, whatever that file is called; the packages of an
+        // included file are the project's (`pypi::detect` follows `-r`), so its options are too.
+        let home = tempfile::tempdir().unwrap();
+        for (top, include, private) in [
+            ("-r deps/private.txt\nrequests==2.32.0\n", "deps/private.txt", "--extra-index-url https://pypi.corp.example/simple\ncorp-sdk==1.0.0\n"),
+            ("--requirement=deps/a.txt\nrequests==2.32.0\n", "deps/a.txt", "-r ../more/b.txt\n"),
+            ("requests==2.32.0\n-c pins.txt\n", "pins.txt", "-i https://pypi.corp.example/simple\ncorp-sdk==1.0.0\n"),
+        ] {
+            let repo = tempfile::tempdir().unwrap();
+            write(repo.path(), "requirements.txt", top);
+            write(repo.path(), include, private);
+            write(repo.path(), "more/b.txt", "--find-links https://files.corp.example/wheels\ncorp-sdk==1.0.0\n");
+            assert!(!read(repo.path(), &env(Some(home.path()), &[])).may_name("pkg:pypi/requests", U), "{include}");
+            let (st, urls, osv) = requests(repo.path(), &env(Some(home.path()), &[]));
+            assert!(st.deps.values().all(|d| !d.public_candidate), "{include}");
+            assert!(urls.is_empty() && osv.is_empty(), "{include}: {urls:?} {osv:?}");
+        }
+        // An include that loops, or names a file that is not there, ends the walk.
+        let repo = tempfile::tempdir().unwrap();
+        write(repo.path(), "requirements.txt", "-r requirements.txt\n-r missing.txt\nrequests==2.32.0\n");
+        assert!(read(repo.path(), &env(Some(home.path()), &[])).may_name("pkg:pypi/requests", U));
     }
 
     #[test]
